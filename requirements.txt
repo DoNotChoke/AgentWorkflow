@@ -1,0 +1,61 @@
+# AgentWorkflow — runtime dependencies
+#
+# Nguyên tắc pin: dùng ràng buộc phạm vi (>=, <) ở đây để giữ file này đọc được và
+# review được. File khoá phiên bản chính xác cho reproducible build là
+# `requirements.lock.txt`, sinh bằng:
+#
+#     pip install pip-tools
+#     pip-compile requirements.txt -o requirements.lock.txt
+#
+# Container build phải cài từ `requirements.lock.txt`, không cài từ file này.
+#
+# Python: 3.13
+
+# ─── Web framework / API (Control Plane, §4.2) ───────────────────────────────
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.32,<1.0
+python-multipart>=0.0.18,<1.0        # form/file upload cho FastAPI
+sse-starlette>=2.1,<4.0              # SSE tiến trình execution (§25)
+
+# ─── Cấu hình & validation ───────────────────────────────────────────────────
+pydantic>=2.9,<3.0
+pydantic-settings>=2.6,<3.0
+jsonschema>=4.23,<5.0                # validate Workflow IR / Tool schema (§11, §39)
+orjson>=3.10,<4.0
+
+# ─── PostgreSQL — source of truth (§4.5) ─────────────────────────────────────
+sqlalchemy[asyncio]>=2.0,<2.1
+alembic>=1.14,<2.0
+asyncpg>=0.30,<1.0
+
+# ─── Redis — chỉ dùng cho state phù du (§4.6) ────────────────────────────────
+redis[hiredis]>=5.2,<7.0
+
+# ─── Object storage S3-compatible (§4.7) ─────────────────────────────────────
+boto3>=1.35,<2.0
+
+# ─── Workflow runtime (§4.4, §14) ────────────────────────────────────────────
+temporalio>=1.9,<2.0
+
+# ─── AI Plane (§4.3, §5.2) ───────────────────────────────────────────────────
+anthropic>=0.40
+
+# ─── HTTP client cho Integration Plane (§6.3) ────────────────────────────────
+httpx>=0.28,<1.0
+tenacity>=9.0,<10.0                  # retry policy phía ứng dụng (§15)
+
+# ─── Bảo mật / credential (§21) ──────────────────────────────────────────────
+cryptography>=44.0                   # envelope encryption cho provider credential
+pyjwt[crypto]>=2.10,<3.0
+argon2-cffi>=23.1,<26.0              # hash mật khẩu
+
+# ─── Logging & Observability (§4.10, §36) ────────────────────────────────────
+structlog>=24.4,<26.0
+opentelemetry-api>=1.29,<2.0
+opentelemetry-sdk>=1.29,<2.0
+opentelemetry-exporter-otlp-proto-grpc>=1.29,<2.0
+opentelemetry-instrumentation-fastapi>=0.50b0
+opentelemetry-instrumentation-sqlalchemy>=0.50b0
+opentelemetry-instrumentation-httpx>=0.50b0
+opentelemetry-instrumentation-redis>=0.50b0
+prometheus-client>=0.21,<1.0

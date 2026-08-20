@@ -1,0 +1,26 @@
+# AgentWorkflow — development dependencies
+#
+#     pip install -r requirements.txt -r requirements-dev.txt
+
+# ─── Test ────────────────────────────────────────────────────────────────────
+pytest>=8.3,<9.0
+pytest-asyncio>=0.24,<2.0
+pytest-cov>=6.0,<8.0
+anyio>=4.6,<5.0
+
+# ─── Chất lượng mã ───────────────────────────────────────────────────────────
+ruff>=0.8,<1.0
+mypy>=1.13,<2.0
+
+# ─── Enforce ranh giới kiến trúc (ADR-0001) ──────────────────────────────────
+# Đây không phải công cụ tuỳ chọn. Nó là thứ thay thế ranh giới mạng đã bị bỏ
+# khi gộp Control Plane và AI Plane vào cùng một process. Xem ADR-0001 mục
+# "Rủi ro cần theo dõi".
+import-linter>=2.1,<3.0
+
+# ─── Khoá phiên bản ──────────────────────────────────────────────────────────
+pip-tools>=7.4,<8.0
+
+# ─── Type stubs ──────────────────────────────────────────────────────────────
+types-jsonschema
+boto3-stubs[s3]

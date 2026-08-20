@@ -1,0 +1,67 @@
+# OpenTelemetry Collector — cấu hình phát triển cục bộ (§4.10)
+#
+# Nhắc lại §2.2: đây là tracing HẠ TẦNG. Execution Trace ở tầng sản phẩm nằm
+# trong PostgreSQL/object storage và do Trace Service sở hữu, không đi qua đây.
+# Hai hệ thống chỉ được nối với nhau bằng attribute correlation bên dưới.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+
+  # Giữ lại các định danh correlation bắt buộc theo §36. Nếu một span thiếu
+  # tenant.id thì gần như chắc chắn tenant context đã bị đứt ở đâu đó trong
+  # chuỗi gọi — xem app/core/context.py.
+  attributes/correlation:
+    actions:
+      - key: deployment.environment
+        value: local
+        action: upsert
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  debug:
+    verbosity: normal
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/correlation, batch]
+      exporters: [otlp/jaeger]
+
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]
+
+  telemetry:
+    logs:
+      level: warn

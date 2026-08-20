@@ -1,0 +1,194 @@
+[project]
+name = "agentworkflow"
+version = "0.0.1"
+description = "Multi-tenant agentic automation platform — Agent execution to reusable durable Workflows"
+requires-python = ">=3.13"
+
+# Dependency được khai báo ở requirements.txt / requirements-dev.txt để giữ
+# quy trình khoá phiên bản bằng pip-compile đơn giản và rõ ràng.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ruff — lint + format
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["services/api", "packages"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",      # pycodestyle
+    "F",           # pyflakes
+    "I",           # isort
+    "N",           # pep8-naming
+    "UP",          # pyupgrade
+    "B",           # bugbear
+    "A",           # builtin shadowing
+    "C4",          # comprehensions
+    "DTZ",         # datetime phải có timezone — quan trọng cho trace/schedule
+    "S",           # bandit — rà soát bảo mật
+    "T20",         # cấm print()
+    "RET", "SIM", "ARG", "PTH",
+    "ASYNC",       # lỗi async phổ biến
+]
+ignore = [
+    "S101",   # assert — cho phép trong test
+    "B008",   # Depends() trong tham số mặc định là idiom của FastAPI
+]
+
+[tool.ruff.lint.per-file-ignores]
+"services/api/tests/*" = ["S", "ARG"]
+"services/api/alembic/versions/*" = ["N999", "E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Mypy — strict, để bù cho việc không có static typing của Go (ADR-0001)
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.13"
+mypy_path = "services/api"
+strict = true
+warn_unreachable = true
+disallow_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["temporalio.*", "structlog.*"]
+follow_imports = "silent"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pytest
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["services/api/tests"]
+pythonpath = ["services/api"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers"
+markers = [
+    "integration: cần hạ tầng docker compose đang chạy",
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# import-linter — enforce ranh giới kiến trúc (ADR-0001)
+#
+# Đây là phần quan trọng nhất của file này.
+#
+# Khi Control Plane và AI Plane chạy chung một process, ranh giới mạng giữa
+# chúng biến mất. Những contract dưới đây là thứ thay thế. Nếu chúng bị tắt đi
+# hoặc bị nới lỏng, hệ quả không chỉ là khó tách service về sau — mà là §2.4
+# (credential không bao giờ chạm tới Agent/LLM) mất đi cơ chế bảo vệ duy nhất.
+#
+#     lint-imports
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.importlinter]
+root_packages = ["app"]
+include_external_packages = true
+
+# ── Contract 1: các domain độc lập với nhau (§18) ────────────────────────────
+[[tool.importlinter.contracts]]
+name = "Các domain không import chéo nhau"
+type = "independence"
+modules = [
+    "app.domains.identity",
+    "app.domains.tenant",
+    "app.domains.connection",
+    "app.domains.integration",
+    "app.domains.agent",
+    "app.domains.trace",
+    "app.domains.workflow",
+    "app.domains.execution",
+    "app.domains.approval",
+    "app.domains.usage",
+    "app.domains.billing",
+    "app.domains.audit",
+    "app.domains.notification",
+]
+
+# ── Contract 2: mỗi domain tuân thủ hướng phụ thuộc hexagonal (§30) ──────────
+# infrastructure → application → domain. Không bao giờ ngược lại.
+[[tool.importlinter.contracts]]
+name = "Hướng phụ thuộc trong mỗi domain: infrastructure -> application -> domain"
+type = "layers"
+layers = ["infrastructure", "application", "domain"]
+containers = [
+    "app.domains.identity",
+    "app.domains.tenant",
+    "app.domains.connection",
+    "app.domains.integration",
+    "app.domains.agent",
+    "app.domains.trace",
+    "app.domains.workflow",
+    "app.domains.execution",
+    "app.domains.approval",
+    "app.domains.usage",
+    "app.domains.billing",
+    "app.domains.audit",
+    "app.domains.notification",
+]
+exhaustive = false
+
+# ── Contract 3: tầng domain thuần khiết, không chạm hạ tầng (§30) ────────────
+[[tool.importlinter.contracts]]
+name = "Tầng domain không phụ thuộc hạ tầng"
+type = "forbidden"
+source_modules = ["app.domains.*.domain"]
+forbidden_modules = [
+    "sqlalchemy",
+    "alembic",
+    "asyncpg",
+    "redis",
+    "temporalio",
+    "fastapi",
+    "starlette",
+    "httpx",
+    "boto3",
+    "anthropic",
+    "app.core.db",
+]
+
+# ── Contract 4: credential không rò khỏi Integration Plane (§2.4, §6.3, §21) ──
+# Contract quan trọng nhất trong file. Chỉ Integration Gateway được chạm tới
+# credential đã giải mã. Agent Runtime chỉ nhận connection_id.
+[[tool.importlinter.contracts]]
+name = "Chỉ Integration Plane được chạm tới credential"
+type = "forbidden"
+source_modules = [
+    "app.domains.agent",
+    "app.domains.trace",
+    "app.domains.workflow",
+    "app.domains.execution",
+    "app.domains.approval",
+    "app.domains.usage",
+    "app.domains.billing",
+    "app.domains.audit",
+    "app.domains.notification",
+    "app.domains.identity",
+    "app.domains.tenant",
+]
+forbidden_modules = [
+    "app.core.crypto",
+    "app.domains.connection.infrastructure.credential_store",
+]
+
+# ── Contract 5: entrypoint không được bỏ qua tầng application ────────────────
+#
+# `allow_indirect_imports` chỉ kiểm tra import TRỰC TIẾP — đúng như tên contract.
+#
+# Entrypoint bắt buộc phải mount router của domain, mà router (infrastructure)
+# gọi service (application), và service dùng entity (domain). Chuỗi gián tiếp
+# đó chính là hướng phụ thuộc hexagonal đang được contract 2 bắt buộc; cấm nó ở
+# đây thì không router nào mount được.
+#
+# Thứ contract này thực sự ngăn vẫn còn nguyên: entrypoint không được với thẳng
+# xuống entity, bỏ qua tầng application.
+#
+# LƯU Ý: chỉ nới ở contract này. Contract 4 (credential) giữ mặc định, nghĩa là
+# vẫn bắt cả chuỗi gián tiếp — đó mới là contract mang tính bảo mật.
+[[tool.importlinter.contracts]]
+name = "Entrypoint không import trực tiếp tầng domain"
+type = "forbidden"
+source_modules = ["app.entrypoints"]
+forbidden_modules = ["app.domains.*.domain"]
+allow_indirect_imports = true

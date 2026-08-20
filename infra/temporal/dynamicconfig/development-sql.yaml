@@ -1,0 +1,18 @@
+# Temporal dynamic config — phát triển cục bộ.
+# Giá trị ở đây được nới lỏng cho tiện dev, KHÔNG dùng cho production.
+
+limit.maxIDLength:
+  - value: 255
+    constraints: {}
+
+system.forceSearchAttributesCacheRefreshOnRead:
+  - value: true
+    constraints: {}
+
+frontend.enableUpdateWorkflowExecution:
+  - value: true
+    constraints: {}
+
+frontend.enableUpdateWorkflowExecutionAsyncAccepted:
+  - value: true
+    constraints: {}

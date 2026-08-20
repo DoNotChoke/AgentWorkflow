@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Job riêng cho ranh giới kiến trúc.
+  #
+  # Tách khỏi job lint thông thường là có chủ đích: một lần fail ở đây có nghĩa
+  # là ranh giới bảo vệ §2.4 (credential không tới tay Agent/LLM) đã bị phá vỡ.
+  # Nó phải hiện ra như một sự cố riêng, không lẫn vào cảnh báo phong cách code.
+  # Xem ADR-0001.
+  # ───────────────────────────────────────────────────────────────────────────
+  architecture:
+    name: Ranh giới kiến trúc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: lint-imports
+        run: lint-imports
+        env:
+          PYTHONPATH: services/api
+
+  lint:
+    name: Lint & type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy services/api
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: agentworkflow
+          POSTGRES_PASSWORD: agentworkflow
+          POSTGRES_DB: agentworkflow
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U agentworkflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      # Thiếu Redis thì nhóm test integration tự bỏ qua và pipeline vẫn xanh —
+      # xem `infra_unavailable` trong services/api/tests/conftest.py.
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Migration chạy được từ đầu
+        run: alembic upgrade head
+        env:
+          AW_DATABASE_URL: postgresql+asyncpg://agentworkflow:agentworkflow@localhost:5432/agentworkflow
+      - run: pytest --cov=app --cov-report=term-missing
+        env:
+          AW_DATABASE_URL: postgresql+asyncpg://agentworkflow:agentworkflow@localhost:5432/agentworkflow
+          AW_REDIS_URL: redis://localhost:6379/0
+          # Hạ tầng ở đây luôn có sẵn, nên "thiếu hạ tầng" là lỗi cấu hình
+          # pipeline chứ không phải lý do bỏ qua. Cờ này biến mọi lần bỏ qua
+          # kiểu đó thành thất bại, để một nhóm test không thể tự vô hiệu hoá
+          # mình mà vẫn báo xanh.
+          AW_TEST_REQUIRE_INFRA: "1"

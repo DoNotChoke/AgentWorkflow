@@ -1,0 +1,41 @@
+# ─── Bí mật ──────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ─── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# ─── Node / Next.js ──────────────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# ─── IDE ─────────────────────────────────────────────────────────────────────
+.idea/claudeCodeEditorTabs.xml
+.idea/workspace.xml
+.idea/shelf/
+# Cache introspection database của JetBrains — riêng từng máy, hàng trăm file.
+.idea/dataSources/
+.idea/dataSources.xml
+.idea/dataSources.local.xml
+.vscode/
+.jbeval/
+
+# ─── OS ──────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
