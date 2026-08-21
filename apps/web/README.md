@@ -43,3 +43,26 @@ worker trực tiếp (§25).
 **Ẩn nút không phải là phân quyền.** Mọi quyết định phân quyền phải được thực
 thi ở server (§20, §47.16). Việc frontend ẩn một chức năng chỉ là trải nghiệm
 người dùng, không phải cơ chế bảo mật.
+
+---
+
+## Chạy
+
+```bash
+npm install                      # trong apps/web
+npm run dev                      # :3000
+```
+
+Frontend gọi API qua chính origin của nó: `next.config.ts` chuyển tiếp
+`/v1/*` sang backend. Nhờ vậy không cần CORS, và cookie refresh hoạt động
+như một ứng dụng một-origin.
+
+Backend chạy ở cổng khác thì đặt biến môi trường:
+
+```bash
+API_ORIGIN=http://localhost:8010 npm run dev
+```
+
+**Đường dẫn proxy phải giữ nguyên tiền tố `/v1`.** Cookie refresh mang
+`Path=/v1/auth`; đặt proxy dưới tiền tố khác thì trình duyệt lưu cookie ở
+một path không bao giờ khớp, và phiên chết ngay sau lần refresh đầu tiên.

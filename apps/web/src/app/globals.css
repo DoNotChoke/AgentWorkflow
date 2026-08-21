@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+/*
+ * Token lấy từ bộ mockup trong `design/`. Sáng, trung tính, một accent duy
+ * nhất dùng rất tiết chế: nút hành động chính là gần-đen, accent chỉ dành cho
+ * mục điều hướng đang mở, badge cần chú ý, và khoảnh khắc "Turn into Workflow".
+ */
+@theme {
+  --color-canvas: #fbfbfa;
+  --color-surface: #ffffff;
+  --color-sidebar: #f4f4f2;
+  --color-rail: #e9e9e6;
+  --color-sunken: #f2f2f0;
+
+  --color-line: #e5e5e3;
+  --color-line-strong: #d8d8d4;
+  --color-line-soft: #f0f0ee;
+
+  --color-ink: #1a1a19;
+  --color-ink-2: #3d3d3a;
+  --color-ink-3: #6b6b66;
+  --color-ink-4: #9a9a94;
+
+  --color-accent: #4f3cc9;
+  --color-accent-ink: #3b2ba3;
+  --color-accent-wash: #f6f4ff;
+  --color-accent-line: #d5d0f0;
+
+  --color-ok: #16794a;
+  --color-ok-wash: #edf7f1;
+  --color-warn: #b54708;
+  --color-warn-wash: #fdf2e6;
+  --color-danger: #b42318;
+  --color-danger-line: #f0d5d2;
+
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, Menlo, monospace;
+
+  --radius-control: 7px;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
