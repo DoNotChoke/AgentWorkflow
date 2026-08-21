@@ -1,0 +1,103 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #4f3cc9; text-decoration: none; }
+    a:hover { color: #3b2ba3; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="--accent: {{accent}}; width: 1120px; height: 760px; display: flex; flex-direction: column; background: #fbfbfa; color: #1a1a19; font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.45; overflow: hidden;">
+
+  <!-- ── Top bar: wordmark + progress ────────────────────────────── -->
+  <div style="height: 64px; flex-shrink: 0; padding: 0 32px; display: flex; align-items: center; gap: 12px;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <rect x="1.5" y="1.5" width="21" height="21" rx="6" fill="var(--accent, #4f3cc9)"/>
+      <path d="M7 15.5L12 7l5 8.5" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M9.2 12.6h5.6" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+    <span style="font-weight: 600; font-size: 14px; letter-spacing: -0.01em;">AgentWorkflow</span>
+    <div style="flex-grow: 1;"></div>
+    <span style="font-size: 12.5px; color: #9a9a94;">Step 1 of 3</span>
+    <div style="display: flex; align-items: center; gap: 5px;">
+      <span style="width: 18px; height: 4px; border-radius: 2px; background: var(--accent, #4f3cc9);"></span>
+      <span style="width: 18px; height: 4px; border-radius: 2px; background: #dcdcd7;"></span>
+      <span style="width: 18px; height: 4px; border-radius: 2px; background: #dcdcd7;"></span>
+    </div>
+  </div>
+
+  <!-- ── Centre: the one question ────────────────────────────────── -->
+  <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 32px;">
+    <div style="width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 26px;">
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 13px; font-weight: 500; color: var(--accent, #4f3cc9);">Welcome, An</span>
+        <span style="font-size: 29px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.2;">What is your organisation called?</span>
+        <span style="font-size: 14.5px; color: #6b6b66; line-height: 1.5;">Usually your company or team name. This is what everyone you invite will see.</span>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <span style="font-size: 12.5px; font-weight: 500; color: #3d3d3a;">Organisation name</span>
+          <div style="height: 44px; border: 1.5px solid var(--accent, #4f3cc9); border-radius: 8px; background: #ffffff; padding: 0 14px; display: flex; align-items: center; gap: 1px;">
+            <span style="font-size: 15.5px;">Acme</span>
+            <span style="width: 1.5px; height: 19px; background: var(--accent, #4f3cc9); margin-left: 1px;"></span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div style="display: flex; align-items: center;">
+            <span style="font-size: 12.5px; font-weight: 500; color: #3d3d3a;">Address</span>
+            <div style="flex-grow: 1;"></div>
+            <span style="font-size: 12px; color: #9a9a94;">Editable now, fixed afterwards</span>
+          </div>
+          <div style="height: 44px; border: 1px solid #d8d8d4; border-radius: 8px; background: #ffffff; display: flex; align-items: stretch; overflow: hidden;">
+            <div style="display: flex; align-items: center; padding: 0 12px; background: #f4f4f2; border-right: 1px solid #e5e5e3;">
+              <span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 13px; color: #6b6b66;">agentworkflow.com/</span>
+            </div>
+            <div style="flex-grow: 1; display: flex; align-items: center; padding: 0 12px;">
+              <span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 13.5px; font-weight: 500;">acme</span>
+            </div>
+            <div style="display: flex; align-items: center; padding: 0 12px;">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#16794a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4l3 3 6.6-6.8"/></svg>
+            </div>
+          </div>
+          <span style="font-size: 12px; color: #9a9a94; line-height: 1.5;">Lowercase letters, numbers and hyphens. Links to your runs and workflows are built from this, so it cannot be changed once you finish setting up.</span>
+        </div>
+
+        <div style="height: 44px; border-radius: 8px; background: #1a1a19; color: #ffffff; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14.5px; font-weight: 500;">
+          <span>Continue</span>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h9M8.5 4.5L12 8l-3.5 3.5"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Footer ──────────────────────────────────────────────────── -->
+  <div style="height: 64px; flex-shrink: 0; padding: 0 32px; display: flex; align-items: center; justify-content: center; gap: 7px;">
+    <span style="font-size: 12.5px; color: #9a9a94;">Signed in as an@acme.com</span>
+    <span style="font-size: 12.5px; color: #c4c4be;">·</span>
+    <a href="#" style="font-size: 12.5px;">Sign out</a>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#4f3cc9","options":["#4f3cc9","#0f766e","#b54708","#1a1a19"],"section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#4f3cc9' };
+  }
+}
+</script>
+</body>
+</html>

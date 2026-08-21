@@ -36,6 +36,11 @@ out/
 .vscode/
 .jbeval/
 
+# ─── Design ──────────────────────────────────────────────────────────────────
+# Canvas đã seed (~2 MB, gồm cả code editor). Sinh lại được từ các file
+# *.dc.html và canvas.json bên cạnh, nên không đưa vào repo.
+design/agentworkflow-ui.html
+
 # ─── OS ──────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db

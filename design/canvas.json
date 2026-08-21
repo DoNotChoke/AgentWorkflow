@@ -1,0 +1,40 @@
+{
+  "artboards": [
+    { "file": "Login.dc.html", "x": 0, "y": 0, "w": 1120, "h": 760, "title": "Sign in" },
+    { "file": "OrgName.dc.html", "x": 1220, "y": 0, "w": 1120, "h": 760, "title": "Onboarding — name your organisation" },
+    { "file": "Main.dc.html", "x": 0, "y": 880, "w": 1440, "h": 900, "title": "Agent + execution trace" },
+    { "file": "Connections.dc.html", "x": 1540, "y": 880, "w": 1440, "h": 900, "title": "Connections" },
+    { "file": "Members.dc.html", "x": 3080, "y": 880, "w": 1440, "h": 900, "title": "Settings — Members" }
+  ],
+  "annotations": [
+    {
+      "id": "auth-note",
+      "x": 0,
+      "y": -190,
+      "w": 470,
+      "text": "Sign-up stays three fields. Naming the organisation is the first onboarding step instead — Slack and Mattermost both do it this way.\nThe address is editable here and only here: links are built from it, so it freezes once setup finishes."
+    },
+    {
+      "id": "shell-note",
+      "x": 0,
+      "y": 700,
+      "w": 470,
+      "text": "The shell: org rail · workspace sidebar · main · contextual right panel.\nThe right panel changes per screen — trace here, connection detail and member access on the others."
+    },
+    {
+      "id": "cta-note",
+      "x": 0,
+      "y": 1820,
+      "w": 430,
+      "text": "The product's signature moment (§46). A clean agent run is the only place this offer appears — deliberately the loudest thing on the screen."
+    },
+    {
+      "id": "naming-note",
+      "x": 1540,
+      "y": 1820,
+      "w": 450,
+      "text": "Provider reads as \"Slack\"; the Slack team shows by its own name (Acme HQ). The word \"workspace\" means only an AgentWorkflow workspace, anywhere in the UI."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

@@ -1,0 +1,122 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #4f3cc9; text-decoration: none; }
+    a:hover { color: #3b2ba3; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="--accent: {{accent}}; width: 1120px; height: 760px; display: flex; background: #fbfbfa; color: #1a1a19; font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.45; overflow: hidden;">
+
+  <!-- ── Form ────────────────────────────────────────────────────── -->
+  <div style="width: 620px; flex-shrink: 0; display: flex; flex-direction: column; padding: 40px 64px;">
+
+    <div style="display: flex; align-items: center; gap: 9px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <rect x="1.5" y="1.5" width="21" height="21" rx="6" fill="var(--accent, #4f3cc9)"/>
+        <path d="M7 15.5L12 7l5 8.5" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M9.2 12.6h5.6" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <span style="font-weight: 600; font-size: 15px; letter-spacing: -0.01em;">AgentWorkflow</span>
+    </div>
+
+    <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center; gap: 24px; max-width: 380px;">
+
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 26px; font-weight: 600; letter-spacing: -0.02em;">Sign in</span>
+        <span style="font-size: 14px; color: #6b6b66;">Welcome back. Pick up where your agents left off.</span>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 12.5px; font-weight: 500; color: #3d3d3a;">Email</span>
+          <div style="height: 38px; border: 1px solid #d8d8d4; border-radius: 7px; background: #ffffff; padding: 0 12px; display: flex; align-items: center; font-size: 14px;">an@acme.com</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="display: flex; align-items: center;">
+            <span style="font-size: 12.5px; font-weight: 500; color: #3d3d3a;">Password</span>
+            <div style="flex-grow: 1;"></div>
+            <a href="#" style="font-size: 12.5px;">Forgot?</a>
+          </div>
+          <div style="height: 38px; border: 1.5px solid var(--accent, #4f3cc9); border-radius: 7px; background: #ffffff; padding: 0 12px; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 15px; letter-spacing: 0.18em; color: #3d3d3a;">••••••••••••</span>
+            <div style="flex-grow: 1;"></div>
+            <span style="width: 1.5px; height: 17px; background: var(--accent, #4f3cc9);"></span>
+          </div>
+        </div>
+
+        <div style="height: 40px; border-radius: 7px; background: #1a1a19; color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500;">Sign in</div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 6px; font-size: 13.5px; color: #6b6b66;">
+        <span>New here?</span>
+        <a href="#" style="font-weight: 500;">Create an account</a>
+      </div>
+    </div>
+
+    <span style="font-size: 12px; color: #9a9a94;">Sessions stay signed in for 30 days on this device.</span>
+  </div>
+
+  <!-- ── Product panel ───────────────────────────────────────────── -->
+  <div style="flex-grow: 1; background: #f2f2f0; border-left: 1px solid #e5e5e3; padding: 56px 56px; display: flex; flex-direction: column; justify-content: center; gap: 28px;">
+
+    <span style="font-size: 19px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.35; max-width: 340px;">Show an agent how the job is done. Keep the result as an automation.</span>
+
+    <div style="display: flex; flex-direction: column; gap: 0;">
+
+      <div style="display: flex; gap: 13px;">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 22px; flex-shrink: 0;">
+          <span style="width: 22px; height: 22px; border-radius: 50%; background: #ffffff; border: 1px solid #dcdcd7; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #6b6b66;">1</span>
+          <span style="width: 1px; flex-grow: 1; background: #dcdcd7;"></span>
+        </div>
+        <div style="padding-bottom: 20px; display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-size: 13.5px; font-weight: 500;">Ask in plain language</span>
+          <span style="font-size: 12.5px; color: #6b6b66; line-height: 1.5;">The agent picks its own tools across your connected apps.</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 13px;">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 22px; flex-shrink: 0;">
+          <span style="width: 22px; height: 22px; border-radius: 50%; background: #ffffff; border: 1px solid #dcdcd7; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #6b6b66;">2</span>
+          <span style="width: 1px; flex-grow: 1; background: #dcdcd7;"></span>
+        </div>
+        <div style="padding-bottom: 20px; display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-size: 13.5px; font-weight: 500;">Every step is recorded</span>
+          <span style="font-size: 12.5px; color: #6b6b66; line-height: 1.5;">A structured execution trace, not a chat log.</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 13px;">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 22px; flex-shrink: 0;">
+          <span style="width: 22px; height: 22px; border-radius: 50%; background: var(--accent, #4f3cc9); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #ffffff;">3</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-size: 13.5px; font-weight: 500;">Compile it into a Workflow</span>
+          <span style="font-size: 12.5px; color: #6b6b66; line-height: 1.5;">Versioned, retried, scheduled — and it runs the same way every time.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#4f3cc9","options":["#4f3cc9","#0f766e","#b54708","#1a1a19"],"section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#4f3cc9' };
+  }
+}
+</script>
+</body>
+</html>
