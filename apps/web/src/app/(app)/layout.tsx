@@ -6,6 +6,7 @@ import { Shell } from "@/components/shell";
 import { ErrorNote, Spinner } from "@/components/ui";
 import { useOrganizations, useWorkspaces } from "@/lib/queries";
 import { useSession } from "@/lib/session";
+import { TenantProvider } from "@/lib/tenant";
 
 /**
  * Cửa vào ứng dụng: xác thực, chọn tenant, rồi mới dựng shell.
@@ -60,19 +61,21 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
   if (!current.onboarded) return <Spinner label="Taking you to setup…" />;
 
   return (
-    <Shell
-      organizations={organizations.data ?? []}
-      currentOrganization={current}
-      workspaces={workspaces.data ?? []}
-      currentWorkspace={currentWorkspace}
-      onSelectOrganization={(id) => {
-        setOrganizationId(id);
-        // Workspace thuộc về organization cũ — giữ lại sẽ trỏ sang tenant khác.
-        setWorkspaceId(null);
+    <TenantProvider
+      value={{
+        organizations: organizations.data ?? [],
+        organization: current,
+        workspaces: workspaces.data ?? [],
+        workspace: currentWorkspace,
+        selectOrganization: (id) => {
+          setOrganizationId(id);
+          // Workspace thuộc về organization cũ — giữ lại sẽ trỏ sang tenant khác.
+          setWorkspaceId(null);
+        },
+        selectWorkspace: setWorkspaceId,
       }}
-      onSelectWorkspace={setWorkspaceId}
     >
-      {children}
-    </Shell>
+      <Shell>{children}</Shell>
+    </TenantProvider>
   );
 }

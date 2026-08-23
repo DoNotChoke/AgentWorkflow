@@ -11,25 +11,21 @@ import {
   useUpdateOrganization,
 } from "@/lib/queries";
 import { useSession } from "@/lib/session";
-
-/** Bỏ dấu và ký tự lạ để gợi ý địa chỉ từ tên vừa gõ. */
-function suggestSlug(name: string): string {
-  return name
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/đ/g, "d")
-    .replace(/Đ/g, "D")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-}
+import { suggestSlug } from "@/lib/slug";
 
 export default function OnboardingPage() {
   const router = useRouter();
   const { status, user } = useSession();
   const organizations = useOrganizations();
-  const organization = organizations.data?.[0] ?? null;
+  /**
+   * Organization còn dở, không phải cái đầu danh sách.
+   *
+   * Người dùng có thể có sẵn nhiều organization đã thiết lập xong rồi mới rơi
+   * vào đây — vì hộp thoại tạo organization đứt giữa chừng chẳng hạn. Nhắm vào
+   * phần tử đầu tiên thì wizard sẽ mở đúng cái đã xong và tự đá ngược ra, để
+   * lại cái còn dở vĩnh viễn không ai hoàn tất được.
+   */
+  const organization = organizations.data?.find((org) => !org.onboarded) ?? null;
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -47,13 +43,13 @@ export default function OnboardingPage() {
     if (status === "anonymous") router.replace("/sign-in");
   }, [status, router]);
 
-  // Đã thiết lập xong rồi thì không quay lại wizard được nữa.
+  // Không còn gì để thiết lập thì không quay lại wizard được nữa.
   useEffect(() => {
-    if (organization?.onboarded) router.replace("/agent");
-  }, [organization?.onboarded, router]);
+    if (organizations.isSuccess && organization === null) router.replace("/agent");
+  }, [organizations.isSuccess, organization, router]);
 
   if (status === "loading" || organizations.isPending) return <Spinner label="Loading…" />;
-  if (!organization) return <Spinner label="No organisation found." />;
+  if (!organization) return <Spinner label="Everything is set up already…" />;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -73,55 +69,55 @@ export default function OnboardingPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-16 shrink-0 items-center gap-3 px-8">
-        <Logo size={20} />
-        <span className="text-sm font-semibold tracking-tight">AgentWorkflow</span>
+      <header className="flex h-20 shrink-0 items-center gap-3 px-10">
+        <Logo size={26} />
+        <span className="text-base font-semibold tracking-tight">AgentWorkflow</span>
         <div className="grow" />
-        <span className="text-[12.5px] text-ink-4">Step 1 of 3</span>
+        <span className="text-sm text-ink-4">Step 1 of 3</span>
         <div className="flex items-center gap-1.5">
-          <span className="h-1 w-[18px] rounded-full bg-accent" />
-          <span className="h-1 w-[18px] rounded-full bg-[#dcdcd7]" />
-          <span className="h-1 w-[18px] rounded-full bg-[#dcdcd7]" />
+          <span className="h-1.5 w-6 rounded-full bg-accent" />
+          <span className="h-1.5 w-6 rounded-full bg-[#dcdcd7]" />
+          <span className="h-1.5 w-6 rounded-full bg-[#dcdcd7]" />
         </div>
       </header>
 
       <div className="flex grow items-center justify-center px-8">
-        <form onSubmit={submit} className="flex w-full max-w-[480px] flex-col gap-6">
+        <form onSubmit={submit} className="flex w-full max-w-[560px] flex-col gap-8">
           <div className="flex flex-col gap-2">
-            <span className="text-[13px] font-medium text-accent">
+            <span className="text-[15px] font-medium text-accent">
               Welcome{user ? `, ${user.display_name}` : ""}
             </span>
-            <h1 className="text-[29px] leading-tight font-semibold tracking-tight">
+            <h1 className="text-[36px] leading-tight font-semibold tracking-tight">
               What is your organisation called?
             </h1>
-            <p className="text-[14.5px] leading-relaxed text-ink-3">
+            <p className="text-base leading-relaxed text-ink-3">
               Usually your company or team name. This is what everyone you invite will see.
             </p>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-5">
             <label className="flex flex-col gap-1.5">
-              <span className="text-[12.5px] font-medium text-ink-2">Organisation name</span>
+              <span className="text-sm font-medium text-ink-2">Organisation name</span>
               <input
                 required
                 autoFocus
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Acme"
-                className="h-11 rounded-lg border-[1.5px] border-accent bg-surface px-3.5 text-[15.5px] outline-none"
+                className="h-13 rounded-lg border-[1.5px] border-accent bg-surface px-4 text-[17px] outline-none"
               />
             </label>
 
             <label className="flex flex-col gap-1.5">
-              <span className="flex items-center text-[12.5px] font-medium text-ink-2">
+              <span className="flex items-center text-sm font-medium text-ink-2">
                 Address
                 <span className="grow" />
-                <span className="text-xs font-normal text-ink-4">
+                <span className="text-[13px] font-normal text-ink-4">
                   Editable now, fixed afterwards
                 </span>
               </span>
-              <div className="flex h-11 items-stretch overflow-hidden rounded-lg border border-line-strong bg-surface focus-within:border-accent">
-                <span className="flex items-center border-r border-line bg-sidebar px-3 font-mono text-[13px] text-ink-3">
+              <div className="flex h-13 items-stretch overflow-hidden rounded-lg border border-line-strong bg-surface focus-within:border-accent">
+                <span className="flex items-center border-r border-line bg-sidebar px-3.5 font-mono text-sm text-ink-3">
                   agentworkflow.com/
                 </span>
                 <input
@@ -130,7 +126,7 @@ export default function OnboardingPage() {
                     setSlugTouched(true);
                     setSlug(event.target.value);
                   }}
-                  className="grow px-3 font-mono text-[13.5px] font-medium outline-none"
+                  className="grow px-3.5 font-mono text-[15px] font-medium outline-none"
                 />
                 <span className="flex items-center px-3">
                   {availability.data?.available ? (
@@ -150,7 +146,7 @@ export default function OnboardingPage() {
                 </span>
               </div>
 
-              <span className="text-xs leading-relaxed text-ink-4">
+              <span className="text-[13px] leading-relaxed text-ink-4">
                 {slugTooShort
                   ? "At least 3 characters."
                   : slugRejected
@@ -165,7 +161,7 @@ export default function OnboardingPage() {
 
             <Button
               type="submit"
-              className="h-11"
+              className="h-13"
               disabled={busy || !name || availability.data?.available !== true}
             >
               {busy ? "Saving…" : "Continue"}
@@ -174,7 +170,7 @@ export default function OnboardingPage() {
         </form>
       </div>
 
-      <footer className="flex h-16 shrink-0 items-center justify-center text-[12.5px] text-ink-4">
+      <footer className="flex h-20 shrink-0 items-center justify-center text-sm text-ink-4">
         {user ? `Signed in as ${user.email}` : null}
       </footer>
     </div>

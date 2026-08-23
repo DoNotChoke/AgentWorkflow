@@ -37,13 +37,13 @@ export default function SignUpPage() {
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1.5">
-        <h1 className="text-[26px] font-semibold tracking-tight">Create an account</h1>
-        <p className="text-ink-3">You will name your organisation in the next step.</p>
+    <form onSubmit={submit} className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-[34px] font-semibold tracking-tight">Create an account</h1>
+        <p className="text-base text-ink-3">You will name your organisation in the next step.</p>
       </div>
 
-      <div className="flex flex-col gap-3.5">
+      <div className="flex flex-col gap-4">
         <Field label="Your name">
           <Input
             autoComplete="name"
@@ -81,7 +81,7 @@ export default function SignUpPage() {
         </Button>
       </div>
 
-      <p className="text-[13.5px] text-ink-3">
+      <p className="text-[15px] text-ink-3">
         Already have an account?{" "}
         <Link href="/sign-in" className="font-medium text-accent hover:text-accent-ink">
           Sign in

@@ -29,9 +29,11 @@
   --color-ok: #16794a;
   --color-ok-wash: #edf7f1;
   --color-warn: #b54708;
-  --color-warn-wash: #fdf2e6;
+  --color-warn-wash: #fdfbf4;
+  --color-warn-line: #e8e4d8;
   --color-danger: #b42318;
   --color-danger-line: #f0d5d2;
+  --color-danger-wash: #fdf1f0;
 
   --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, Menlo, monospace;
@@ -42,13 +44,15 @@
 html,
 body {
   height: 100%;
+  width: 100%;
 }
 
 body {
+  min-height: 100dvh;
   background: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 16px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }

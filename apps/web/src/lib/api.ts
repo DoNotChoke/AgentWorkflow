@@ -106,11 +106,14 @@ export type Session = {
   refresh_token_expires_at: string;
 };
 
+/** Vai trò trong organization, xếp từ nhiều quyền nhất xuống ít nhất. */
+export type OrgRole = "owner" | "admin" | "member";
+
 export type Organization = {
   id: string;
   name: string;
   slug: string;
-  role: "owner" | "admin" | "member";
+  role: OrgRole;
   created_at: string;
   /** Chưa xong thì người dùng phải đi qua wizard thiết lập trước. */
   onboarded: boolean;
@@ -124,10 +127,37 @@ export type Workspace = {
   created_at: string;
 };
 
+export type WorkspaceRole = "admin" | "editor" | "viewer";
+
+export type WorkspaceAccess = {
+  workspace_id: string;
+  name: string;
+  slug: string;
+  role: WorkspaceRole;
+};
+
 export type Member = {
   user_id: string;
-  role: "owner" | "admin" | "member";
+  role: OrgRole;
   created_at: string;
+  /** Trống khi membership trỏ tới một tài khoản không còn tra được. */
+  email: string | null;
+  display_name: string | null;
+  /**
+   * Chỉ quyền được cấp tường minh, và chỉ trên workspace người gọi thấy.
+   *
+   * Rỗng với owner và admin: họ với tới mọi workspace nhờ vai trò organization
+   * chứ không qua bản ghi nào. Giao diện suy ra "All workspaces" từ `role`.
+   */
+  workspaces: WorkspaceAccess[];
+};
+
+export type WorkspaceMember = {
+  user_id: string;
+  role: WorkspaceRole;
+  created_at: string;
+  email: string | null;
+  display_name: string | null;
 };
 
 export type SlugAvailability = { slug: string; available: boolean };

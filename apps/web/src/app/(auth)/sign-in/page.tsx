@@ -34,13 +34,13 @@ export default function SignInPage() {
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1.5">
-        <h1 className="text-[26px] font-semibold tracking-tight">Sign in</h1>
-        <p className="text-ink-3">Welcome back. Pick up where your agents left off.</p>
+    <form onSubmit={submit} className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-[34px] font-semibold tracking-tight">Sign in</h1>
+        <p className="text-base text-ink-3">Welcome back. Pick up where your agents left off.</p>
       </div>
 
-      <div className="flex flex-col gap-3.5">
+      <div className="flex flex-col gap-4">
         <Field label="Email">
           <Input
             type="email"
@@ -68,7 +68,7 @@ export default function SignInPage() {
         </Button>
       </div>
 
-      <p className="text-[13.5px] text-ink-3">
+      <p className="text-[15px] text-ink-3">
         New here?{" "}
         <Link href="/sign-up" className="font-medium text-accent hover:text-accent-ink">
           Create an account
