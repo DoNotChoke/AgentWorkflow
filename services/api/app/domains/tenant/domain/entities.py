@@ -255,6 +255,21 @@ def ensure_can_assign_org_role(
         raise AuthorizationError("Chỉ OWNER mới được thay đổi vai trò của OWNER hoặc ADMIN.")
 
 
+def ensure_not_last_workspace(*, workspace_count: int) -> None:
+    """Chặn xoá workspace cuối cùng của một organization.
+
+    Connection, workflow và run đều treo dưới một workspace, nên organization
+    không còn workspace nào là organization không dùng được vào việc gì. Mọi
+    organization sinh ra đều kèm một workspace ``Default`` chính vì lẽ đó —
+    xoá là đường duy nhất còn có thể phá vỡ bất biến ấy.
+    """
+    if workspace_count <= 1:
+        raise ValidationError(
+            "Đây là workspace cuối cùng của organization. Hãy tạo một workspace "
+            "khác trước khi xoá workspace này."
+        )
+
+
 def ensure_not_last_owner(*, owner_count: int, target_role: OrgRole) -> None:
     """Chặn thao tác làm organization không còn OWNER nào."""
     if target_role is OrgRole.OWNER and owner_count <= 1:

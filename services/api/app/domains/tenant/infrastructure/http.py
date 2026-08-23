@@ -13,6 +13,7 @@ from app.core.context import RequestContext, current_context, set_context
 from app.core.db import get_session
 from app.core.errors import AuthorizationError
 from app.core.http_auth import require_user_id, user_principal
+from app.domains.tenant.application.ports import UserDirectory
 from app.domains.tenant.application.service import TenantService
 from app.domains.tenant.domain.entities import (
     Organization,
@@ -34,23 +35,41 @@ ORGANIZATION_HEADER = "x-organization-id"
 WORKSPACE_HEADER = "x-workspace-id"
 
 
-def build_tenant_service(session: AsyncSession) -> TenantService:
-    """Dựng ``TenantService`` từ một session.
+#: Khoá trong ``app.state`` chứa hàm dựng ``UserDirectory`` từ một session.
+USER_DIRECTORY_FACTORY = "user_directory_factory"
 
-    Entrypoint gắn chính hàm này vào ``app.state`` để domain Identity lấy được
-    một ``TenantProvisioner`` mà không phải import Tenant.
-    """
+
+def build_tenant_service(session: AsyncSession, users: UserDirectory) -> TenantService:
+    """Dựng ``TenantService`` từ một session và một nguồn tra hồ sơ người dùng."""
     return TenantService(
         organizations=SqlAlchemyOrganizationRepository(session),
         workspaces=SqlAlchemyWorkspaceRepository(session),
         memberships=SqlAlchemyMembershipRepository(session),
+        users=users,
     )
+
+
+def get_user_directory(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UserDirectory:
+    """Lấy hiện thực ``UserDirectory`` mà entrypoint đã gắn vào app."""
+    factory = getattr(request.app.state, USER_DIRECTORY_FACTORY, None)
+    if factory is None:
+        raise RuntimeError(
+            "Chưa gắn user_directory_factory vào app.state. "
+            "Xem app/entrypoints/http.py — mọi entrypoint phục vụ router này "
+            "đều phải nối nguồn tra hồ sơ người dùng vào."
+        )
+    directory: UserDirectory = factory(session)
+    return directory
 
 
 def get_tenant_service(
     session: Annotated[AsyncSession, Depends(get_session)],
+    users: Annotated[UserDirectory, Depends(get_user_directory)],
 ) -> TenantService:
-    return build_tenant_service(session)
+    return build_tenant_service(session, users)
 
 
 # ─── Phân giải tenant context ────────────────────────────────────────────────
@@ -138,10 +157,31 @@ class WorkspaceResponse(BaseModel):
     created_at: datetime
 
 
+class WorkspaceAccessResponse(BaseModel):
+    workspace_id: str
+    name: str
+    slug: str
+    role: str
+
+
 class MemberResponse(BaseModel):
     user_id: str
     role: str
     created_at: datetime
+    #: Bỏ trống khi membership trỏ tới một tài khoản không còn tra được.
+    email: str | None = None
+    display_name: str | None = None
+    #: Chỉ quyền được cấp tường minh, và chỉ trên những workspace người gọi thấy.
+    #: OWNER/ADMIN của organization với tới mọi workspace nên danh sách này rỗng.
+    workspaces: list[WorkspaceAccessResponse] = []
+
+
+class WorkspaceMemberResponse(BaseModel):
+    user_id: str
+    role: str
+    created_at: datetime
+    email: str | None = None
+    display_name: str | None = None
 
 
 class CreateOrganizationRequest(BaseModel):
@@ -155,6 +195,7 @@ class UpdateOrganizationRequest(BaseModel):
 
 class CreateWorkspaceRequest(BaseModel):
     name: str = Field(max_length=200)
+    slug: str | None = Field(default=None, max_length=60)
 
 
 class UpdateWorkspaceRequest(BaseModel):
@@ -166,7 +207,8 @@ class UpdateWorkspaceRequest(BaseModel):
 
 
 class AddMemberRequest(BaseModel):
-    user_id: str = Field(max_length=64)
+    #: Email của người **đã có tài khoản**. Không ai biết ``usr_...`` của người khác.
+    email: str = Field(min_length=3, max_length=320)
     role: OrgRole = OrgRole.MEMBER
 
 
@@ -276,12 +318,27 @@ async def list_members(
     access: TenantContext,
     service: Annotated[TenantService, Depends(get_tenant_service)],
 ) -> list[MemberResponse]:
-    memberships = await service.list_members(
+    members = await service.list_members(
         actor_id=access.user_id, organization_id=access.organization_id
     )
     return [
-        MemberResponse(user_id=m.user_id, role=str(m.role), created_at=m.created_at)
-        for m in memberships
+        MemberResponse(
+            user_id=view.membership.user_id,
+            role=str(view.membership.role),
+            created_at=view.membership.created_at,
+            email=view.profile.email if view.profile else None,
+            display_name=view.profile.display_name if view.profile else None,
+            workspaces=[
+                WorkspaceAccessResponse(
+                    workspace_id=w.workspace_id,
+                    name=w.name,
+                    slug=w.slug,
+                    role=str(w.role),
+                )
+                for w in view.workspaces
+            ],
+        )
+        for view in members
     ]
 
 
@@ -291,16 +348,19 @@ async def add_member(
     access: TenantContext,
     service: Annotated[TenantService, Depends(get_tenant_service)],
 ) -> MemberResponse:
-    membership = await service.add_member(
+    view = await service.add_member(
         actor_id=access.user_id,
         organization_id=access.organization_id,
-        user_id=payload.user_id,
+        email=payload.email,
         role=payload.role,
     )
     return MemberResponse(
-        user_id=membership.user_id,
-        role=str(membership.role),
-        created_at=membership.created_at,
+        user_id=view.membership.user_id,
+        role=str(view.membership.role),
+        created_at=view.membership.created_at,
+        email=view.profile.email if view.profile else None,
+        display_name=view.profile.display_name if view.profile else None,
+        workspaces=[],
     )
 
 
@@ -359,6 +419,7 @@ async def create_workspace(
         actor_id=access.user_id,
         organization_id=access.organization_id,
         name=payload.name,
+        slug=payload.slug,
     )
     return _to_workspace_response(workspace)
 
@@ -386,6 +447,27 @@ async def delete_workspace(
     service: Annotated[TenantService, Depends(get_tenant_service)],
 ) -> None:
     await service.delete_workspace(actor_id=access.user_id, workspace_id=workspace_id)
+
+
+@router.get("/workspaces/{workspace_id}/members")
+async def list_workspace_members(
+    workspace_id: Annotated[str, Path(max_length=64)],
+    access: TenantContext,
+    service: Annotated[TenantService, Depends(get_tenant_service)],
+) -> list[WorkspaceMemberResponse]:
+    members = await service.list_workspace_members(
+        actor_id=access.user_id, workspace_id=workspace_id
+    )
+    return [
+        WorkspaceMemberResponse(
+            user_id=view.membership.user_id,
+            role=str(view.membership.role),
+            created_at=view.membership.created_at,
+            email=view.profile.email if view.profile else None,
+            display_name=view.profile.display_name if view.profile else None,
+        )
+        for view in members
+    ]
 
 
 @router.put("/workspaces/{workspace_id}/members", status_code=status.HTTP_204_NO_CONTENT)

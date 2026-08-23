@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
@@ -89,11 +91,35 @@ class MembershipRepository(Protocol):
 
     async def list_workspace_memberships(self, workspace_id: str) -> list[WorkspaceMembership]: ...
 
+    async def list_workspace_memberships_in(
+        self, workspace_ids: Sequence[str]
+    ) -> list[WorkspaceMembership]:
+        """Quyền workspace của nhiều workspace một lượt."""
+
     async def set_workspace_role(
         self, *, workspace_id: str, user_id: str, role: WorkspaceRole, at: datetime
     ) -> None: ...
 
     async def remove_workspace_membership(self, *, workspace_id: str, user_id: str) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class UserProfile:
+    """Hồ sơ người dùng, ở đúng hình dạng Tenant cần để hiển thị thành viên."""
+
+    user_id: str
+    email: str
+    display_name: str
+
+
+class UserDirectory(Protocol):
+    """Nguồn tra hồ sơ người dùng cho danh sách thành viên."""
+
+    async def get_profiles(self, user_ids: Sequence[str]) -> dict[str, UserProfile]:
+        """Tra theo lô, trả về map ``user_id -> hồ sơ``."""
+
+    async def find_by_email(self, email: str) -> UserProfile | None:
+        """Tìm người dùng theo email, để thêm họ vào organization."""
 
 
 class SlugAlreadyTakenError(Exception):

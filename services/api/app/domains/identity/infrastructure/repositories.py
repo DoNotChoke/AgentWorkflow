@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 
 from sqlalchemy import select, update
@@ -51,6 +52,16 @@ class SqlAlchemyUserRepository:
     async def get_by_id(self, user_id: str) -> User | None:
         row = await self._session.scalar(select(UserModel).where(UserModel.id == user_id))
         return None if row is None else _to_user(row)
+
+    async def list_by_ids(self, user_ids: Sequence[str]) -> list[User]:
+        # Lô rỗng thì đừng bắn câu truy vấn nào — `IN ()` vừa vô nghĩa vừa là
+        # cú pháp không hợp lệ ở một số phương ngữ SQL.
+        if not user_ids:
+            return []
+        rows = await self._session.scalars(
+            select(UserModel).where(UserModel.id.in_(list(user_ids)))
+        )
+        return [_to_user(row) for row in rows]
 
     async def add(self, user: User) -> None:
         try:

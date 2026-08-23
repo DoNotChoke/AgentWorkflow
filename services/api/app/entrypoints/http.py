@@ -25,13 +25,14 @@ from app.core.observability import (
 from app.core.redis import close_redis, init_redis, redis_healthy
 from app.domains.identity.infrastructure.http import TENANT_PROVISIONER_FACTORY
 from app.domains.identity.infrastructure.http import router as identity_router
-from app.domains.tenant.infrastructure.http import build_tenant_service
+from app.domains.tenant.infrastructure.http import USER_DIRECTORY_FACTORY, build_tenant_service
 from app.domains.tenant.infrastructure.http import router as tenant_router
 from app.entrypoints.middleware import (
     RequestContextMiddleware,
     app_error_handler,
     unhandled_error_handler,
 )
+from app.entrypoints.wiring import build_user_directory
 
 log = get_logger(__name__)
 
@@ -73,13 +74,21 @@ def create_app() -> FastAPI:
 
     _register_health_routes(app)
 
-    # Nối domain Tenant vào domain Identity.
+    # Nối hai domain vào nhau, theo cả hai chiều.
     #
-    # Đây là chỗ duy nhất trong hệ thống biết cả hai domain. Identity khai báo
-    # Protocol `TenantProvisioner` ở tầng application và lấy hiện thực qua
-    # `app.state`; Tenant cung cấp hiện thực. Không bên nào import bên kia,
-    # nên contract 1 của import-linter vẫn giữ (quy tắc 1 của ADR-0001).
-    setattr(app.state, TENANT_PROVISIONER_FACTORY, build_tenant_service)
+    # Đây là chỗ duy nhất trong hệ thống biết cả hai domain. Bên cần khai báo
+    # một Protocol ở tầng application của mình và lấy hiện thực qua `app.state`;
+    # bên có cung cấp hiện thực. Không bên nào import bên kia, nên contract 1
+    # của import-linter vẫn giữ (quy tắc 1 của ADR-0001).
+    #
+    # Identity ← Tenant: cấp organization và workspace cho user vừa đăng ký.
+    # Tenant ← Identity: tra tên và email để hiển thị danh sách thành viên.
+    setattr(
+        app.state,
+        TENANT_PROVISIONER_FACTORY,
+        lambda session: build_tenant_service(session, build_user_directory(session)),
+    )
+    setattr(app.state, USER_DIRECTORY_FACTORY, build_user_directory)
 
     # Router của từng domain được mount ở đây. Entrypoint chỉ chạm tới tầng
     # `infrastructure` của domain, không bao giờ import thẳng tầng `domain`

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 
 from sqlalchemy import delete, func, select, update
@@ -311,6 +312,19 @@ class SqlAlchemyMembershipRepository:
         rows = await self._session.scalars(
             select(WorkspaceMembershipModel)
             .where(WorkspaceMembershipModel.workspace_id == workspace_id)
+            .order_by(WorkspaceMembershipModel.created_at)
+        )
+        return [_to_workspace_membership(row) for row in rows]
+
+    async def list_workspace_memberships_in(
+        self, workspace_ids: Sequence[str]
+    ) -> list[WorkspaceMembership]:
+        # Lô rỗng thì đừng bắn truy vấn nào — xem `SqlAlchemyUserRepository.list_by_ids`.
+        if not workspace_ids:
+            return []
+        rows = await self._session.scalars(
+            select(WorkspaceMembershipModel)
+            .where(WorkspaceMembershipModel.workspace_id.in_(list(workspace_ids)))
             .order_by(WorkspaceMembershipModel.created_at)
         )
         return [_to_workspace_membership(row) for row in rows]

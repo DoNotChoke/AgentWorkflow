@@ -10,6 +10,7 @@ mật khó kiểm bằng tay nhất và cũng dễ hỏng nhất khi refactor.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 
 import pytest
@@ -32,6 +33,9 @@ class FakeUserRepository:
 
     async def get_by_id(self, user_id: str) -> User | None:
         return self.rows.get(user_id)
+
+    async def list_by_ids(self, user_ids: Sequence[str]) -> list[User]:
+        return [self.rows[uid] for uid in user_ids if uid in self.rows]
 
     async def add(self, user: User) -> None:
         if await self.get_by_email(user.email) is not None:

@@ -61,18 +61,17 @@ class Nguoi:
     """Một tài khoản đã đăng ký, kèm header xác thực sẵn sàng dùng."""
 
     def __init__(self, client: TestClient, ten: str) -> None:
+        email = f"t-{uuid.uuid4().hex}@example.com"
         resp = client.post(
             "/v1/auth/register",
-            json={
-                "email": f"t-{uuid.uuid4().hex}@example.com",
-                "password": MAT_KHAU,
-                "display_name": ten,
-            },
+            json={"email": email, "password": MAT_KHAU, "display_name": ten},
         )
         assert resp.status_code == 201, resp.text
         body = resp.json()
         self.client = client
         self.user_id: str = body["user"]["id"]
+        self.email = email
+        self.display_name = ten
         self.headers = {"Authorization": f"Bearer {body['access_token']}"}
 
     def _headers(self, extra: dict[str, str] | None) -> dict[str, str]:
@@ -112,6 +111,45 @@ def test_dang_ky_thi_duoc_cap_organization_va_workspace(client: TestClient) -> N
     workspaces = an.get("/v1/workspaces")
     assert workspaces.status_code == 200
     assert [w["name"] for w in workspaces.json()] == ["Default"]
+
+
+def test_tao_them_organization_thi_co_ngay_workspace_default(client: TestClient) -> None:
+    """Người dùng tự tạo org thứ hai — nó phải dùng được ngay, không rỗng."""
+    an = Nguoi(client, "An")
+
+    them = an.post("/v1/organizations", json={"name": "Acme"})
+    assert them.status_code == 201
+    assert them.json()["onboarded"] is False
+
+    org_id = them.json()["id"]
+    workspaces = an.get("/v1/workspaces", headers={"x-organization-id": org_id})
+
+    assert workspaces.status_code == 200
+    assert [w["name"] for w in workspaces.json()] == ["Default"]
+    assert workspaces.json()[0]["organization_id"] == org_id
+
+
+def test_khong_xoa_duoc_workspace_cuoi_cung_qua_api(client: TestClient) -> None:
+    an = Nguoi(client, "An")
+    mac_dinh = an.get("/v1/workspaces").json()[0]
+
+    resp = an.delete(f"/v1/workspaces/{mac_dinh['id']}")
+
+    assert resp.status_code == 422
+    assert resp.json()["error"]["category"] == "ValidationError"
+    assert an.get("/v1/workspaces").status_code == 200
+
+
+def test_tao_workspace_voi_dia_chi_tu_chon(client: TestClient) -> None:
+    an = Nguoi(client, "An")
+
+    resp = an.post("/v1/workspaces", json={"name": "Marketing", "slug": "mkt"})
+
+    assert resp.status_code == 201
+    assert resp.json()["slug"] == "mkt"
+
+    trung = an.post("/v1/workspaces", json={"name": "Marketing hai", "slug": "mkt"})
+    assert trung.status_code == 422
 
 
 def test_slug_organization_sinh_tu_ten_hien_thi(client: TestClient) -> None:
@@ -158,7 +196,7 @@ def test_khong_them_duoc_thanh_vien_vao_organization_cua_nguoi_khac(
     resp = binh.post(
         "/v1/organizations/current/members",
         headers={"x-organization-id": an.organization_id},
-        json={"user_id": binh.user_id, "role": "owner"},
+        json={"email": binh.email, "role": "owner"},
     )
 
     assert resp.status_code == 403
@@ -185,6 +223,76 @@ def test_moi_nguoi_chi_thay_organization_cua_minh(client: TestClient) -> None:
 # ─── Vai trò ─────────────────────────────────────────────────────────────────
 
 
+def test_them_thanh_vien_bang_email(client: TestClient) -> None:
+    chu = Nguoi(client, "Chu Tich")
+    nhan_vien = Nguoi(client, "Nhan Vien")
+
+    resp = chu.post(
+        "/v1/organizations/current/members",
+        json={"email": nhan_vien.email.upper(), "role": "member"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["user_id"] == nhan_vien.user_id
+    assert resp.json()["display_name"] == "Nhan Vien"
+    assert resp.json()["workspaces"] == []
+
+
+def test_them_email_chua_co_tai_khoan_thi_bao_loi(client: TestClient) -> None:
+    chu = Nguoi(client, "Chu")
+
+    resp = chu.post(
+        "/v1/organizations/current/members",
+        json={"email": "khong-he-ton-tai@example.com", "role": "member"},
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["error"]["category"] == "ValidationError"
+    # Giao diện dựng một trạng thái riêng cho ngõ cụt này — kèm link đăng ký để
+    # gửi cho người kia — nên nó phải nhận ra được lý do mà không phải đọc chữ.
+    assert resp.json()["error"]["details"]["reason"] == "no_account"
+
+
+def test_them_hai_lan_thi_bao_da_la_thanh_vien(client: TestClient) -> None:
+    chu = Nguoi(client, "Chu Tich")
+    nhan_vien = Nguoi(client, "Nhan Vien")
+    chu.post(
+        "/v1/organizations/current/members",
+        json={"email": nhan_vien.email, "role": "member"},
+    )
+
+    resp = chu.post(
+        "/v1/organizations/current/members",
+        json={"email": nhan_vien.email, "role": "member"},
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["error"]["details"]["reason"] == "already_member"
+
+
+def test_danh_sach_thanh_vien_co_ten_va_email(client: TestClient) -> None:
+    """Cây cầu Tenant ← Identity chạy thật qua HTTP, không chỉ trong unit test.
+
+    Tenant không có bảng nào chứa tên hay email; chúng chỉ tới được đây nếu
+    `UserDirectory` đã được entrypoint gắn đúng.
+    """
+    chu = Nguoi(client, "Chu Tich")
+    nhan_vien = Nguoi(client, "Nhan Vien")
+    chu.post(
+        "/v1/organizations/current/members",
+        json={"email": nhan_vien.email, "role": "member"},
+    )
+
+    resp = chu.get("/v1/organizations/current/members")
+
+    assert resp.status_code == 200
+    theo_id = {m["user_id"]: m for m in resp.json()}
+    assert theo_id[chu.user_id]["email"] == chu.email
+    assert theo_id[chu.user_id]["display_name"] == "Chu Tich"
+    assert theo_id[nhan_vien.user_id]["email"] == nhan_vien.email
+    assert theo_id[nhan_vien.user_id]["display_name"] == "Nhan Vien"
+
+
 def test_member_khong_tao_duoc_workspace(client: TestClient) -> None:
     chu = Nguoi(client, "Chu")
     nhan_vien = Nguoi(client, "NhanVien")
@@ -192,7 +300,7 @@ def test_member_khong_tao_duoc_workspace(client: TestClient) -> None:
 
     them = chu.post(
         "/v1/organizations/current/members",
-        json={"user_id": nhan_vien.user_id, "role": "member"},
+        json={"email": nhan_vien.email, "role": "member"},
     )
     assert them.status_code == 201
 
@@ -211,7 +319,7 @@ def test_member_khong_thay_workspace_chua_duoc_cap(client: TestClient) -> None:
     chu.post("/v1/workspaces", json={"name": "Marketing"})
     chu.post(
         "/v1/organizations/current/members",
-        json={"user_id": nhan_vien.user_id, "role": "member"},
+        json={"email": nhan_vien.email, "role": "member"},
     )
 
     thay = nhan_vien.get("/v1/workspaces", headers={"x-organization-id": org})
@@ -227,7 +335,7 @@ def test_duoc_cap_quyen_workspace_thi_thay_no(client: TestClient) -> None:
     marketing = chu.post("/v1/workspaces", json={"name": "Marketing"}).json()
     chu.post(
         "/v1/organizations/current/members",
-        json={"user_id": nhan_vien.user_id, "role": "member"},
+        json={"email": nhan_vien.email, "role": "member"},
     )
 
     cap = chu.put(
@@ -238,6 +346,73 @@ def test_duoc_cap_quyen_workspace_thi_thay_no(client: TestClient) -> None:
 
     thay = nhan_vien.get("/v1/workspaces", headers={"x-organization-id": org}).json()
     assert [w["id"] for w in thay] == [marketing["id"]]
+
+
+def test_doc_duoc_thanh_vien_cua_mot_workspace(client: TestClient) -> None:
+    chu = Nguoi(client, "Chu Tich")
+    nhan_vien = Nguoi(client, "Nhan Vien")
+    marketing = chu.post("/v1/workspaces", json={"name": "Marketing"}).json()
+    chu.post(
+        "/v1/organizations/current/members",
+        json={"email": nhan_vien.email, "role": "member"},
+    )
+    chu.put(
+        f"/v1/workspaces/{marketing['id']}/members",
+        json={"user_id": nhan_vien.user_id, "role": "editor"},
+    )
+
+    resp = chu.get(f"/v1/workspaces/{marketing['id']}/members")
+
+    assert resp.status_code == 200
+    assert resp.json() == [
+        {
+            "user_id": nhan_vien.user_id,
+            "role": "editor",
+            "created_at": resp.json()[0]["created_at"],
+            "email": nhan_vien.email,
+            "display_name": "Nhan Vien",
+        }
+    ]
+
+
+def test_khong_co_quyen_workspace_thi_khong_doc_duoc_thanh_vien(client: TestClient) -> None:
+    chu = Nguoi(client, "Chu")
+    nhan_vien = Nguoi(client, "NhanVien")
+    org = chu.organization_id
+    marketing = chu.post("/v1/workspaces", json={"name": "Marketing"}).json()
+    chu.post(
+        "/v1/organizations/current/members",
+        json={"email": nhan_vien.email, "role": "member"},
+    )
+
+    resp = nhan_vien.get(
+        f"/v1/workspaces/{marketing['id']}/members",
+        headers={"x-organization-id": org},
+    )
+
+    assert resp.status_code == 403
+
+
+def test_danh_sach_thanh_vien_kem_quyen_workspace(client: TestClient) -> None:
+    chu = Nguoi(client, "Chu")
+    nhan_vien = Nguoi(client, "NhanVien")
+    marketing = chu.post("/v1/workspaces", json={"name": "Marketing"}).json()
+    chu.post(
+        "/v1/organizations/current/members",
+        json={"email": nhan_vien.email, "role": "member"},
+    )
+    chu.put(
+        f"/v1/workspaces/{marketing['id']}/members",
+        json={"user_id": nhan_vien.user_id, "role": "editor"},
+    )
+
+    theo_id = {m["user_id"]: m for m in chu.get("/v1/organizations/current/members").json()}
+
+    assert [(w["name"], w["role"]) for w in theo_id[nhan_vien.user_id]["workspaces"]] == [
+        ("Marketing", "editor")
+    ]
+    # OWNER với tới mọi workspace nhờ vai trò org, không qua bản ghi nào.
+    assert theo_id[chu.user_id]["workspaces"] == []
 
 
 def test_owner_cuoi_cung_khong_the_tu_roi_di(client: TestClient) -> None:
@@ -352,7 +527,7 @@ def test_member_thuong_khong_doi_duoc_dia_chi(client: TestClient) -> None:
     org = chu.organization_id
     chu.post(
         "/v1/organizations/current/members",
-        json={"user_id": nhan_vien.user_id, "role": "member"},
+        json={"email": nhan_vien.email, "role": "member"},
     )
 
     resp = nhan_vien.client.patch(

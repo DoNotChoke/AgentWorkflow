@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from app.core.errors import AuthorizationError, ValidationError
@@ -14,6 +15,8 @@ from app.domains.tenant.application.ports import (
     MembershipRepository,
     OrganizationRepository,
     SlugAlreadyTakenError,
+    UserDirectory,
+    UserProfile,
     WorkspaceRepository,
 )
 from app.domains.tenant.domain.entities import (
@@ -29,6 +32,7 @@ from app.domains.tenant.domain.entities import (
     default_organization_name,
     ensure_can_assign_org_role,
     ensure_not_last_owner,
+    ensure_not_last_workspace,
     ensure_slug_editable,
     normalize_name,
     normalize_slug,
@@ -44,6 +48,42 @@ _NOT_A_MEMBER = "Bạn không có quyền truy cập organization này."
 _SLUG_ATTEMPTS = 5
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Read model
+#
+# Màn hình thành viên cần ba mảnh ghép cùng lúc: membership, hồ sơ người dùng,
+# và quyền workspace. Ghép sẵn ở đây thay vì để router gọi ba vòng — và cũng
+# thay vì trả tuple ba phần tử mà nơi gọi phải nhớ thứ tự.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspaceAccess:
+    """Quyền được cấp tường minh trên một workspace."""
+
+    workspace_id: str
+    name: str
+    slug: str
+    role: WorkspaceRole
+
+
+@dataclass(frozen=True, slots=True)
+class MemberView:
+    """Một thành viên organization, đủ dữ liệu để hiển thị một dòng."""
+
+    membership: OrgMembership
+    profile: UserProfile | None
+    workspaces: list[WorkspaceAccess]
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspaceMemberView:
+    """Một người có quyền tường minh trên một workspace."""
+
+    membership: WorkspaceMembership
+    profile: UserProfile | None
+
+
 class TenantService:
     def __init__(
         self,
@@ -51,10 +91,12 @@ class TenantService:
         organizations: OrganizationRepository,
         workspaces: WorkspaceRepository,
         memberships: MembershipRepository,
+        users: UserDirectory,
     ) -> None:
         self._organizations = organizations
         self._workspaces = workspaces
         self._memberships = memberships
+        self._users = users
 
     # ─── Cấp phát khi đăng ký ────────────────────────────────────────────────
 
@@ -64,29 +106,20 @@ class TenantService:
             user_id=user_id,
             name=default_organization_name(display_name),
         )
-        workspace = await self.create_workspace(
-            actor_id=user_id,
-            organization_id=access.organization_id,
-            name=DEFAULT_WORKSPACE_NAME,
-        )
         log.info(
             "tenant_provisioned",
             user_id=user_id,
             organization_id=access.organization_id,
-            workspace_id=workspace.id,
+            workspace_id=access.workspace_id,
         )
-        return TenantAccess(
-            user_id=user_id,
-            organization_id=access.organization_id,
-            org_role=OrgRole.OWNER,
-            workspace_id=workspace.id,
-            workspace_role=WorkspaceRole.ADMIN,
-        )
+        return access
 
     # ─── Organization ────────────────────────────────────────────────────────
 
     async def create_organization(self, *, user_id: str, name: str) -> TenantAccess:
-        """Tạo organization mới. Người tạo trở thành OWNER."""
+        """Tạo organization mới. Người tạo trở thành OWNER.
+        Kèm luôn một workspace ``Default``
+        """
         normalized = normalize_name(name, field="Tên organization")
         now = datetime.now(tz=UTC)
         organization_id = new_id(ResourceKind.ORGANIZATION)
@@ -112,11 +145,23 @@ class TenantService:
                 updated_at=now,
             )
         )
-        log.info("organization_created", organization_id=organization.id, user_id=user_id)
+        workspace = await self.create_workspace(
+            actor_id=user_id,
+            organization_id=organization.id,
+            name=DEFAULT_WORKSPACE_NAME,
+        )
+        log.info(
+            "organization_created",
+            organization_id=organization.id,
+            user_id=user_id,
+            workspace_id=workspace.id,
+        )
         return TenantAccess(
             user_id=user_id,
             organization_id=organization.id,
             org_role=OrgRole.OWNER,
+            workspace_id=workspace.id,
+            workspace_role=WorkspaceRole.ADMIN,
         )
 
     async def _add_with_unique_slug(
@@ -206,8 +251,9 @@ class TenantService:
     # ─── Workspace ───────────────────────────────────────────────────────────
 
     async def create_workspace(
-        self, *, actor_id: str, organization_id: str, name: str
+        self, *, actor_id: str, organization_id: str, name: str, slug: str | None = None
     ) -> Workspace:
+        """Tạo workspace. Bỏ trống ``slug`` thì địa chỉ tự sinh từ tên."""
         access = await self.require_access(user_id=actor_id, organization_id=organization_id)
         if not can_manage_organization(access.org_role):
             raise AuthorizationError("Bạn không có quyền tạo workspace trong organization này.")
@@ -216,10 +262,16 @@ class TenantService:
         now = datetime.now(tz=UTC)
         existing = {w.slug for w in await self._workspaces.list_for_organization(organization_id)}
 
-        base_slug = slugify(normalized, fallback="workspace")
-        slug = base_slug
-        while slug in existing:
-            slug = f"{base_slug}-{secrets.token_hex(3)}"
+        if slug is not None:
+            chosen = normalize_slug(slug)
+            if chosen in existing:
+                raise ValidationError("Organization này đã có workspace dùng địa chỉ đó.")
+            slug = chosen
+        else:
+            base_slug = slugify(normalized, fallback="workspace")
+            slug = base_slug
+            while slug in existing:
+                slug = f"{base_slug}-{secrets.token_hex(3)}"
 
         workspace = Workspace(
             id=new_id(ResourceKind.WORKSPACE),
@@ -307,15 +359,21 @@ class TenantService:
         if not can_manage_organization(access.org_role):
             raise AuthorizationError("Bạn không có quyền xoá workspace này.")
 
+        ensure_not_last_workspace(
+            workspace_count=len(
+                await self._workspaces.list_for_organization(workspace.organization_id)
+            )
+        )
+
         await self._workspaces.delete(workspace_id)
         log.info("workspace_deleted", workspace_id=workspace_id, actor_id=actor_id)
 
     # ─── Thành viên organization ─────────────────────────────────────────────
 
     async def add_member(
-        self, *, actor_id: str, organization_id: str, user_id: str, role: OrgRole
-    ) -> OrgMembership:
-        """Thêm một user đã có tài khoản vào organization."""
+        self, *, actor_id: str, organization_id: str, email: str, role: OrgRole
+    ) -> MemberView:
+        """Thêm một người **đã có tài khoản** vào organization, theo email."""
         actor = await self.require_access(user_id=actor_id, organization_id=organization_id)
         ensure_can_assign_org_role(
             actor_role=actor.org_role,
@@ -323,11 +381,24 @@ class TenantService:
             new_role=role,
         )
 
+        profile = await self._users.find_by_email(email)
+        if profile is None:
+            # `reason` để giao diện phân biệt được thất bại này với những lỗi
+            # 422 khác của cùng endpoint. Nó là ngõ cụt hay gặp nhất của luồng
+            # thêm thành viên, và màn hình phải chỉ đường ra (gửi link đăng ký)
+            # chứ không chỉ in lại câu này — bắt theo nội dung thông điệp thì
+            # đổi một chữ là hỏng.
+            raise ValidationError(
+                "Không tìm thấy tài khoản nào dùng email này. "
+                "Người được thêm phải đăng ký trước đã.",
+                details={"reason": "no_account"},
+            )
+
         now = datetime.now(tz=UTC)
         membership = OrgMembership(
             id=new_id(ResourceKind.MEMBERSHIP),
             organization_id=organization_id,
-            user_id=user_id,
+            user_id=profile.user_id,
             role=role,
             created_at=now,
             updated_at=now,
@@ -335,15 +406,20 @@ class TenantService:
         try:
             await self._memberships.add_org_membership(membership)
         except AlreadyMemberError as exc:
-            raise ValidationError("Người dùng này đã là thành viên.", cause=exc) from exc
+            raise ValidationError(
+                "Người dùng này đã là thành viên.",
+                details={"reason": "already_member"},
+                cause=exc,
+            ) from exc
 
         log.info(
             "org_member_added",
             organization_id=organization_id,
-            user_id=user_id,
+            user_id=profile.user_id,
             role=str(role),
         )
-        return membership
+        # Người vừa được thêm chưa có quyền workspace nào — quyền đó cấp riêng.
+        return MemberView(membership=membership, profile=profile, workspaces=[])
 
     async def change_member_role(
         self, *, actor_id: str, organization_id: str, user_id: str, role: OrgRole
@@ -396,9 +472,55 @@ class TenantService:
         )
         log.info("org_member_removed", organization_id=organization_id, user_id=user_id)
 
-    async def list_members(self, *, actor_id: str, organization_id: str) -> list[OrgMembership]:
+    async def list_members(self, *, actor_id: str, organization_id: str) -> list[MemberView]:
+        """Thành viên của organization, kèm hồ sơ và quyền workspace."""
         await self.require_access(user_id=actor_id, organization_id=organization_id)
-        return await self._memberships.list_org_memberships(organization_id)
+        memberships = await self._memberships.list_org_memberships(organization_id)
+
+        visible = await self.list_workspaces(actor_id=actor_id, organization_id=organization_id)
+        by_workspace = {w.id: w for w in visible}
+        access = await self._memberships.list_workspace_memberships_in(list(by_workspace))
+
+        granted: dict[str, list[WorkspaceAccess]] = {}
+        for membership in access:
+            workspace = by_workspace[membership.workspace_id]
+            granted.setdefault(membership.user_id, []).append(
+                WorkspaceAccess(
+                    workspace_id=workspace.id,
+                    name=workspace.name,
+                    slug=workspace.slug,
+                    role=membership.role,
+                )
+            )
+
+        profiles = await self._users.get_profiles([m.user_id for m in memberships])
+        return [
+            MemberView(
+                membership=m,
+                profile=profiles.get(m.user_id),
+                workspaces=granted.get(m.user_id, []),
+            )
+            for m in memberships
+        ]
+
+    # ─── Thành viên workspace ────────────────────────────────────────────────
+
+    async def list_workspace_members(
+        self, *, actor_id: str, workspace_id: str
+    ) -> list[WorkspaceMemberView]:
+        """Những người được cấp quyền tường minh trên một workspace."""
+        workspace = await self._require_workspace(workspace_id)
+        await self.require_access(
+            user_id=actor_id,
+            organization_id=workspace.organization_id,
+            workspace_id=workspace_id,
+        )
+
+        memberships = await self._memberships.list_workspace_memberships(workspace_id)
+        profiles = await self._users.get_profiles([m.user_id for m in memberships])
+        return [
+            WorkspaceMemberView(membership=m, profile=profiles.get(m.user_id)) for m in memberships
+        ]
 
     # ─── Thành viên workspace ────────────────────────────────────────────────
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
@@ -12,6 +13,9 @@ class UserRepository(Protocol):
     async def get_by_email(self, email: str) -> User | None: ...
 
     async def get_by_id(self, user_id: str) -> User | None: ...
+
+    async def list_by_ids(self, user_ids: Sequence[str]) -> list[User]:
+        """Tra nhiều user một lượt. Id không tồn tại thì lặng lẽ vắng mặt."""
 
     async def add(self, user: User) -> None:
         """Thêm user mới."""
