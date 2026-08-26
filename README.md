@@ -127,12 +127,25 @@ AgentWorkflow/
 **Phase 0 — hoàn tất.** Hạ tầng, ranh giới kiến trúc, và các mối quan tâm xuyên
 suốt (tenant context, error model, logging, tracing, crypto).
 
+**Phase 1 — hoàn tất.** Identity (đăng ký, đăng nhập, refresh token xoay theo
+họ), Tenant (organization, workspace, hai tầng membership và RBAC), và
+Connection (vòng OAuth 2.0 có PKCE, credential mã hoá envelope, tự làm mới
+token, thu hồi). Giao diện web phủ hết cả ba: đăng nhập, onboarding,
+workspace, thành viên, kết nối, và chính sách kết nối của organization.
+
+Kết nối có hai trục quyền. **Phạm vi** của từng kết nối: `workspace` là tài
+khoản chung do quản trị viên workspace thiết lập, `private` là tài khoản riêng
+mà chỉ chính chủ nhìn thấy và dùng được. **Chính sách** của organization quyết
+định trục trên nhận được giá trị nào: `open` cho phép thành viên tự thêm tài
+khoản riêng, `managed` chỉ cho dùng tài khoản chung. Mặc định là `open` cho org
+và `private` cho từng kết nối — hẹp ở chỗ quan trọng, rộng ở chỗ vô hại.
+
 Lộ trình các phase tiếp theo: xem `docs/adr/0001-*.md` và kế hoạch triển khai.
 
 | Phase | Nội dung |
 |---|---|
 | 0 | Nền móng, hạ tầng, ranh giới ✅ |
-| 1 | Identity, Tenant, Connection, OAuth |
+| 1 | Identity, Tenant, Connection, OAuth ✅ |
 | 2 | Integration Plane, connector đầu tiên (Slack) |
 | 3 | Agent Runtime, Model Gateway, Execution Trace |
 | 4 | Workflow IR, Generic Executor trên Temporal |

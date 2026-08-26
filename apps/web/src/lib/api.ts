@@ -161,3 +161,79 @@ export type WorkspaceMember = {
 };
 
 export type SlugAvailability = { slug: string; available: boolean };
+
+// ─── Connection ──────────────────────────────────────────────────────────────
+
+/**
+ * Phạm vi dùng của một kết nối.
+ *
+ * `workspace` — tài khoản chung, cả workspace thấy và dùng được.
+ * `private`   — tài khoản riêng; người khác **không thấy** nó trong danh sách.
+ */
+export type SharingPolicy = "workspace" | "private";
+
+/** Sáu trạng thái backend trả về. */
+export type ConnectionStatus =
+  | "active"
+  | "expired"
+  | "revoked"
+  | "missing_scope"
+  | "reconnect_required"
+  | "disabled";
+
+/** Org cho phép thêm loại tài khoản nào. */
+export type ConnectionPolicy = "open" | "managed";
+
+export type Provider = {
+  id: string;
+  label: string;
+  default_scopes: string[];
+  supports_refresh: boolean;
+  /** `false` nghĩa là bản triển khai này chưa có client id/secret cho provider. */
+  configured: boolean;
+  notes: string;
+};
+
+export type Connection = {
+  id: string;
+  provider: string;
+  display_name: string;
+  status: ConnectionStatus;
+  sharing: SharingPolicy;
+  /** Với `private` là người duy nhất dùng được; với `workspace` là người đã cài. */
+  owner_user_id: string;
+  granted_scopes: string[];
+  external_account_id: string | null;
+  external_account_label: string | null;
+  connected_by: string;
+  created_at: string;
+  updated_at: string;
+  expires_at: string | null;
+  last_error: string | null;
+};
+
+/**
+ * Kết nối nhìn từ màn hình audit của quản trị viên.
+ *
+ * Cố ý thiếu tên hiển thị, scope và danh tính tài khoản: quản trị viên cần biết
+ * *có* kết nối để thu hồi, không cần biết nó trỏ tới đâu.
+ */
+export type ConnectionAudit = {
+  id: string;
+  provider: string;
+  sharing: SharingPolicy;
+  owner_user_id: string;
+  status: ConnectionStatus;
+  created_at: string;
+};
+
+export type ConnectionPolicySettings = {
+  connection_policy: ConnectionPolicy;
+  /** Số kết nối riêng vừa bị tạm dừng do siết chính sách. */
+  disabled_private_connections: number;
+};
+
+export type Authorization = {
+  authorize_url: string;
+  expires_in_seconds: number;
+};

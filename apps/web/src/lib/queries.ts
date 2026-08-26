@@ -3,9 +3,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   apiRequest,
+  type Authorization,
+  type Connection,
+  type ConnectionAudit,
+  type ConnectionPolicy,
+  type ConnectionPolicySettings,
   type Member,
   type Organization,
   type OrgRole,
+  type Provider,
+  type SharingPolicy,
   type SlugAvailability,
   type Workspace,
   type WorkspaceRole,
@@ -24,6 +31,13 @@ export const queryKeys = {
   organizations: ["organizations"] as const,
   workspaces: (organizationId: string | null) => ["workspaces", organizationId] as const,
   members: (organizationId: string | null) => ["members", organizationId] as const,
+  providers: ["connection-providers"] as const,
+  connections: (organizationId: string | null, workspaceId: string | null) =>
+    ["connections", organizationId, workspaceId] as const,
+  connectionAudit: (organizationId: string | null, workspaceId: string | null) =>
+    ["connection-audit", organizationId, workspaceId] as const,
+  connectionPolicy: (organizationId: string | null) =>
+    ["connection-policy", organizationId] as const,
 };
 
 /** Header chọn tenant cho request hiện tại — bỏ trống thì backend lấy org đầu tiên. */
@@ -306,5 +320,201 @@ export function useDeleteWorkspace(organizationId: string | null) {
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.workspaces(organizationId) }),
+  });
+}
+
+// ─── Connection ──────────────────────────────────────────────────────────────
+
+/**
+ * Hook cho Connection.
+ *
+ * Khác các hook tenant ở một chỗ: kết nối thuộc về **workspace**, không phải
+ * organization, nên mọi lời gọi phải kèm cả hai header. Bỏ `x-workspace-id` thì
+ * backend tự chọn workspace đầu tiên người gọi thấy — đúng cho một màn hình
+ * chung, nhưng sai ở đây, vì màn hình này đang nói về một workspace cụ thể.
+ */
+
+function workspaceHeaders(
+  organizationId: string | null,
+  workspaceId: string | null,
+): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (organizationId) headers["x-organization-id"] = organizationId;
+  if (workspaceId) headers["x-workspace-id"] = workspaceId;
+  return headers;
+}
+
+export function useProviders() {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: queryKeys.providers,
+    enabled: status === "authenticated",
+    // Danh mục provider là cấu hình của bản triển khai, không đổi theo phiên.
+    staleTime: 5 * 60 * 1000,
+    queryFn: () => apiRequest<Provider[]>("/v1/connections/providers", { accessToken }),
+  });
+}
+
+export function useConnections(organizationId: string | null, workspaceId: string | null) {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: queryKeys.connections(organizationId, workspaceId),
+    enabled: status === "authenticated" && organizationId !== null && workspaceId !== null,
+    queryFn: () =>
+      apiRequest<Connection[]>("/v1/connections", {
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+      }),
+  });
+}
+
+export function useConnectionPolicy(organizationId: string | null) {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: queryKeys.connectionPolicy(organizationId),
+    enabled: status === "authenticated" && organizationId !== null,
+    queryFn: () =>
+      apiRequest<ConnectionPolicySettings>("/v1/connections/settings", {
+        accessToken,
+        headers: tenantHeaders(organizationId),
+      }),
+  });
+}
+
+/**
+ * Danh sách mọi kết nối trong workspace, kể cả kết nối riêng của người khác.
+ *
+ * Chỉ quản trị viên organization gọi được — backend trả 403 cho người khác, nên
+ * nơi gọi phải tự tắt hook khi biết mình không đủ quyền thay vì để màn hình
+ * hiện một lỗi mà người dùng chẳng làm gì được.
+ */
+export function useConnectionAudit(
+  organizationId: string | null,
+  workspaceId: string | null,
+  enabled: boolean,
+) {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: queryKeys.connectionAudit(organizationId, workspaceId),
+    enabled:
+      enabled && status === "authenticated" && organizationId !== null && workspaceId !== null,
+    queryFn: () =>
+      apiRequest<ConnectionAudit[]>("/v1/connections/audit", {
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+      }),
+  });
+}
+
+/**
+ * Bước một của vòng OAuth: xin backend dựng URL uỷ quyền.
+ *
+ * Không `invalidateQueries` — chưa có gì đổi. Kết nối chỉ ra đời ở bước hai,
+ * khi provider gọi ngược lại callback, và lúc đó trình duyệt đã rời khỏi trang
+ * này rồi. Danh sách được làm mới khi người dùng quay lại (xem `useConnectionCallbackToast`).
+ */
+export function useStartAuthorization(
+  organizationId: string | null,
+  workspaceId: string | null,
+) {
+  const { accessToken } = useSession();
+  return useMutation({
+    mutationFn: (input: { provider: string; sharing: SharingPolicy; connectionId?: string }) =>
+      apiRequest<Authorization>(`/v1/connections/${input.provider}/authorize`, {
+        method: "POST",
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+        body: {
+          sharing: input.sharing,
+          ...(input.connectionId ? { reconnect_connection_id: input.connectionId } : {}),
+        },
+      }),
+  });
+}
+
+/** Tạm dừng, bật lại, đổi tên, thu hồi — bốn thao tác cùng một hình. */
+function useConnectionMutation<TInput>(
+  organizationId: string | null,
+  workspaceId: string | null,
+  request: (
+    input: TInput,
+    call: (path: string, init: { method: "POST" | "PATCH" | "DELETE"; body?: unknown }) => Promise<Connection>,
+  ) => Promise<Connection>,
+) {
+  const { accessToken } = useSession();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TInput) =>
+      request(input, (path, init) =>
+        apiRequest<Connection>(path, {
+          method: init.method,
+          accessToken,
+          headers: workspaceHeaders(organizationId, workspaceId),
+          body: init.body,
+        }),
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.connections(organizationId, workspaceId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.connectionAudit(organizationId, workspaceId),
+      });
+    },
+  });
+}
+
+export function useDisableConnection(organizationId: string | null, workspaceId: string | null) {
+  return useConnectionMutation<string>(organizationId, workspaceId, (id, call) =>
+    call(`/v1/connections/${id}/disable`, { method: "POST" }),
+  );
+}
+
+export function useEnableConnection(organizationId: string | null, workspaceId: string | null) {
+  return useConnectionMutation<string>(organizationId, workspaceId, (id, call) =>
+    call(`/v1/connections/${id}/enable`, { method: "POST" }),
+  );
+}
+
+export function useRevokeConnection(organizationId: string | null, workspaceId: string | null) {
+  return useConnectionMutation<string>(organizationId, workspaceId, (id, call) =>
+    call(`/v1/connections/${id}`, { method: "DELETE" }),
+  );
+}
+
+export function useRenameConnection(organizationId: string | null, workspaceId: string | null) {
+  return useConnectionMutation<{ id: string; displayName: string }>(
+    organizationId,
+    workspaceId,
+    (input, call) =>
+      call(`/v1/connections/${input.id}`, {
+        method: "PATCH",
+        body: { display_name: input.displayName },
+      }),
+  );
+}
+
+/**
+ * Đổi chính sách kết nối của organization.
+ *
+ * Siết sang `managed` sẽ tạm dừng mọi kết nối riêng đang sống, nên danh sách
+ * kết nối cũng phải được làm mới — không chỉ chính sách.
+ */
+export function useSetConnectionPolicy(organizationId: string | null) {
+  const { accessToken } = useSession();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (policy: ConnectionPolicy) =>
+      apiRequest<ConnectionPolicySettings>("/v1/connections/settings", {
+        method: "PATCH",
+        accessToken,
+        headers: tenantHeaders(organizationId),
+        body: { connection_policy: policy },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.connectionPolicy(organizationId) });
+      queryClient.invalidateQueries({ queryKey: ["connections"] });
+      queryClient.invalidateQueries({ queryKey: ["connection-audit"] });
+    },
   });
 }

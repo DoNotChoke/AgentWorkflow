@@ -141,6 +141,7 @@ function SettingsSidebar() {
         { label: "General" },
         { label: "Members", href: "/settings/members" },
         { label: "Workspaces", href: "/settings/workspaces" },
+        { label: "Connections", href: "/settings/connections" },
         { label: "Audit log" },
       ],
     },
