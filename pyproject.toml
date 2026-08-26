@@ -39,6 +39,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "services/api/tests/*" = ["S", "ARG"]
 "services/api/alembic/versions/*" = ["N999", "E501"]
+# Script sinh code trong packages/ chạy bằng tay ở terminal, nên nó phải in ra
+# được thứ nó vừa làm. `src` có kể packages/ nên ruff soi cả thư mục này.
+"packages/**/*.py" = ["T20"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
@@ -148,13 +151,25 @@ forbidden_modules = [
     "app.core.db",
 ]
 
-# ── Contract 4: credential không rò khỏi Integration Plane (§2.4, §6.3, §21) ──
-# Contract quan trọng nhất trong file. Chỉ Integration Gateway được chạm tới
-# credential đã giải mã. Agent Runtime chỉ nhận connection_id.
+# ── Contract 4: credential không rò khỏi domain sở hữu nó (§2.4, §6.3, §21) ───
+#
+# Contract quan trọng nhất trong file.
+#
+# ADR-0001 mô tả ranh giới nằm ở `domains.integration.infrastructure`. ADR-0002
+# đính chính: contract 1 đã cấm `integration` import `connection` theo cả hai
+# chiều, nên ngoại lệ đó chưa bao giờ dùng được. Ranh giới thật là
+# `app.entrypoints.wiring` — chỗ duy nhất biết cả hai domain.
+#
+# Vì vậy `integration` nằm trong danh sách bị cấm như mọi domain khác: nó nhận
+# token qua tham số, không qua `import`. Danh sách này giờ là **mọi domain trừ
+# `connection`**, và `connection` vắng mặt vì nó sở hữu credential store.
 [[tool.importlinter.contracts]]
-name = "Chỉ Integration Plane được chạm tới credential"
+name = "Credential không rò ra ngoài domain Connection"
 type = "forbidden"
 source_modules = [
+    "app.domains.integration.domain",
+    "app.domains.integration.application",
+    "app.domains.integration.infrastructure",
     "app.domains.agent",
     "app.domains.trace",
     "app.domains.workflow",
@@ -192,3 +207,30 @@ type = "forbidden"
 source_modules = ["app.entrypoints"]
 forbidden_modules = ["app.domains.*.domain"]
 allow_indirect_imports = true
+
+# ── Contract 6: Agent Runtime không có đường nào tới credential (§2.4) ────────
+#
+# Đây là hàng rào mà ADR-0001 muốn dựng, đặt đúng chỗ sau khi ADR-0002 xác định
+# lại ranh giới. Contract 4 canh các domain; contract này canh tiến trình.
+#
+# `app.entrypoints.wiring` nằm trong danh sách cấm vì nó là nơi DUY NHẤT dựng
+# được `CredentialResolver`. Một `import` từ Agent Runtime tới đó là đủ để đưa
+# token vào cùng tiến trình với LLM.
+#
+# KHÔNG đặt `allow_indirect_imports` ở đây — mặc định là bắt cả chuỗi gián
+# tiếp, và chuỗi `agent -> wiring -> credential_store` mới đúng là cái sai mà
+# Phase 3 sẽ mắc. Contract 5 nới ngoại lệ đó cho riêng nó, không phải cho
+# contract này.
+#
+# Hệ quả thiết kế: Agent Runtime buộc phải gọi Integration Gateway qua HTTP,
+# không gọi trong tiến trình. Đó là lý do tồn tại của endpoint invoke nội bộ.
+[[tool.importlinter.contracts]]
+name = "Agent Runtime không có đường nào tới credential"
+type = "forbidden"
+source_modules = ["app.entrypoints.agent"]
+forbidden_modules = [
+    "app.core.crypto",
+    "app.domains.connection.infrastructure.credential_store",
+    "app.domains.connection.application.service",
+    "app.entrypoints.wiring",
+]

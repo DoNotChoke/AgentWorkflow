@@ -38,14 +38,21 @@ Model khai báo `__table_args__ = {"schema": "<domain>"}`. Không JOIN chéo
 schema. Không ghi vào bảng của domain khác. Đây là điều kiện để tách service
 sau này mà không phải viết lại tầng dữ liệu.
 
-**4. Credential chỉ tồn tại bên trong Integration Plane.**
+**4. Credential chỉ tồn tại bên trong domain `connection`.**
 `app.core.crypto` và credential store chỉ được import bởi
-`connection.infrastructure` và Integration Gateway. Agent Runtime chỉ nhận
+`connection.infrastructure` và `app.entrypoints.wiring`. **Không một domain nào
+khác được import chúng — kể cả `integration`.** Integration Gateway nhận token
+đã giải mã qua **tham số**, không qua `import`; Agent Runtime chỉ nhận
 `connection_id`.
+
+ADR-0001 viết rằng ranh giới nằm ở `integration.infrastructure`. ADR-0002 đính
+chính: quy tắc 1 đã cấm `integration` import `connection`, nên ngoại lệ đó chưa
+bao giờ dùng được. Ranh giới thật là `wiring` — nơi duy nhất biết cả hai domain.
 
 Quy tắc 4 là quy tắc quan trọng nhất. Xem ADR-0001 mục "Rủi ro cần theo dõi" —
 khi Agent và Connection nằm chung process, ranh giới module là thứ **duy nhất**
-còn lại bảo vệ §2.4.
+còn lại bảo vệ §2.4. Nó được canh bởi hai contract: contract 4 canh các domain,
+contract 6 canh tiến trình Agent Runtime (kể cả chuỗi import gián tiếp).
 
 ## Danh sách domain và phase tương ứng
 

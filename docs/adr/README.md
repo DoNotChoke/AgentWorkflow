@@ -16,6 +16,7 @@ Những thay đổi thông thường không cần ADR. Việc lạm dụng ADR l
 | # | Quyết định | Trạng thái |
 |---|---|---|
 | [0001](0001-single-python-runtime-thay-cho-go-control-plane.md) | Dùng một runtime Python duy nhất thay cho Go Control Plane ở giai đoạn đầu | Accepted |
+| [0002](0002-ranh-gioi-credential-nam-o-wiring.md) | Ranh giới credential nằm ở `entrypoints/wiring`, không ở Integration Plane | Accepted |
 
 Mẫu: [`0000-template.md`](0000-template.md).
 
