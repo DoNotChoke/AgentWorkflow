@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #4f3cc9; text-decoration: none; }
+    a:hover { color: #3b2ba3; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="--accent: {{accent}}; width: 288px; height: 460px; position: relative; background: #f4f4f2; border-right: 1px solid #e5e5e3; color: #1a1a19; font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.45; overflow: hidden;">
+
+  <div style="height: 52px; padding: 0 14px; display: flex; align-items: center; border-bottom: 1px solid #e9e9e6;">
+    <span style="font-weight: 600; font-size: 14px;">Acme</span>
+  </div>
+
+  <!-- Ô chọn workspace, ở trạng thái đang mở -->
+  <div style="padding: 10px 10px 4px;">
+    <div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-radius: 6px; background: #ffffff; border: 1.5px solid var(--accent, #4f3cc9);">
+      <span style="color: #9a9a94; font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 13px;">#</span>
+      <span style="font-size: 13px; font-weight: 500; flex-grow: 1;">Marketing</span>
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--accent, #4f3cc9)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10l4-4 4 4"/></svg>
+    </div>
+  </div>
+
+  <!-- Điều hướng nằm dưới, bị popover che một phần -->
+  <div style="padding: 8px 10px; display: flex; flex-direction: column; gap: 1px;">
+    <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 9.5a2 2 0 01-2 2H6l-3.5 2.5V4.5a2 2 0 012-2h7a2 2 0 012 2z"/></svg>
+      <span>Agent</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="4" r="2"/><circle cx="12" cy="4" r="2"/><circle cx="8" cy="12" r="2"/><path d="M5.4 5.6L7.2 10.2M10.6 5.6L8.8 10.2"/></svg>
+      <span>Workflows</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M6.6 5.6l4 2.4-4 2.4z"/></svg>
+      <span>Runs</span>
+    </div>
+  </div>
+
+  <!-- ── POPOVER: danh sách workspace ────────────────────────────── -->
+  <div style="position: absolute; top: 92px; left: 10px; width: 268px; background: #ffffff; border: 1px solid #d8d8d4; border-radius: 9px; box-shadow: 0 10px 28px rgba(26, 26, 25, 0.14), 0 2px 6px rgba(26, 26, 25, 0.06); overflow: hidden;">
+
+    <div style="padding: 9px 12px 5px;">
+      <span style="font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9a9a94;">Workspaces in Acme</span>
+    </div>
+
+    <div style="padding: 0 6px 6px; display: flex; flex-direction: column; gap: 1px;">
+      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 6px; background: #faf9ff;">
+        <span style="color: #9a9a94; font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 13px;">#</span>
+        <span style="font-size: 13px; font-weight: 500; flex-grow: 1;">Marketing</span>
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="var(--accent, #4f3cc9)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.4 8.4l3 3 6.2-6.4"/></svg>
+      </div>
+      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 6px;">
+        <span style="color: #c4c4be; font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 13px;">#</span>
+        <span style="font-size: 13px; color: #3d3d3a; flex-grow: 1;">Engineering</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 6px;">
+        <span style="color: #c4c4be; font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 13px;">#</span>
+        <span style="font-size: 13px; color: #3d3d3a; flex-grow: 1;">Default</span>
+      </div>
+    </div>
+
+    <div style="height: 1px; background: #f0f0ee;"></div>
+
+    <div style="padding: 6px; display: flex; flex-direction: column; gap: 1px;">
+      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 6px;">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--accent, #4f3cc9)" stroke-width="1.6" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
+        <span style="font-size: 13px; font-weight: 500; color: var(--accent, #4f3cc9);">New workspace</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 6px;">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.4"/><path d="M8 1.9v1.6M8 12.5v1.6M1.9 8h1.6M12.5 8h1.6M3.7 3.7l1.1 1.1M11.2 11.2l1.1 1.1M12.3 3.7l-1.1 1.1M4.8 11.2l-1.1 1.1"/></svg>
+        <span style="font-size: 13px; color: #3d3d3a;">Manage workspaces</span>
+      </div>
+    </div>
+
+    <div style="padding: 9px 12px; border-top: 1px solid #f0f0ee; background: #fbfbfa;">
+      <span style="font-size: 11.5px; color: #9a9a94; line-height: 1.5;">Only workspaces you can reach are listed.</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#4f3cc9","options":["#4f3cc9","#0f766e","#b54708","#1a1a19"],"section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#4f3cc9' };
+  }
+}
+</script>
+</body>
+</html>

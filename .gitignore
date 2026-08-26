@@ -39,7 +39,11 @@ out/
 # ─── Design ──────────────────────────────────────────────────────────────────
 # Canvas đã seed (~2 MB, gồm cả code editor). Sinh lại được từ các file
 # *.dc.html và canvas.json bên cạnh, nên không đưa vào repo.
+#
+# Hai đường dẫn vì công cụ publish ghi ra thư mục gốc, còn skill design ghi
+# cạnh các artboard.
 design/agentworkflow-ui.html
+/agentworkflow-ui.html
 
 # ─── OS ──────────────────────────────────────────────────────────────────────
 .DS_Store

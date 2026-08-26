@@ -1,10 +1,141 @@
 {
   "artboards": [
-    { "file": "Login.dc.html", "x": 0, "y": 0, "w": 1120, "h": 760, "title": "Sign in" },
-    { "file": "OrgName.dc.html", "x": 1220, "y": 0, "w": 1120, "h": 760, "title": "Onboarding — name your organisation" },
-    { "file": "Main.dc.html", "x": 0, "y": 880, "w": 1440, "h": 900, "title": "Agent + execution trace" },
-    { "file": "Connections.dc.html", "x": 1540, "y": 880, "w": 1440, "h": 900, "title": "Connections" },
-    { "file": "Members.dc.html", "x": 3080, "y": 880, "w": 1440, "h": 900, "title": "Settings — Members" }
+    {
+      "file": "Login.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1120,
+      "h": 760,
+      "title": "Sign in"
+    },
+    {
+      "file": "OrgName.dc.html",
+      "x": 1220,
+      "y": 0,
+      "w": 1120,
+      "h": 760,
+      "title": "Onboarding — name your organisation"
+    },
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 880,
+      "w": 1440,
+      "h": 900,
+      "title": "Agent + execution trace"
+    },
+    {
+      "file": "Connections.dc.html",
+      "x": 1540,
+      "y": 880,
+      "w": 1440,
+      "h": 900,
+      "title": "Connections"
+    },
+    {
+      "file": "Members.dc.html",
+      "x": 3080,
+      "y": 880,
+      "w": 1440,
+      "h": 900,
+      "title": "Settings — Members"
+    },
+    {
+      "file": "WorkspaceSwitcher.dc.html",
+      "x": 0,
+      "y": 2080,
+      "w": 288,
+      "h": 460,
+      "title": "Workspace switcher"
+    },
+    {
+      "file": "WorkspaceSettings.dc.html",
+      "x": 440,
+      "y": 2080,
+      "w": 1440,
+      "h": 900,
+      "title": "Settings — Workspaces"
+    },
+    {
+      "file": "NewWorkspace.dc.html",
+      "x": 1980,
+      "y": 2080,
+      "w": 1440,
+      "h": 900,
+      "title": "New workspace"
+    },
+    {
+      "file": "DeleteWorkspace.dc.html",
+      "x": 3520,
+      "y": 2080,
+      "w": 1440,
+      "h": 900,
+      "title": "Delete workspace"
+    },
+    {
+      "file": "AddMember.dc.html",
+      "x": 0,
+      "y": 3480,
+      "w": 1440,
+      "h": 900,
+      "title": "Add member"
+    },
+    {
+      "file": "AddMemberRole.dc.html",
+      "x": 1540,
+      "y": 3480,
+      "w": 1440,
+      "h": 900,
+      "title": "Add member — picking the org role"
+    },
+    {
+      "file": "AddMemberNotFound.dc.html",
+      "x": 3080,
+      "y": 3480,
+      "w": 1440,
+      "h": 900,
+      "title": "Add member — no account for that email"
+    },
+    {
+      "file": "AddMemberDone.dc.html",
+      "x": 4620,
+      "y": 3480,
+      "w": 1440,
+      "h": 900,
+      "title": "Added, with nothing to open yet"
+    },
+    {
+      "file": "ConnectAccount.dc.html",
+      "x": 0,
+      "y": 5040,
+      "w": 1440,
+      "h": 900,
+      "title": "Connect an account — choosing who can use it"
+    },
+    {
+      "file": "ConnectionsManaged.dc.html",
+      "x": 1540,
+      "y": 5040,
+      "w": 1440,
+      "h": 900,
+      "title": "Connections in a managed organisation"
+    },
+    {
+      "file": "ConnectionPolicy.dc.html",
+      "x": 3080,
+      "y": 5040,
+      "w": 1440,
+      "h": 900,
+      "title": "Settings — connection policy"
+    },
+    {
+      "file": "ConnectionsAudit.dc.html",
+      "x": 4620,
+      "y": 5040,
+      "w": 1440,
+      "h": 900,
+      "title": "Settings — every account in the workspace"
+    }
   ],
   "annotations": [
     {
@@ -34,7 +165,51 @@
       "y": 1820,
       "w": 450,
       "text": "Provider reads as \"Slack\"; the Slack team shows by its own name (Acme HQ). The word \"workspace\" means only an AgentWorkflow workspace, anywhere in the UI."
+    },
+    {
+      "id": "workspace-note",
+      "x": 0,
+      "y": 2600,
+      "w": 420,
+      "text": "Two ways in, one place to act. The switcher is where people already are when they want another workspace, so it carries Create; renaming and deleting live in Settings, reached from the same menu.\nAddress is org-slug/workspace-slug, unique inside the organisation only. Unlike the organisation's own address it never freezes — so renaming is two separate decisions on one panel: the display name is free, the address breaks links people saved."
+    },
+    {
+      "id": "workspace-danger-note",
+      "x": 3520,
+      "y": 3020,
+      "w": 460,
+      "text": "The only irreversible action in the product. It names what dies, counts it, and asks for the workspace name typed out — the confirm button stays inert until it matches.\nIt also warns when members reach the organisation through this workspace alone, because deleting it leaves them with a seat and nothing to open.\nOne rule the backend does not enforce yet: an organisation must keep its last workspace. Every organisation is created with Default for exactly that reason, so the invariant already exists — delete is the one path that can still break it."
+    },
+    {
+      "id": "add-member-note",
+      "x": 0,
+      "y": 4420,
+      "w": 470,
+      "text": "Adding is not inviting, and the screen says so rather than pretending otherwise. The API takes an email and requires an account behind it, so the dialog states the precondition before the attempt and the failure state carries the way out — a sign-up link to hand over — because there is nothing to email from here.\nRole is the only decision at the door. Workspace access is deliberately not in the dialog: it is granted per workspace afterwards, from the panel."
+    },
+    {
+      "id": "add-member-gap-note",
+      "x": 4620,
+      "y": 4420,
+      "w": 460,
+      "text": "The state the API creates and nobody designs for: a member with a seat and no workspace. list_workspaces returns nothing for them, so they sign in to an empty organisation until someone grants one — which is why the last screen of the flow is the panel that fixes it, not a toast.\nTwo things this flow drops on purpose. \"Added by\" is on the Members panel but no column stores it — either add one or cut the row. And nothing here previews whether an email has an account, because a lookup endpoint would let anyone probe which addresses are registered."
+    },
+    {
+      "id": "ownership-note",
+      "x": 0,
+      "y": 5980,
+      "w": 470,
+      "text": "An account belongs either to the workspace or to one person, and that decision is made once — at the moment of connecting, on the dialog to the left. Reconnecting cannot change it: turning a private account into a shared one is a sharing decision, so it has to be made deliberately rather than arriving through a button that says something else.\nPrivate accounts are absent, not greyed out, for everyone but their owner. The list query filters them out in SQL — there is no view in the product where someone else's private account appears with a lock on it."
+    },
+    {
+      "id": "policy-note",
+      "x": 3080,
+      "y": 5980,
+      "w": 470,
+      "text": "Two organisations, one product. A company that wants every outbound call to go through accounts it controls picks managed; a team that also does personal work leaves it open. The policy only ever closes the private door — shared accounts need a workspace admin in both modes.\nTightening the policy pauses private accounts rather than deleting them, so the decision stays reversible; the panel names whose accounts they are before the switch, not after.\nThe last screen is the answer to the question the hiding creates: if nobody can see a private account, who removes it when its owner leaves? An administrator sees that it exists and can revoke it — and still cannot see the address behind it or use it."
     }
   ],
-  "launch": { "view": "canvas" }
+  "launch": {
+    "view": "canvas"
+  }
 }

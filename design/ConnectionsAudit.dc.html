@@ -1,0 +1,125 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #4f3cc9; text-decoration: none; }
+    a:hover { color: #3b2ba3; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="--accent: {{accent}}; width: 1440px; height: 900px; display: flex; background: #fbfbfa; color: #1a1a19; font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.45; overflow: hidden; position: relative;">
+  <div style="width: 64px; flex-shrink: 0; background: #e9e9e6; border-right: 1px solid #dcdcd7; display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 6px;">
+    <div style="width: 38px; height: 38px; border-radius: 9px; background: #ffffff; border: 1.5px solid var(--accent, #4f3cc9); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; color: var(--accent, #4f3cc9);">AC</div>
+    <div style="width: 38px; height: 38px; border-radius: 9px; background: #d9d9d4; display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 13px; color: #6b6b66;">BT</div>
+    <div style="flex-grow: 1;"></div>
+    <div style="width: 32px; height: 32px; border-radius: 50%; background: #1a1a19; display: flex; align-items: center; justify-content: center; color: #ffffff; font-size: 11px; font-weight: 600;">AH</div>
+  </div>
+  <div style="width: 248px; flex-shrink: 0; background: #f4f4f2; border-right: 1px solid #e5e5e3; display: flex; flex-direction: column;">
+    <div style="height: 52px; flex-shrink: 0; padding: 0 14px; display: flex; align-items: center; gap: 9px; border-bottom: 1px solid #e9e9e6;">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3L5 8l5 5"/></svg>
+      <span style="font-weight: 600; font-size: 14px;">Settings</span>
+    </div>
+    <div style="padding: 12px 10px 4px;">
+      <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9a9a94; padding: 0 10px;">Organisation</span>
+    </div>
+    <div style="padding: 4px 10px; display: flex; flex-direction: column; gap: 1px;">
+      <div style="padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">General</div>
+      <div style="padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">Members</div>
+      <div style="padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">Workspaces</div>
+      <div style="padding: 7px 10px; border-radius: 6px; font-size: 13px; background: #ffffff; border: 1px solid #e5e5e3; font-weight: 500;">Connections</div>
+      <div style="padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">Audit log</div>
+    </div>
+    <div style="padding: 14px 10px 4px;">
+      <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9a9a94; padding: 0 10px;">Billing</span>
+    </div>
+    <div style="padding: 4px 10px; display: flex; flex-direction: column; gap: 1px;">
+      <div style="padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">Usage</div>
+      <div style="padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">Plan &amp; invoices</div>
+    </div>
+  </div>
+  <div style="flex-grow: 1; display: flex; flex-direction: column; background: #ffffff; min-width: 0;">
+    <div style="height: 52px; flex-shrink: 0; padding: 0 28px; display: flex; align-items: center; gap: 18px; border-bottom: 1px solid #e5e5e3;">
+      <span style="font-weight: 600; font-size: 14px;">Connections</span>
+      <div style="display: flex; align-items: center; gap: 4px; margin-left: 6px;">
+        <div style="padding: 5px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">Policy</div>
+        <div style="padding: 5px 10px; border-radius: 6px; background: #f2f2f0; font-size: 13px; font-weight: 500;">All accounts</div>
+      </div>
+    </div>
+    <div style="padding: 24px 28px; display: flex; flex-direction: column; gap: 16px; overflow: hidden;">
+      <div style="display: flex; gap: 11px; align-items: flex-start; padding: 13px 15px; border: 1px solid #e5e5e3; background: #fbfbfa; border-radius: 9px;">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#4f3cc9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.75 7V5a2.25 2.25 0 0 1 4.5 0v2"/></svg>
+        <span style="font-size: 12.5px; color: #6b6b66; max-width: 700px;">Private accounts appear here so you can revoke one when someone leaves. You cannot see which address a private account points to, open it, or use it — the owner is the only person who can.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; border: 1px solid #e5e5e3; border-radius: 9px; overflow: hidden;">
+        <div style="display: grid; grid-template-columns: 46px minmax(0,1.6fr) minmax(0,1.2fr) 150px 130px 100px; gap: 16px; align-items: center; padding: 11px 16px; background: #fbfbfa; border-bottom: 1px solid #e5e5e3;">
+          <span></span>
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9a9a94;">Account</span>
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9a9a94;">Owner</span>
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9a9a94;">Who can use</span>
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9a9a94;">Status</span>
+          <span></span>
+        </div>
+        <div style="display: grid; grid-template-columns: 46px minmax(0,1.6fr) minmax(0,1.2fr) 150px 130px 100px; gap: 16px; align-items: center; padding: 14px 16px; border-bottom: 1px solid #f0f0ee;">
+          <div style="width: 26px; height: 26px; border-radius: 6px; background: #ffffff; border: 1px solid #e5e5e3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="15" height="15" viewBox="0 0 122.8 122.8" aria-label="Slack"><path d="M25.8 77.6a12.9 12.9 0 1 1-12.9-12.9h12.9zM32.3 77.6a12.9 12.9 0 0 1 25.8 0v32.3a12.9 12.9 0 0 1-25.8 0z" fill="#E01E5A"/><path d="M45.2 25.8a12.9 12.9 0 1 1 12.9-12.9v12.9zM45.2 32.3a12.9 12.9 0 0 1 0 25.8H12.9a12.9 12.9 0 0 1 0-25.8z" fill="#36C5F0"/><path d="M97 45.2a12.9 12.9 0 1 1 12.9 12.9H97zM90.5 45.2a12.9 12.9 0 0 1-25.8 0V12.9a12.9 12.9 0 0 1 25.8 0z" fill="#2EB67D"/><path d="M77.6 97a12.9 12.9 0 1 1-12.9 12.9V97zM77.6 90.5a12.9 12.9 0 0 1 0-25.8h32.3a12.9 12.9 0 0 1 0 25.8z" fill="#ECB22E"/></svg></div>
+          <span style="font-size: 13px;">Acme HQ</span>
+          <span style="font-size: 13px;">An Hoang</span>
+          <div style="display: flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 5px; background: #f2f2f0; width: fit-content;"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.3"/><path d="M2.2 13c0-2.1 1.7-3.4 3.8-3.4S9.8 10.9 9.8 13"/><path d="M10.6 4.1a2.3 2.3 0 0 1 0 4.4M11.4 13c0-1.6-.5-2.7-1.4-3.2"/></svg><span style="font-size: 11.5px; font-weight: 500; color: #6b6b66;">Workspace</span></div>
+          <div style="display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 20px; background: #edf7f1; flex-shrink: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #16794a;"></span><span style="font-size: 12px; font-weight: 500; color: #16794a;">Active</span></div>
+          <div style="height: 26px; padding: 0 10px; border: 1px solid #d8d8d4; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; background: #ffffff;">Manage</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 46px minmax(0,1.6fr) minmax(0,1.2fr) 150px 130px 100px; gap: 16px; align-items: center; padding: 14px 16px; border-bottom: 1px solid #f0f0ee;">
+          <div style="width: 26px; height: 26px; border-radius: 6px; background: #ffffff; border: 1px solid #e5e5e3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="15" height="15" viewBox="0 0 48 48" aria-label="Google"><path d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z" fill="#4285F4"/><path d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z" fill="#34A853"/><path d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34A21.99 21.99 0 0 0 2 24c0 3.55.85 6.91 2.34 9.88z" fill="#FBBC05"/><path d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z" fill="#EA4335"/></svg></div>
+          <span style="font-size: 13px;">ops@acme.com</span>
+          <span style="font-size: 13px;">An Hoang</span>
+          <div style="display: flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 5px; background: #f2f2f0; width: fit-content;"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.3"/><path d="M2.2 13c0-2.1 1.7-3.4 3.8-3.4S9.8 10.9 9.8 13"/><path d="M10.6 4.1a2.3 2.3 0 0 1 0 4.4M11.4 13c0-1.6-.5-2.7-1.4-3.2"/></svg><span style="font-size: 11.5px; font-weight: 500; color: #6b6b66;">Workspace</span></div>
+          <div style="display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 20px; background: #edf7f1; flex-shrink: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #16794a;"></span><span style="font-size: 12px; font-weight: 500; color: #16794a;">Active</span></div>
+          <div style="height: 26px; padding: 0 10px; border: 1px solid #d8d8d4; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; background: #ffffff;">Manage</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 46px minmax(0,1.6fr) minmax(0,1.2fr) 150px 130px 100px; gap: 16px; align-items: center; padding: 14px 16px; border-bottom: 1px solid #f0f0ee;">
+          <div style="width: 26px; height: 26px; border-radius: 6px; background: #ffffff; border: 1px solid #e5e5e3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="15" height="15" viewBox="0 0 48 48" aria-label="Google"><path d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z" fill="#4285F4"/><path d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z" fill="#34A853"/><path d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34A21.99 21.99 0 0 0 2 24c0 3.55.85 6.91 2.34 9.88z" fill="#FBBC05"/><path d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z" fill="#EA4335"/></svg></div>
+          <div style="display: flex; align-items: center; gap: 7px;"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#4f3cc9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.75 7V5a2.25 2.25 0 0 1 4.5 0v2"/></svg><span style="font-size: 13px; color: #9a9a94; font-style: italic;">Private account</span></div>
+          <span style="font-size: 13px;">An Hoang</span>
+          <div style="display: flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 5px; background: #f6f4ff; border: 1px solid #d5d0f0; width: fit-content;"><span style="font-size: 11.5px; font-weight: 500; color: #4f3cc9;">Owner only</span></div>
+          <div style="display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 20px; background: #edf7f1; flex-shrink: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #16794a;"></span><span style="font-size: 12px; font-weight: 500; color: #16794a;">Active</span></div>
+          <div style="height: 26px; padding: 0 10px; border: 1px solid #f0d5d2; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: #b42318; background: #ffffff;">Revoke</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 46px minmax(0,1.6fr) minmax(0,1.2fr) 150px 130px 100px; gap: 16px; align-items: center; padding: 14px 16px; border-bottom: 1px solid #f0f0ee;">
+          <div style="width: 26px; height: 26px; border-radius: 6px; background: #ffffff; border: 1px solid #e5e5e3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="15" height="15" viewBox="0 0 122.8 122.8" aria-label="Slack"><path d="M25.8 77.6a12.9 12.9 0 1 1-12.9-12.9h12.9zM32.3 77.6a12.9 12.9 0 0 1 25.8 0v32.3a12.9 12.9 0 0 1-25.8 0z" fill="#E01E5A"/><path d="M45.2 25.8a12.9 12.9 0 1 1 12.9-12.9v12.9zM45.2 32.3a12.9 12.9 0 0 1 0 25.8H12.9a12.9 12.9 0 0 1 0-25.8z" fill="#36C5F0"/><path d="M97 45.2a12.9 12.9 0 1 1 12.9 12.9H97zM90.5 45.2a12.9 12.9 0 0 1-25.8 0V12.9a12.9 12.9 0 0 1 25.8 0z" fill="#2EB67D"/><path d="M77.6 97a12.9 12.9 0 1 1-12.9 12.9V97zM77.6 90.5a12.9 12.9 0 0 1 0-25.8h32.3a12.9 12.9 0 0 1 0 25.8z" fill="#ECB22E"/></svg></div>
+          <div style="display: flex; align-items: center; gap: 7px;"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#4f3cc9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.75 7V5a2.25 2.25 0 0 1 4.5 0v2"/></svg><span style="font-size: 13px; color: #9a9a94; font-style: italic;">Private account</span></div>
+          <span style="font-size: 13px;">Bình Trần</span>
+          <div style="display: flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 5px; background: #f6f4ff; border: 1px solid #d5d0f0; width: fit-content;"><span style="font-size: 11.5px; font-weight: 500; color: #4f3cc9;">Owner only</span></div>
+          <div style="display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 20px; background: #edf7f1; flex-shrink: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #16794a;"></span><span style="font-size: 12px; font-weight: 500; color: #16794a;">Active</span></div>
+          <div style="height: 26px; padding: 0 10px; border: 1px solid #f0d5d2; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: #b42318; background: #ffffff;">Revoke</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 46px minmax(0,1.6fr) minmax(0,1.2fr) 150px 130px 100px; gap: 16px; align-items: center; padding: 14px 16px; border-bottom: 1px solid #f0f0ee;">
+          <div style="width: 26px; height: 26px; border-radius: 6px; background: #ffffff; border: 1px solid #e5e5e3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="15" height="15" viewBox="0 0 48 48" aria-label="Google"><path d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z" fill="#4285F4"/><path d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z" fill="#34A853"/><path d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34A21.99 21.99 0 0 0 2 24c0 3.55.85 6.91 2.34 9.88z" fill="#FBBC05"/><path d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z" fill="#EA4335"/></svg></div>
+          <div style="display: flex; align-items: center; gap: 7px;"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#4f3cc9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.75 7V5a2.25 2.25 0 0 1 4.5 0v2"/></svg><span style="font-size: 13px; color: #9a9a94; font-style: italic;">Private account</span></div>
+          <span style="font-size: 13px;">Chi Lê</span>
+          <div style="display: flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 5px; background: #f6f4ff; border: 1px solid #d5d0f0; width: fit-content;"><span style="font-size: 11.5px; font-weight: 500; color: #4f3cc9;">Owner only</span></div>
+          <div style="display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 20px; background: #f2f2f0; flex-shrink: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #6b6b66;"></span><span style="font-size: 12px; font-weight: 500; color: #6b6b66;">Paused</span></div>
+          <div style="height: 26px; padding: 0 10px; border: 1px solid #f0d5d2; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: #b42318; background: #ffffff;">Revoke</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"accent":{"editor":"color","default":"#4f3cc9","options":["#4f3cc9","#0f766e","#b54708","#1a1a19"],"section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#4f3cc9' };
+  }
+}
+</script>
+</body>
+</html>

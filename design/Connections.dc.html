@@ -16,15 +16,13 @@
   </style>
 </helmet>
 
-<div style="--accent: {{accent}}; width: 1440px; height: 900px; display: flex; background: #fbfbfa; color: #1a1a19; font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.45; overflow: hidden;">
-
+<div style="--accent: {{accent}}; width: 1440px; height: 900px; display: flex; background: #fbfbfa; color: #1a1a19; font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.45; overflow: hidden; position: relative;">
   <div style="width: 64px; flex-shrink: 0; background: #e9e9e6; border-right: 1px solid #dcdcd7; display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 6px;">
     <div style="width: 38px; height: 38px; border-radius: 9px; background: #ffffff; border: 1.5px solid var(--accent, #4f3cc9); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; color: var(--accent, #4f3cc9);">AC</div>
     <div style="width: 38px; height: 38px; border-radius: 9px; background: #d9d9d4; display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 13px; color: #6b6b66;">BT</div>
     <div style="flex-grow: 1;"></div>
     <div style="width: 32px; height: 32px; border-radius: 50%; background: #1a1a19; display: flex; align-items: center; justify-content: center; color: #ffffff; font-size: 11px; font-weight: 600;">AH</div>
   </div>
-
   <div style="width: 248px; flex-shrink: 0; background: #f4f4f2; border-right: 1px solid #e5e5e3; display: flex; flex-direction: column;">
     <div style="height: 52px; flex-shrink: 0; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e9e9e6;">
       <span style="font-weight: 600; font-size: 14px;">Acme</span>
@@ -38,209 +36,100 @@
       </div>
     </div>
     <div style="padding: 8px 10px; display: flex; flex-direction: column; gap: 1px;">
-      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 9.5a2 2 0 01-2 2H6l-3.5 2.5V4.5a2 2 0 012-2h7a2 2 0 012 2z"/></svg>
-        <span>Agent</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="4" r="2"/><circle cx="12" cy="4" r="2"/><circle cx="8" cy="12" r="2"/><path d="M5.4 5.6L7.2 10.2M10.6 5.6L8.8 10.2"/></svg>
-        <span>Workflows</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M6.6 5.6l4 2.4-4 2.4z"/></svg>
-        <span>Runs</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; background: #ffffff; border: 1px solid #e5e5e3; font-size: 13px; font-weight: 500;">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--accent, #4f3cc9)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v3.5M10 2v3.5M4.5 5.5h7v2.2a3.5 3.5 0 01-7 0zM8 11.2V14"/></svg>
-        <span>Connections</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M5.5 8.2l1.8 1.8 3.4-3.6"/></svg>
-        <span style="flex-grow: 1;">Approvals</span>
-        <span style="min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent, #4f3cc9); color: #ffffff; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center;">2</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2.4"/><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"/></svg>
-        <span>Settings</span>
-      </div>
+      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 9.5a2 2 0 01-2 2H6l-3.5 2.5V4.5a2 2 0 012-2h7a2 2 0 012 2z"/></svg><span>Agent</span></div>
+      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="4" r="2"/><circle cx="12" cy="4" r="2"/><circle cx="8" cy="12" r="2"/><path d="M5.4 5.6L7.2 10.2M10.6 5.6L8.8 10.2"/></svg><span>Workflows</span></div>
+      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M6.6 5.6l4 2.4-4 2.4z"/></svg><span>Runs</span></div>
+      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; font-size: 13px; background: #ffffff; border: 1px solid #e5e5e3; font-weight: 500;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--accent, #4f3cc9)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v3.5M10 2v3.5M4.5 5.5h7v2.2a3.5 3.5 0 01-7 0zM8 11.2V14"/></svg><span>Connections</span></div>
+      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M5.5 8.2l1.8 1.8 3.4-3.6"/></svg><span style="flex-grow: 1;">Approvals</span><span style="min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent, #4f3cc9); color: #ffffff; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center;">2</span></div>
+      <div style="display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #3d3d3a;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2.4"/><path d="M8 1.6v1.8M8 12.6v1.8M1.6 8h1.8M12.6 8h1.8M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"/></svg><span>Settings</span></div>
     </div>
   </div>
-
-  <!-- ── MAIN ────────────────────────────────────────────────────── -->
   <div style="flex-grow: 1; display: flex; flex-direction: column; background: #ffffff; min-width: 0;">
-
     <div style="height: 52px; flex-shrink: 0; padding: 0 28px; display: flex; align-items: center; border-bottom: 1px solid #e5e5e3;">
       <span style="font-weight: 600; font-size: 14px;">Connections</span>
       <div style="flex-grow: 1;"></div>
-      <div style="display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 7px; background: #1a1a19; color: #ffffff; font-size: 13px; font-weight: 500;">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
-        <span>Add connection</span>
-      </div>
+      <div style="display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 7px; background: #1a1a19; color: #ffffff; font-size: 13px; font-weight: 500;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg><span>Add account</span></div>
     </div>
-
-    <div style="padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; overflow: hidden;">
-
-      <span style="font-size: 13px; color: #6b6b66; max-width: 620px;">Connections belong to the <strong style="font-weight: 500; color: #1a1a19;">Marketing</strong> workspace. Credentials are stored encrypted and are never shown to the agent — it only ever receives a connection reference.</span>
-
+    <div style="padding: 22px 28px; display: flex; flex-direction: column; gap: 20px; overflow: hidden;">
+      <span style="font-size: 13px; color: #6b6b66; max-width: 640px;">Accounts live in the <strong style="font-weight: 500; color: #1a1a19;">Marketing</strong> workspace. Tokens are stored encrypted and never reach the agent — it only ever receives a reference.</span>
       <div style="display: flex; flex-direction: column; gap: 8px;">
-        <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9a9a94;">Connected</span>
-
-        <div style="border: 1.5px solid var(--accent, #4f3cc9); border-radius: 9px; background: #ffffff; padding: 14px 16px; display: flex; align-items: center; gap: 14px;">
-          <div style="width: 36px; height: 36px; border-radius: 8px; background: #efe9f5; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; color: #6b4a80; flex-shrink: 0;">S</div>
+        <div style="display: flex; align-items: baseline; gap: 10px;">
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9a9a94;">Workspace accounts</span>
+          <span style="font-size: 12.5px; color: #9a9a94;">Anyone in Marketing can use these</span>
+        </div>
+        <div style="border: 1px solid #e5e5e3; border-radius: 9px; background: #ffffff; padding: 14px 16px; display: flex; align-items: center; gap: 14px;">
+          <div style="width: 36px; height: 36px; border-radius: 8px; background: #ffffff; border: 1px solid #e5e5e3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="19" height="19" viewBox="0 0 122.8 122.8" aria-label="Slack"><path d="M25.8 77.6a12.9 12.9 0 1 1-12.9-12.9h12.9zM32.3 77.6a12.9 12.9 0 0 1 25.8 0v32.3a12.9 12.9 0 0 1-25.8 0z" fill="#E01E5A"/><path d="M45.2 25.8a12.9 12.9 0 1 1 12.9-12.9v12.9zM45.2 32.3a12.9 12.9 0 0 1 0 25.8H12.9a12.9 12.9 0 0 1 0-25.8z" fill="#36C5F0"/><path d="M97 45.2a12.9 12.9 0 1 1 12.9 12.9H97zM90.5 45.2a12.9 12.9 0 0 1-25.8 0V12.9a12.9 12.9 0 0 1 25.8 0z" fill="#2EB67D"/><path d="M77.6 97a12.9 12.9 0 1 1-12.9 12.9V97zM77.6 90.5a12.9 12.9 0 0 1 0-25.8h32.3a12.9 12.9 0 0 1 0 25.8z" fill="#ECB22E"/></svg></div>
           <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
             <span style="font-size: 14px; font-weight: 500;">Slack</span>
-            <span style="font-size: 12.5px; color: #6b6b66;">Acme HQ · 4 scopes · added 12 Aug</span>
+            <span style="font-size: 12.5px; color: #6b6b66;">Acme HQ · 3 scopes · added 12 Aug</span>
           </div>
-          <div style="display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 20px; background: #edf7f1; flex-shrink: 0;">
-            <span style="width: 6px; height: 6px; border-radius: 50%; background: #16794a;"></span>
-            <span style="font-size: 12px; font-weight: 500; color: #16794a;">Active</span>
-          </div>
+          <div style="display: flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 5px; background: #f2f2f0; flex-shrink: 0;"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.3"/><path d="M2.2 13c0-2.1 1.7-3.4 3.8-3.4S9.8 10.9 9.8 13"/><path d="M10.6 4.1a2.3 2.3 0 0 1 0 4.4M11.4 13c0-1.6-.5-2.7-1.4-3.2"/></svg><span style="font-size: 11.5px; font-weight: 500; color: #6b6b66;">Workspace</span></div>
+          <div style="display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 20px; background: #edf7f1; flex-shrink: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #16794a;"></span><span style="font-size: 12px; font-weight: 500; color: #16794a;">Active</span></div>
         </div>
-
         <div style="border: 1px solid #e5e5e3; border-radius: 9px; background: #ffffff; padding: 14px 16px; display: flex; align-items: center; gap: 14px;">
-          <div style="width: 36px; height: 36px; border-radius: 8px; background: #efe9f5; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; color: #6b4a80; flex-shrink: 0;">S</div>
+          <div style="width: 36px; height: 36px; border-radius: 8px; background: #ffffff; border: 1px solid #e5e5e3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="19" height="19" viewBox="0 0 48 48" aria-label="Google"><path d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z" fill="#4285F4"/><path d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z" fill="#34A853"/><path d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34A21.99 21.99 0 0 0 2 24c0 3.55.85 6.91 2.34 9.88z" fill="#FBBC05"/><path d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z" fill="#EA4335"/></svg></div>
           <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
-            <span style="font-size: 14px; font-weight: 500;">Slack</span>
-            <span style="font-size: 12.5px; color: #6b6b66;">Acme Engineering · token expired 2 days ago</span>
+            <span style="font-size: 14px; font-weight: 500;">Google</span>
+            <span style="font-size: 12.5px; color: #6b6b66;">ops@acme.com · token expired 2 days ago</span>
           </div>
-          <div style="display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 20px; background: #fdf2e6; flex-shrink: 0;">
-            <span style="width: 6px; height: 6px; border-radius: 50%; background: #b54708;"></span>
-            <span style="font-size: 12px; font-weight: 500; color: #b54708;">Reconnect required</span>
-          </div>
-          <div style="height: 28px; padding: 0 11px; border: 1px solid #d8d8d4; border-radius: 6px; display: flex; align-items: center; font-size: 12.5px; font-weight: 500; flex-shrink: 0;">Reconnect</div>
-        </div>
-
-        <div style="border: 1px solid #e5e5e3; border-radius: 9px; background: #ffffff; padding: 14px 16px; display: flex; align-items: center; gap: 14px;">
-          <div style="width: 36px; height: 36px; border-radius: 8px; background: #eeeeec; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; color: #4a4a46; flex-shrink: 0;">N</div>
-          <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
-            <span style="font-size: 14px; font-weight: 500;">Notion</span>
-            <span style="font-size: 12.5px; color: #6b6b66;">Acme Wiki · 3 scopes · added 12 Aug</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 20px; background: #edf7f1; flex-shrink: 0;">
-            <span style="width: 6px; height: 6px; border-radius: 50%; background: #16794a;"></span>
-            <span style="font-size: 12px; font-weight: 500; color: #16794a;">Active</span>
-          </div>
-        </div>
-
-        <div style="border: 1px solid #e5e5e3; border-radius: 9px; background: #ffffff; padding: 14px 16px; display: flex; align-items: center; gap: 14px;">
-          <div style="width: 36px; height: 36px; border-radius: 8px; background: #e8eef0; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; color: #3f5a63; flex-shrink: 0;">L</div>
-          <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
-            <span style="font-size: 14px; font-weight: 500;">Linear</span>
-            <span style="font-size: 12.5px; color: #6b6b66;">Acme · missing scope <span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 12px;">issues:write</span></span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 20px; background: #fdf2e6; flex-shrink: 0;">
-            <span style="width: 6px; height: 6px; border-radius: 50%; background: #b54708;"></span>
-            <span style="font-size: 12px; font-weight: 500; color: #b54708;">Missing scope</span>
-          </div>
-          <div style="height: 28px; padding: 0 11px; border: 1px solid #d8d8d4; border-radius: 6px; display: flex; align-items: center; font-size: 12.5px; font-weight: 500; flex-shrink: 0;">Grant</div>
+          <div style="display: flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 5px; background: #f2f2f0; flex-shrink: 0;"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#6b6b66" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.3"/><path d="M2.2 13c0-2.1 1.7-3.4 3.8-3.4S9.8 10.9 9.8 13"/><path d="M10.6 4.1a2.3 2.3 0 0 1 0 4.4M11.4 13c0-1.6-.5-2.7-1.4-3.2"/></svg><span style="font-size: 11.5px; font-weight: 500; color: #6b6b66;">Workspace</span></div>
+          <div style="display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 20px; background: #fdf2e6; flex-shrink: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #b54708;"></span><span style="font-size: 12px; font-weight: 500; color: #b54708;">Reconnect required</span></div>
+          <div style="height: 28px; padding: 0 11px; border: 1px solid #d8d8d4; border-radius: 6px; display: flex; align-items: center; font-size: 12.5px; font-weight: 500; flex-shrink: 0; background: #ffffff;">Reconnect</div>
         </div>
       </div>
-
       <div style="display: flex; flex-direction: column; gap: 8px;">
-        <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9a9a94;">Available</span>
-        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;">
-
-          <div style="border: 1px solid #e5e5e3; border-radius: 9px; background: #ffffff; padding: 13px 14px; display: flex; align-items: center; gap: 11px;">
-            <div style="width: 30px; height: 30px; border-radius: 7px; background: #eaefe9; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; color: #43604a; flex-shrink: 0;">G</div>
-            <span style="font-size: 13.5px; font-weight: 500; flex-grow: 1;">Google Drive</span>
-            <span style="font-size: 12.5px; font-weight: 500; color: var(--accent, #4f3cc9);">Connect</span>
+        <div style="display: flex; align-items: baseline; gap: 10px;">
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9a9a94;">Your accounts</span>
+          <span style="font-size: 12.5px; color: #9a9a94;">Nobody else in the workspace sees these</span>
+        </div>
+        <div style="border: 1.5px solid var(--accent, #4f3cc9); border-radius: 9px; background: #ffffff; padding: 14px 16px; display: flex; align-items: center; gap: 14px;">
+          <div style="width: 36px; height: 36px; border-radius: 8px; background: #ffffff; border: 1px solid #e5e5e3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="19" height="19" viewBox="0 0 48 48" aria-label="Google"><path d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z" fill="#4285F4"/><path d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z" fill="#34A853"/><path d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34A21.99 21.99 0 0 0 2 24c0 3.55.85 6.91 2.34 9.88z" fill="#FBBC05"/><path d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z" fill="#EA4335"/></svg></div>
+          <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0;">
+            <span style="font-size: 14px; font-weight: 500;">Google</span>
+            <span style="font-size: 12.5px; color: #6b6b66;">an@acme.com · 3 scopes · added 19 Aug</span>
           </div>
-
-          <div style="border: 1px solid #e5e5e3; border-radius: 9px; background: #ffffff; padding: 13px 14px; display: flex; align-items: center; gap: 11px;">
-            <div style="width: 30px; height: 30px; border-radius: 7px; background: #f3e9e9; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; color: #7a4646; flex-shrink: 0;">M</div>
-            <span style="font-size: 13.5px; font-weight: 500; flex-grow: 1;">Gmail</span>
-            <span style="font-size: 12.5px; font-weight: 500; color: var(--accent, #4f3cc9);">Connect</span>
-          </div>
-
-          <div style="border: 1px solid #e5e5e3; border-radius: 9px; background: #ffffff; padding: 13px 14px; display: flex; align-items: center; gap: 11px;">
-            <div style="width: 30px; height: 30px; border-radius: 7px; background: #eeeeec; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; color: #3d3d3a; flex-shrink: 0;">H</div>
-            <span style="font-size: 13.5px; font-weight: 500; flex-grow: 1;">GitHub</span>
-            <span style="font-size: 12.5px; font-weight: 500; color: var(--accent, #4f3cc9);">Connect</span>
-          </div>
-
-          <div style="border: 1px solid #e5e5e3; border-radius: 9px; background: #ffffff; padding: 13px 14px; display: flex; align-items: center; gap: 11px;">
-            <div style="width: 30px; height: 30px; border-radius: 7px; background: #e9edf3; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; color: #44536b; flex-shrink: 0;">C</div>
-            <span style="font-size: 13.5px; font-weight: 500; flex-grow: 1;">Google Calendar</span>
-            <span style="font-size: 12.5px; font-weight: 500; color: var(--accent, #4f3cc9);">Connect</span>
-          </div>
-
-          <div style="border: 1px solid #e5e5e3; border-radius: 9px; background: #ffffff; padding: 13px 14px; display: flex; align-items: center; gap: 11px;">
-            <div style="width: 30px; height: 30px; border-radius: 7px; background: #eceaf4; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; color: #4d4a6b; flex-shrink: 0;">J</div>
-            <span style="font-size: 13.5px; font-weight: 500; flex-grow: 1;">Jira</span>
-            <span style="font-size: 12.5px; font-weight: 500; color: var(--accent, #4f3cc9);">Connect</span>
-          </div>
-
-          <div style="border: 1px dashed #d8d8d4; border-radius: 9px; background: #fbfbfa; padding: 13px 14px; display: flex; align-items: center; gap: 11px;">
-            <div style="width: 30px; height: 30px; border-radius: 7px; border: 1px dashed #c4c4be; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#9a9a94" stroke-width="1.5" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
-            </div>
-            <span style="font-size: 13.5px; font-weight: 500; color: #6b6b66; flex-grow: 1;">Custom HTTP</span>
-          </div>
+          <div style="display: flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 5px; background: #f6f4ff; border: 1px solid #d5d0f0; flex-shrink: 0;"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#4f3cc9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.75 7V5a2.25 2.25 0 0 1 4.5 0v2"/></svg><span style="font-size: 11.5px; font-weight: 500; color: #4f3cc9;">Only you</span></div>
+          <div style="display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 20px; background: #edf7f1; flex-shrink: 0;"><span style="width: 6px; height: 6px; border-radius: 50%; background: #16794a;"></span><span style="font-size: 12px; font-weight: 500; color: #16794a;">Active</span></div>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 4px; padding-top: 26px; border-top: 1px solid #e5e5e3;">
+        <div style="display: flex; align-items: baseline; gap: 10px;">
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9a9a94;">Add an account</span>
+          <span style="font-size: 12.5px; color: #9a9a94;">Sign in to the provider to connect it</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+          <div style="border: 1px solid #e5e5e3; border-radius: 9px; background: #ffffff; padding: 13px 14px; display: flex; align-items: center; gap: 11px;"><div style="width: 30px; height: 30px; border-radius: 7px; background: #ffffff; border: 1px solid #e5e5e3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="17" height="17" viewBox="0 0 122.8 122.8" aria-label="Slack"><path d="M25.8 77.6a12.9 12.9 0 1 1-12.9-12.9h12.9zM32.3 77.6a12.9 12.9 0 0 1 25.8 0v32.3a12.9 12.9 0 0 1-25.8 0z" fill="#E01E5A"/><path d="M45.2 25.8a12.9 12.9 0 1 1 12.9-12.9v12.9zM45.2 32.3a12.9 12.9 0 0 1 0 25.8H12.9a12.9 12.9 0 0 1 0-25.8z" fill="#36C5F0"/><path d="M97 45.2a12.9 12.9 0 1 1 12.9 12.9H97zM90.5 45.2a12.9 12.9 0 0 1-25.8 0V12.9a12.9 12.9 0 0 1 25.8 0z" fill="#2EB67D"/><path d="M77.6 97a12.9 12.9 0 1 1-12.9 12.9V97zM77.6 90.5a12.9 12.9 0 0 1 0-25.8h32.3a12.9 12.9 0 0 1 0 25.8z" fill="#ECB22E"/></svg></div><span style="font-size: 13.5px; font-weight: 500; flex-grow: 1;">Slack</span><span style="font-size: 12.5px; font-weight: 500; color: var(--accent, #4f3cc9);">Connect</span></div>
+          <div style="border: 1px solid #e5e5e3; border-radius: 9px; background: #ffffff; padding: 13px 14px; display: flex; align-items: center; gap: 11px;"><div style="width: 30px; height: 30px; border-radius: 7px; background: #ffffff; border: 1px solid #e5e5e3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="17" height="17" viewBox="0 0 48 48" aria-label="Google"><path d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z" fill="#4285F4"/><path d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z" fill="#34A853"/><path d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34A21.99 21.99 0 0 0 2 24c0 3.55.85 6.91 2.34 9.88z" fill="#FBBC05"/><path d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z" fill="#EA4335"/></svg></div><span style="font-size: 13.5px; font-weight: 500; flex-grow: 1;">Google</span><span style="font-size: 12.5px; font-weight: 500; color: var(--accent, #4f3cc9);">Connect</span></div>
         </div>
       </div>
     </div>
   </div>
-
-  <!-- ── PANEL: connection detail ────────────────────────────────── -->
   <div style="width: 348px; flex-shrink: 0; background: #fbfbfa; border-left: 1px solid #e5e5e3; display: flex; flex-direction: column;">
-
     <div style="height: 52px; flex-shrink: 0; padding: 0 16px; display: flex; align-items: center; border-bottom: 1px solid #e5e5e3;">
-      <span style="font-weight: 600; font-size: 13px;">Connection</span>
+      <span style="font-weight: 600; font-size: 13px;">Account</span>
       <div style="flex-grow: 1;"></div>
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#9a9a94" stroke-width="1.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
     </div>
-
     <div style="padding: 16px; display: flex; flex-direction: column; gap: 16px; flex-grow: 1;">
-
-      <div style="display: flex; align-items: center; gap: 12px;">
-        <div style="width: 40px; height: 40px; border-radius: 9px; background: #efe9f5; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 15px; color: #6b4a80;">S</div>
-        <div style="display: flex; flex-direction: column; gap: 1px;">
-          <span style="font-size: 14px; font-weight: 600;">Slack</span>
-          <span style="font-size: 12.5px; color: #6b6b66;">Acme HQ</span>
-        </div>
+      <div style="display: flex; align-items: center; gap: 12px;"><div style="width: 40px; height: 40px; border-radius: 9px; background: #ffffff; border: 1px solid #e5e5e3; display: flex; align-items: center; justify-content: center; flex-shrink: 0;"><svg width="22" height="22" viewBox="0 0 48 48" aria-label="Google"><path d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z" fill="#4285F4"/><path d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z" fill="#34A853"/><path d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34A21.99 21.99 0 0 0 2 24c0 3.55.85 6.91 2.34 9.88z" fill="#FBBC05"/><path d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z" fill="#EA4335"/></svg></div><div style="display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 14px; font-weight: 600;">Google</span><span style="font-size: 12.5px; color: #6b6b66;">an@acme.com</span></div></div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-radius: 7px; background: #f6f4ff; border: 1px solid #d5d0f0;"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#4f3cc9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.75 7V5a2.25 2.25 0 0 1 4.5 0v2"/></svg><span style="font-size: 12.5px; color: #3b2ba3;">Private — only you can use this account.</span></div>
+      <div style="display: grid; grid-template-columns: 88px 1fr; gap: 7px 12px; font-size: 12.5px;">
+        <span style="color: #9a9a94;">Account</span><span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 12px;">conn_9f4c1ab7</span>
+        <span style="color: #9a9a94;">Owner</span><span>You</span>
+        <span style="color: #9a9a94;">Added</span><span>19 Aug</span>
+        <span style="color: #9a9a94;">Refreshed</span><span>4 minutes ago</span>
       </div>
-
-      <div style="display: grid; grid-template-columns: 96px 1fr; gap: 7px 12px; font-size: 12.5px;">
-        <span style="color: #9a9a94;">Connection</span><span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 12px;">conn_7d13ba9f</span>
-        <span style="color: #9a9a94;">Team</span><span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 12px;">T024BE7LG</span>
-        <span style="color: #9a9a94;">Added by</span><span>An Hoang</span>
-        <span style="color: #9a9a94;">Last used</span><span>2 minutes ago</span>
-      </div>
-
       <div style="display: flex; flex-direction: column; gap: 8px;">
         <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9a9a94;">Granted scopes</span>
-        <div style="display: flex; flex-wrap: wrap; gap: 5px;">
-          <span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; padding: 3px 8px; border: 1px solid #e5e5e3; border-radius: 5px; background: #ffffff;">channels:history</span>
-          <span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; padding: 3px 8px; border: 1px solid #e5e5e3; border-radius: 5px; background: #ffffff;">channels:read</span>
-          <span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; padding: 3px 8px; border: 1px solid #e5e5e3; border-radius: 5px; background: #ffffff;">chat:write</span>
-          <span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; padding: 3px 8px; border: 1px solid #e5e5e3; border-radius: 5px; background: #ffffff;">users:read</span>
-        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 5px;"><span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; padding: 3px 8px; border: 1px solid #e5e5e3; border-radius: 5px; background: #ffffff;">drive.readonly</span><span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; padding: 3px 8px; border: 1px solid #e5e5e3; border-radius: 5px; background: #ffffff;">userinfo.email</span><span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; padding: 3px 8px; border: 1px solid #e5e5e3; border-radius: 5px; background: #ffffff;">openid</span></div>
       </div>
-
-      <div style="display: flex; flex-direction: column; gap: 8px;">
-        <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #9a9a94;">Recent activity</span>
-        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12.5px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="width: 5px; height: 5px; border-radius: 50%; background: #16794a; flex-shrink: 0;"></span>
-            <span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 12px; flex-grow: 1;">search_messages</span>
-            <span style="color: #9a9a94;">2m ago</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="width: 5px; height: 5px; border-radius: 50%; background: #16794a; flex-shrink: 0;"></span>
-            <span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 12px; flex-grow: 1;">post_message</span>
-            <span style="color: #9a9a94;">1h ago</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="width: 5px; height: 5px; border-radius: 50%; background: #b54708; flex-shrink: 0;"></span>
-            <span style="font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 12px; flex-grow: 1;">post_message</span>
-            <span style="color: #9a9a94;">1h ago · rate limited</span>
-          </div>
-        </div>
+      <div style="padding: 11px 12px; border-radius: 7px; background: #f2f2f0;">
+        <span style="font-size: 12.5px; color: #6b6b66;">An administrator can revoke this account — when you leave, for instance — but cannot open it, use it, or see which address it points to.</span>
       </div>
     </div>
-
     <div style="padding: 16px; border-top: 1px solid #e5e5e3; display: flex; flex-direction: column; gap: 8px;">
       <div style="height: 34px; border: 1px solid #d8d8d4; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; background: #ffffff;">Reconnect</div>
+      <div style="height: 34px; border: 1px solid #d8d8d4; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; background: #ffffff;">Pause</div>
       <div style="height: 34px; border: 1px solid #f0d5d2; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; color: #b42318; background: #ffffff;">Disconnect</div>
     </div>
   </div>
