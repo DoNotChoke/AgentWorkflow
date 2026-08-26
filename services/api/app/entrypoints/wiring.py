@@ -20,8 +20,11 @@ from collections.abc import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import AuthorizationError
+from app.domains.connection.application.ports import TenantGuard, WorkspaceContext
 from app.domains.identity.infrastructure.repositories import SqlAlchemyUserRepository
 from app.domains.tenant.application.ports import UserDirectory, UserProfile
+from app.domains.tenant.application.service import TenantService
 
 
 def _to_profile(user: object) -> UserProfile:
@@ -64,3 +67,99 @@ class IdentityUserDirectory:
 def build_user_directory(session: AsyncSession) -> UserDirectory:
     """Dựng ``UserDirectory`` từ một session, để gắn vào ``app.state``."""
     return IdentityUserDirectory(SqlAlchemyUserRepository(session))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Connection ← Tenant
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: Vai trò workspace được phép quản lý kết nối, ở dạng chuỗi đã mã hoá.
+#:
+#: So bằng chuỗi chứ không bằng enum ``WorkspaceRole`` là có chủ đích: contract
+#: 5 cấm entrypoint import thẳng tầng `domain` của một domain. Chính vì thế mà
+#: Tenant đã chọn mã hoá vai trò thành chuỗi (`org:owner`, `ws:admin`) cho các
+#: domain khác dùng — xem `core/http_auth.user_principal`. Đây dùng lại đúng
+#: cách mã hoá đó, không phát minh cách thứ hai.
+_WORKSPACE_MANAGER_ROLE = "ws:admin"
+
+#: Thu hồi được kết nối riêng của người khác — cần cho việc dọn dẹp khi có
+#: người rời tổ chức.
+_ORG_ADMIN_ROLES = frozenset({"org:owner", "org:admin"})
+
+#: Đổi được chính sách kết nối. Chặt hơn `_ORG_ADMIN_ROLES` một bậc: đây là
+#: thiết lập quyết định dữ liệu công ty có được đi ra qua tài khoản cá nhân hay
+#: không, nên nó theo quy tắc "chỉ OWNER" giống việc cấp quyền OWNER.
+_ORG_OWNER_ROLE = "org:owner"
+
+
+def _encode_roles(access: object) -> frozenset[str]:
+    """Mã hoá vai trò của một ``TenantAccess`` thành chuỗi.
+
+    Giữ đồng bộ với ``tenant.infrastructure.http._encode_roles``. Hai bản này
+    không dùng chung được: một bản nằm trong domain Tenant, bản kia ở entrypoint
+    và không được import tầng `domain`.
+    """
+    roles = {f"org:{access.org_role}"}  # type: ignore[attr-defined]
+    workspace_role = access.workspace_role  # type: ignore[attr-defined]
+    if workspace_role is not None:
+        roles.add(f"ws:{workspace_role}")
+    return frozenset(roles)
+
+
+class TenantServiceGuard:
+    """Hiện thực ``TenantGuard`` của Connection bằng ``TenantService``."""
+
+    def __init__(self, tenant: TenantService) -> None:
+        self._tenant = tenant
+
+    async def require_workspace_context(
+        self, *, user_id: str, organization_id: str | None, workspace_id: str | None
+    ) -> WorkspaceContext:
+        resolved_org = organization_id or await self._default_organization(user_id)
+        resolved_workspace = workspace_id or await self._default_workspace(user_id, resolved_org)
+
+        access = await self._tenant.require_access(
+            user_id=user_id,
+            organization_id=resolved_org,
+            workspace_id=resolved_workspace,
+        )
+
+        roles = _encode_roles(access)
+        return WorkspaceContext(
+            user_id=user_id,
+            organization_id=resolved_org,
+            workspace_id=resolved_workspace,
+            can_manage_connections=_WORKSPACE_MANAGER_ROLE in roles,
+            is_org_admin=bool(roles & _ORG_ADMIN_ROLES),
+            is_org_owner=_ORG_OWNER_ROLE in roles,
+            roles=roles,
+        )
+
+    async def _default_organization(self, user_id: str) -> str:
+        access = await self._tenant.resolve_default_access(user_id)
+        if access is None:
+            raise AuthorizationError("Tài khoản này chưa thuộc organization nào.")
+        return access.organization_id
+
+    async def _default_workspace(self, user_id: str, organization_id: str) -> str:
+        """Workspace mặc định khi client không chỉ định.
+
+        ``list_workspaces`` đã lọc theo quyền và sắp theo ``created_at``, nên
+        cái đầu tiên là workspace ``Default`` được cấp lúc tạo organization —
+        đúng thứ người dùng mong đợi khi họ chưa chọn gì.
+        """
+        workspaces = await self._tenant.list_workspaces(
+            actor_id=user_id, organization_id=organization_id
+        )
+        if not workspaces:
+            raise AuthorizationError(
+                "Bạn không có quyền truy cập workspace nào trong organization này."
+            )
+        return workspaces[0].id
+
+
+def build_tenant_guard(session: AsyncSession) -> TenantGuard:
+    """Dựng ``TenantGuard`` từ một session, để gắn vào ``app.state``."""
+    from app.domains.tenant.infrastructure.http import build_tenant_service
+
+    return TenantServiceGuard(build_tenant_service(session, build_user_directory(session)))

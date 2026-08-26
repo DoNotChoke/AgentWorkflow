@@ -76,6 +76,36 @@ class Settings(BaseSettings):
     kms_provider: Literal["local", "aws", "vault"] = "local"
     kms_local_master_key: SecretStr = SecretStr("thay-doi-truoc-khi-dung-that")
 
+    # ─── OAuth của provider ───────────────────────────────────────────────
+    #: Gốc URL công khai của Control Plane. Callback OAuth được dựng từ đây, và
+    #: nó phải khớp **từng ký tự** với redirect URI đã đăng ký ở phía provider.
+    oauth_redirect_base_url: str = "http://localhost:8000"
+
+    #: Nơi đưa trình duyệt về sau khi vòng uỷ quyền kết thúc.
+    #:
+    #: Lấy từ cấu hình chứ không từ tham số của request: một địa chỉ chuyển
+    #: hướng nhận từ bên ngoài là một lỗ open redirect, và nó nằm ngay trên
+    #: đường mà người dùng vừa đăng nhập vào provider (§38).
+    oauth_post_connect_redirect_url: str = "http://localhost:3000/connections"
+
+    #: Danh tính của app mình ở từng provider. Bỏ trống nghĩa là provider đó
+    #: chưa bật trên lần triển khai này — nó vẫn hiện trong danh mục nhưng
+    #: không kết nối được.
+    oauth_slack_client_id: str = ""
+    oauth_slack_client_secret: SecretStr = SecretStr("")
+    oauth_google_client_id: str = ""
+    oauth_google_client_secret: SecretStr = SecretStr("")
+
+    @property
+    def oauth_callback_url(self) -> str:
+        """Một callback dùng chung cho mọi provider.
+
+        Provider được suy ra từ ``state`` chứ không từ đường dẫn, nên chỉ cần
+        đăng ký đúng một redirect URI ở mỗi provider — và mỗi lần thêm provider
+        mới không phải đụng vào cấu hình hạ tầng.
+        """
+        return f"{self.oauth_redirect_base_url.rstrip('/')}/v1/connections/oauth/callback"
+
     # ─── Model Gateway ────────────────────────────────────────────────
     anthropic_api_key: SecretStr = SecretStr("")
     anthropic_default_model: str = "claude-sonnet-5"

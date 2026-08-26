@@ -16,7 +16,13 @@ from app.core.db import DOMAIN_SCHEMAS, Base
 # Import để model của từng domain được đăng ký vào ``Base.metadata`` trước khi
 # Alembic so sánh. Thiếu một dòng ở đây thì `alembic revision --autogenerate`
 # sẽ sinh ra migration xoá đúng bảng của domain bị bỏ sót.
+#
+# Mỗi domain có bảng phải có đúng một dòng ở dưới. Thêm domain mới mà quên dòng
+# này là lỗi im lặng: `alembic upgrade head` vẫn chạy đúng, chỉ tới lần
+# autogenerate kế tiếp mới lộ ra, dưới dạng một migration xoá bảng.
+from app.domains.connection.infrastructure import models as connection_models  # noqa: F401
 from app.domains.identity.infrastructure import models as identity_models  # noqa: F401
+from app.domains.tenant.infrastructure import models as tenant_models  # noqa: F401
 
 config = context.config
 

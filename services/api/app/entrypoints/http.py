@@ -23,6 +23,8 @@ from app.core.observability import (
     instrument_sqlalchemy,
 )
 from app.core.redis import close_redis, init_redis, redis_healthy
+from app.domains.connection.infrastructure.http import TENANT_GUARD_FACTORY
+from app.domains.connection.infrastructure.http import router as connection_router
 from app.domains.identity.infrastructure.http import TENANT_PROVISIONER_FACTORY
 from app.domains.identity.infrastructure.http import router as identity_router
 from app.domains.tenant.infrastructure.http import USER_DIRECTORY_FACTORY, build_tenant_service
@@ -32,7 +34,7 @@ from app.entrypoints.middleware import (
     app_error_handler,
     unhandled_error_handler,
 )
-from app.entrypoints.wiring import build_user_directory
+from app.entrypoints.wiring import build_tenant_guard, build_user_directory
 
 log = get_logger(__name__)
 
@@ -83,18 +85,21 @@ def create_app() -> FastAPI:
     #
     # Identity ← Tenant: cấp organization và workspace cho user vừa đăng ký.
     # Tenant ← Identity: tra tên và email để hiển thị danh sách thành viên.
+    # Connection ← Tenant: phân giải workspace và quyền của người gọi.
     setattr(
         app.state,
         TENANT_PROVISIONER_FACTORY,
         lambda session: build_tenant_service(session, build_user_directory(session)),
     )
     setattr(app.state, USER_DIRECTORY_FACTORY, build_user_directory)
+    setattr(app.state, TENANT_GUARD_FACTORY, build_tenant_guard)
 
     # Router của từng domain được mount ở đây. Entrypoint chỉ chạm tới tầng
     # `infrastructure` của domain, không bao giờ import thẳng tầng `domain`
     # (contract 5 trong pyproject.toml).
     app.include_router(identity_router)
     app.include_router(tenant_router)
+    app.include_router(connection_router)
 
     instrument_fastapi(app)
     return app
