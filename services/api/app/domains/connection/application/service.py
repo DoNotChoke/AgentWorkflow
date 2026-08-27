@@ -709,6 +709,31 @@ class CredentialResolver:
                 cause=exc,
             ) from exc
 
+    async def report_unusable(self, *, connection_id: str, tenant_id: str, reason: str) -> None:
+        """Provider vừa từ chối token này lúc gọi thật (§23).
+
+        Integration Gateway gọi vào đây khi provider trả về lỗi thuộc nhóm
+        "kết nối chết". Nó là đường **duy nhất** để một kết nối Slack chuyển
+        trạng thái: bot token không hết hạn nên `needs_refresh` không bao giờ
+        đúng, và vòng làm mới — nơi `_mark_broken` vốn được gọi — không bao giờ
+        chạy. Thiếu hàm này thì hàng kết nối nằm `active` vĩnh viễn sau khi app
+        bị gỡ, và màn hình Reconnect không bao giờ sáng.
+
+        Im lặng khi không tìm thấy kết nối: đây là đường báo cáo, không phải
+        đường thực thi. Ném lỗi ở đây sẽ che mất lỗi thật mà Gateway đang xử lý.
+        """
+        connection = await self._connections.get_by_id(connection_id)
+        if connection is None or connection.organization_id != tenant_id:
+            log.warning(
+                "connection_report_unusable_khong_tim_thay",
+                connection_id=connection_id,
+            )
+            return
+        if connection.status is not ConnectionStatus.ACTIVE:
+            return
+
+        await self._mark_broken(connection, ConnectionStatus.RECONNECT_REQUIRED, reason)
+
     async def _mark_broken(
         self, connection: Connection, status: ConnectionStatus, reason: str
     ) -> None:

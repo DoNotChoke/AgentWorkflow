@@ -17,11 +17,23 @@ chúng — đọc `user.email` không cần biết `User` là gì.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings
 from app.core.errors import AuthorizationError
 from app.domains.connection.application.ports import TenantGuard, WorkspaceContext
+from app.domains.connection.application.service import CredentialResolver, ResolvedCredential
+from app.domains.connection.infrastructure.credential_store import build_credential_store
+from app.domains.connection.infrastructure.oauth_client import HttpxOAuthClient
+from app.domains.connection.infrastructure.oauth_state import RedisRefreshLock
+from app.domains.connection.infrastructure.provider_credentials import (
+    build_provider_credentials,
+)
+from app.domains.connection.infrastructure.repositories import (
+    SqlAlchemyConnectionRepository,
+)
 from app.domains.identity.infrastructure.repositories import SqlAlchemyUserRepository
 from app.domains.tenant.application.ports import UserDirectory, UserProfile
 from app.domains.tenant.application.service import TenantService
@@ -163,3 +175,100 @@ def build_tenant_guard(session: AsyncSession) -> TenantGuard:
     from app.domains.tenant.infrastructure.http import build_tenant_service
 
     return TenantServiceGuard(build_tenant_service(session, build_user_directory(session)))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Integration ← Connection
+#
+# Đây là chỗ DUY NHẤT trong hệ thống dựng được `CredentialResolver`, và do đó
+# là ranh giới credential thật — không phải `domains.integration.infrastructure`
+# như ADR-0001 mô tả. Contract 1 cấm `integration` import `connection`; contract
+# 4 liệt kê mọi domain chứ không liệt kê `app.entrypoints`. Xem ADR-0002.
+#
+# Token đi từ đây sang Integration Plane qua **tham số**, không qua `import`.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class ConnectionCredentialProvider:
+    """Hiện thực `CredentialProvider` của Integration bằng `CredentialResolver`.
+
+    Dịch giữa hai kiểu cùng hình dạng ở hai domain không được biết nhau. Đó là
+    cái giá cố định của contract 1, và đã trả đúng cái giá đó cho `TenantGuard`.
+    """
+
+    def __init__(self, resolver: CredentialResolver, settings: Settings) -> None:
+        self._resolver = resolver
+        self._settings = settings
+        self._oauth = HttpxOAuthClient(build_provider_credentials(settings))
+
+    def _credentials_for(self, session: AsyncSession) -> Any:
+        return build_credential_store(session, self._settings)
+
+    async def resolve(
+        self,
+        *,
+        connection_id: str,
+        tenant_id: str,
+        workspace_id: str,
+        acting_user_id: str,
+        required_scopes: frozenset[str] = frozenset(),
+    ) -> ResolvedCredential:
+        return await self._resolver.resolve(
+            connection_id=connection_id,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            acting_user_id=acting_user_id,
+            required_scopes=required_scopes,
+        )
+
+    async def report_unusable(self, *, connection_id: str, tenant_id: str, reason: str) -> None:
+        """Ghi trong một transaction RIÊNG, không phải transaction của request.
+
+        Gateway chỉ gọi vào đây khi một lời gọi tool đã hỏng, và request đó sắp
+        kết thúc bằng lỗi — `session_scope` sẽ rollback. Dùng chung session thì
+        bản ghi "token này chết" bị cuốn theo, và kết nối nằm `active` vĩnh
+        viễn dù provider đã nói ngược lại.
+
+        Đây là báo cáo, không phải một phần công việc của request.
+        """
+        from app.core.db import session_scope
+
+        async with session_scope() as session:
+            await CredentialResolver(
+                connections=SqlAlchemyConnectionRepository(session),
+                credentials=self._credentials_for(session),
+                oauth=self._oauth,
+                locks=RedisRefreshLock(),
+            ).report_unusable(connection_id=connection_id, tenant_id=tenant_id, reason=reason)
+
+
+def build_credential_provider(
+    session: AsyncSession, settings: Settings
+) -> ConnectionCredentialProvider:
+    """Dựng cổng credential, để gắn vào ``app.state``.
+
+    `CredentialResolver` gom sáu gạch đầu dòng của §6.3 vào một lời gọi: phân
+    giải kết nối, kiểm tenant, kiểm quyền nhìn thấy, nạp credential đã mã hoá,
+    giải mã, làm mới token, kiểm scope. Gateway **không** được tự làm bất kỳ
+    bước nào trong số đó.
+    """
+    credentials = build_provider_credentials(settings)
+    return ConnectionCredentialProvider(
+        CredentialResolver(
+            connections=SqlAlchemyConnectionRepository(session),
+            credentials=build_credential_store(session, settings),
+            oauth=HttpxOAuthClient(credentials),
+            locks=RedisRefreshLock(),
+        ),
+        settings,
+    )
+
+
+def build_integration_tenant_guard(session: AsyncSession) -> TenantGuard:
+    """`TenantGuard` cho Integration Plane.
+
+    Cùng một adapter với Connection: hai domain khai hai Protocol riêng, nhưng
+    chúng cùng hình dạng và `Protocol` là structural typing, nên `TenantServiceGuard`
+    thoả cả hai mà không domain nào phải biết domain kia tồn tại.
+    """
+    return build_tenant_guard(session)
