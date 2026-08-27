@@ -11,6 +11,20 @@ from typing import NoReturn
 
 import pytest
 
+from app.core.errors import ErrorCategory
+from app.domains.integration.domain.connectors import AuthSpec, ConnectorSpec
+from app.domains.integration.domain.tools import (
+    ApprovalPolicy,
+    FieldMapping,
+    IdempotencyPolicy,
+    PayloadSchema,
+    ProviderRequest,
+    RetryPolicy,
+    SideEffect,
+    TimeoutPolicy,
+    ToolSpec,
+)
+
 os.environ.setdefault("AW_ENVIRONMENT", "local")
 os.environ.setdefault("AW_DEBUG", "false")
 os.environ.setdefault("AW_OTEL_ENABLED", "false")
@@ -52,3 +66,60 @@ def _clear_settings_cache() -> None:
     from app.core.config import get_settings
 
     get_settings.cache_clear()
+
+
+# ─── Builder dùng chung cho domain `integration` ─────────────────────────────
+#
+# Để ở đây chứ không ở một module riêng: ``tests/`` không phải package, nên một
+# module test được nạp dưới hai tên và mypy từ chối kiểm tiếp. ``conftest`` đã
+# là tên duy nhất mà cả pytest lẫn mypy đồng ý — bốn file test hiện có đã import
+# ``infra_unavailable`` theo đúng đường này.
+
+
+def make_tool(
+    tool_id: str = "demo.ping",
+    *,
+    version: str = "1.0",
+    provider: str = "demo",
+    side_effect: SideEffect = SideEffect.READ,
+    enabled: bool = True,
+    permissions: frozenset[str] = frozenset(),
+    approval: ApprovalPolicy | None = None,
+    idempotency: IdempotencyPolicy | None = None,
+    required_scopes: frozenset[str] = frozenset(),
+) -> ToolSpec:
+    empty = PayloadSchema(version="1.0", json_schema={"type": "object"})
+    return ToolSpec(
+        tool_id=tool_id,
+        provider=provider,
+        version=version,
+        description="Một tool để test, không gọi ra ngoài.",
+        input_schema=empty,
+        output_schema=empty,
+        required_scopes=required_scopes,
+        side_effect=side_effect,
+        retry=RetryPolicy(),
+        timeout=TimeoutPolicy(),
+        idempotency=idempotency or IdempotencyPolicy(),
+        approval=approval or ApprovalPolicy(),
+        request=ProviderRequest(method="GET", path="/ping", body="query"),
+        output_mapping={"ok": FieldMapping(path=("ok",))},
+        permissions=permissions,
+        enabled=enabled,
+    )
+
+
+def make_connector(
+    connector_id: str = "demo",
+    *,
+    tool_ids: tuple[str, ...] = ("demo.ping",),
+) -> ConnectorSpec:
+    return ConnectorSpec(
+        connector_id=connector_id,
+        version="1.0",
+        label=connector_id.title(),
+        base_url="https://example.test/api",
+        auth=AuthSpec(kind="oauth2", header="authorization", prefix="Bearer "),
+        tool_ids=tool_ids,
+        error_mapping={"boom": ErrorCategory.PROVIDER_UNAVAILABLE},
+    )

@@ -9,77 +9,20 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from conftest import make_connector, make_tool
 
-from app.core.errors import ErrorCategory, ValidationError
+from app.core.errors import ValidationError
 from app.domains.integration.domain.catalog import ToolRegistry, default_registry
-from app.domains.integration.domain.connectors import AuthSpec, ConnectorSpec
 from app.domains.integration.domain.generated import catalog_v1
 from app.domains.integration.domain.tools import (
-    ApprovalPolicy,
-    FieldMapping,
-    IdempotencyPolicy,
-    PayloadSchema,
-    ProviderRequest,
     RateLimitProfile,
     RateLimitRule,
-    RetryPolicy,
     SideEffect,
-    TimeoutPolicy,
-    ToolSpec,
     parse_version,
 )
 from app.domains.integration.infrastructure.specs import load_documents
 
 SCHEMA_ROOT = Path(__file__).resolve().parents[3] / "packages" / "schemas" / "tool"
-
-
-# ─── Dữ liệu dựng sẵn ────────────────────────────────────────────────────────
-
-
-def make_tool(
-    tool_id: str = "demo.ping",
-    *,
-    version: str = "1.0",
-    provider: str = "demo",
-    side_effect: SideEffect = SideEffect.READ,
-    enabled: bool = True,
-    permissions: frozenset[str] = frozenset(),
-) -> ToolSpec:
-    empty = PayloadSchema(version="1.0", json_schema={"type": "object"})
-    return ToolSpec(
-        tool_id=tool_id,
-        provider=provider,
-        version=version,
-        description="Một tool để test, không gọi ra ngoài.",
-        input_schema=empty,
-        output_schema=empty,
-        required_scopes=frozenset(),
-        side_effect=side_effect,
-        retry=RetryPolicy(),
-        timeout=TimeoutPolicy(),
-        idempotency=IdempotencyPolicy(),
-        approval=ApprovalPolicy(),
-        request=ProviderRequest(method="GET", path="/ping", body="query"),
-        output_mapping={"ok": FieldMapping(path=("ok",))},
-        permissions=permissions,
-        enabled=enabled,
-    )
-
-
-def make_connector(
-    connector_id: str = "demo",
-    *,
-    tool_ids: tuple[str, ...] = ("demo.ping",),
-) -> ConnectorSpec:
-    return ConnectorSpec(
-        connector_id=connector_id,
-        version="1.0",
-        label=connector_id.title(),
-        base_url="https://example.test/api",
-        auth=AuthSpec(kind="oauth2", header="authorization", prefix="Bearer "),
-        tool_ids=tool_ids,
-        error_mapping={"boom": ErrorCategory.PROVIDER_UNAVAILABLE},
-    )
 
 
 # ─── Phân giải version (§41) ─────────────────────────────────────────────────

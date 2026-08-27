@@ -25,6 +25,7 @@ from app.domains.integration.domain.connectors import (
 )
 from app.domains.integration.domain.tools import (
     ApprovalPolicy,
+    ApprovalScope,
     FieldMapping,
     IdempotencyPolicy,
     IdempotencyStrategy,
@@ -150,7 +151,7 @@ def parse_tool(document: Mapping[str, Any], *, where: str = "<tool>") -> ToolSpe
         ),
         approval=ApprovalPolicy(
             required=bool(document["approval"]["required"]),
-            scope=document["approval"].get("scope"),
+            scope=ApprovalScope(document["approval"].get("scope", ApprovalScope.REQUESTER)),
         ),
         request=ProviderRequest(
             method=document["request"]["method"],

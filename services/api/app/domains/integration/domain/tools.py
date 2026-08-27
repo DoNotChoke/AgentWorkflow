@@ -1,4 +1,4 @@
-"""Định nghĩa Tool"""
+"""Tool"""
 
 from __future__ import annotations
 
@@ -9,10 +9,8 @@ from typing import Literal
 
 from app.core.errors import ValidationError
 
-#: Kiểu của `request.body` — cách đóng gói input thành lời gọi HTTP.
 RequestBody = Literal["query", "form", "json"]
 
-#: Động từ HTTP được phép.
 HttpMethod = Literal["GET", "POST"]
 
 
@@ -37,7 +35,6 @@ class IdempotencyStrategy(StrEnum):
     DETERMINISTIC_REFERENCE = "deterministic_reference"
 
 
-#: Sáu cấp rate limit của §22, theo thứ tự từ rộng tới hẹp.
 RATE_LIMIT_LEVELS: tuple[str, ...] = (
     "provider",
     "installation",
@@ -114,10 +111,34 @@ class IdempotencyPolicy:
         return self.strategy is not IdempotencyStrategy.NONE
 
 
+class ApprovalScope(StrEnum):
+    """Ai được ký duyệt"""
+
+    REQUESTER = "requester"
+    CONNECTION_OWNER = "connection_owner"
+    WORKSPACE_ADMIN = "workspace_admin"
+    ORG_OWNER = "org_owner"
+
+    @property
+    def strictness(self) -> int:
+        """Thứ hạng để so hai phạm vi, càng cao càng chặt."""
+        return _SCOPE_STRICTNESS[self]
+
+
+#: Thứ hạng chặt chẽ của từng phạm vi duyệt. `REQUESTER` lỏng nhất — người vừa
+#: yêu cầu tự ký; `ORG_OWNER` chặt nhất.
+_SCOPE_STRICTNESS: dict[ApprovalScope, int] = {
+    ApprovalScope.REQUESTER: 0,
+    ApprovalScope.CONNECTION_OWNER: 1,
+    ApprovalScope.WORKSPACE_ADMIN: 2,
+    ApprovalScope.ORG_OWNER: 3,
+}
+
+
 @dataclass(frozen=True, slots=True)
 class ApprovalPolicy:
     required: bool = False
-    scope: str | None = None
+    scope: ApprovalScope = ApprovalScope.REQUESTER
 
 
 @dataclass(frozen=True, slots=True)

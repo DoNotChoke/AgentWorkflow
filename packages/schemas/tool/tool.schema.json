@@ -199,7 +199,11 @@
       "required": ["required"],
       "properties": {
         "required": { "type": "boolean" },
-        "scope": { "type": "string", "maxLength": 64 }
+        "scope": {
+          "description": "Ai được ký duyệt (§8 \"approver scope\"). `requester` là chính người yêu cầu — đúng khi lý do cần duyệt là 'máy tự quyết'. Ba giá trị còn lại dành cho chính sách sinh ra để kiểm soát chính người yêu cầu, nên họ không tự ký được.",
+          "enum": ["requester", "workspace_admin", "org_owner", "connection_owner"],
+          "default": "requester"
+        }
       }
     },
     "providerRequest": {
