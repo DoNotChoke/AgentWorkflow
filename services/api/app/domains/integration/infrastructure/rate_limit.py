@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from app.core.errors import RateLimitedError
 from app.core.logging import get_logger
 from app.core.redis import check_rate_limit, global_key
 from app.domains.integration.domain.connectors import ConnectorSpec
+from app.domains.integration.domain.invocation import RateLimitTarget
 from app.domains.integration.domain.tools import RateLimitRule, ToolSpec
 
 log = get_logger(__name__)
@@ -16,16 +15,6 @@ log = get_logger(__name__)
 def tenant_key(tenant_id: str, *parts: str) -> str:
     """Key có tiền tố tenant, dựng từ `tenant_id` được truyền vào."""
     return ":".join(("aw", "t", tenant_id, *parts))
-
-
-@dataclass(frozen=True, slots=True)
-class RateLimitTarget:
-    """Ai đang gọi, đủ để dựng khoá cho cả sáu cấp."""
-
-    tenant_id: str
-    workspace_id: str
-    user_id: str
-    connection_id: str
 
 
 class RedisRateLimiter:

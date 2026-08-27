@@ -15,13 +15,10 @@ from conftest import make_connector, make_tool
 from app.core.context import new_request_context, tenant_cache_key, use_context
 from app.core.errors import RateLimitedError
 from app.core.redis import RateLimitResult
+from app.domains.integration.domain.invocation import RateLimitTarget
 from app.domains.integration.domain.tools import RateLimitProfile, RateLimitRule
 from app.domains.integration.infrastructure import rate_limit as module
-from app.domains.integration.infrastructure.rate_limit import (
-    RateLimitTarget,
-    RedisRateLimiter,
-    tenant_key,
-)
+from app.domains.integration.infrastructure.rate_limit import RedisRateLimiter, tenant_key
 
 TARGET = RateLimitTarget(
     tenant_id="org_1",

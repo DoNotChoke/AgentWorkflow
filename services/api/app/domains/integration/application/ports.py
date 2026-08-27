@@ -1,9 +1,4 @@
-"""Những gì Integration Plane cần từ bên ngoài, khai bằng Protocol.
-
-Contract 1 cấm domain import chéo nhau, nên mọi thứ đến từ domain khác — hay từ
-một domain chưa tồn tại — vào qua một Protocol ở đây và được
-`entrypoints/wiring.py` nối vào.
-"""
+"""Những gì Integration Plane cần từ bên ngoài, khai bằng Protocol."""
 
 from __future__ import annotations
 
@@ -11,7 +6,10 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Protocol
 
+from app.core.errors import ErrorCategory
 from app.domains.integration.domain.connectors import ConnectorSpec
+from app.domains.integration.domain.idempotency import ClaimResult, IdempotencyClaim
+from app.domains.integration.domain.invocation import ToolInvocationRecord, ToolUsage
 from app.domains.integration.domain.policy import OrgToolRule, QuotaVerdict
 from app.domains.integration.domain.tools import ToolSpec
 
@@ -88,3 +86,87 @@ class PlanReader(Protocol):
     """Tool bị gói cước chặn"""
 
     async def restricted_tools(self, *, tenant_id: str) -> frozenset[str]: ...
+
+
+# ─── Hạ tầng mà Gateway điều phối ────────────────────────────────────────────
+
+
+class RateLimiter(Protocol):
+    async def acquire(self, *, target: Any, tool: ToolSpec, connector: ConnectorSpec) -> None: ...
+
+
+class CircuitBreaker(Protocol):
+    async def check(
+        self, *, connector: ConnectorSpec, tenant_id: str, connection_id: str
+    ) -> None: ...
+
+    async def record_success(
+        self, *, connector: ConnectorSpec, tenant_id: str, connection_id: str
+    ) -> None: ...
+
+    async def record_failure(
+        self,
+        *,
+        connector: ConnectorSpec,
+        tenant_id: str,
+        connection_id: str,
+        category: ErrorCategory,
+    ) -> None: ...
+
+
+class IdempotencyStore(Protocol):
+    """`claim` giành quyền chạy; `complete`/`fail` chốt kết quả."""
+
+    async def claim(self, claim: IdempotencyClaim) -> ClaimResult: ...
+
+    async def complete(
+        self,
+        *,
+        tenant_id: str,
+        key: str,
+        result: Mapping[str, Any],
+        provider_reference: str | None,
+        attempts: int,
+        at: datetime,
+    ) -> None: ...
+
+    async def fail(
+        self,
+        *,
+        tenant_id: str,
+        key: str,
+        category: ErrorCategory,
+        attempts: int,
+        at: datetime,
+        detail: str = "",
+    ) -> None: ...
+
+
+class ToolInvocationSink(Protocol):
+    """Nơi Execution Trace sẽ được ghi"""
+
+    async def record(self, invocation: ToolInvocationRecord) -> None: ...
+
+
+class UsageRecorder(Protocol):
+    """Ghi lại Usage"""
+
+    async def record(self, usage: ToolUsage) -> None: ...
+
+
+class CredentialProvider(Protocol):
+    """Cửa duy nhất Integration Plane lấy được token đã giải mã."""
+
+    async def resolve(
+        self,
+        *,
+        connection_id: str,
+        tenant_id: str,
+        workspace_id: str,
+        acting_user_id: str,
+        required_scopes: frozenset[str] = frozenset(),
+    ) -> ProviderCredential: ...
+
+    async def report_unusable(self, *, connection_id: str, tenant_id: str, reason: str) -> None:
+        """Provider vừa từ chối token này."""
+        ...
