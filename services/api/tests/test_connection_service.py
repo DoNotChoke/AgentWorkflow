@@ -41,6 +41,7 @@ from app.domains.connection.domain.entities import (
     SharingPolicy,
     visible_to,
 )
+from app.domains.connection.domain.providers import SLACK
 
 ORG = "org_1"
 WS = "ws_1"
@@ -515,7 +516,7 @@ async def test_hoan_tat_uy_quyen_tao_ket_noi_va_luu_credential() -> None:
         tokens=OAuthTokens(
             access_token="xoxb-1",
             refresh_token="rt-1",
-            scopes=frozenset({"chat:write", "channels:read", "users:read"}),
+            scopes=frozenset(SLACK.default_scopes),
         ),
         body={"team": {"id": "T1", "name": "Acme"}},
     )

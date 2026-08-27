@@ -51,6 +51,7 @@ from app.core.errors import AuthorizationError  # noqa: E402
 from app.domains.connection.application.ports import ProviderAccount, TenantGuard  # noqa: E402
 from app.domains.connection.application.service import ConnectionService  # noqa: E402
 from app.domains.connection.domain.entities import OAuthTokens  # noqa: E402
+from app.domains.connection.domain.providers import SLACK  # noqa: E402
 from app.domains.connection.infrastructure import http as connection_http  # noqa: E402
 from app.domains.connection.infrastructure.credential_store import (  # noqa: E402
     build_credential_store,
@@ -81,7 +82,10 @@ class FakeOAuthClient:
             OAuthTokens(
                 access_token=self.access_token,
                 refresh_token="rt-" + uuid.uuid4().hex,
-                scopes=frozenset({"chat:write", "channels:read", "users:read"}),
+                # Slack cấp đúng những gì vòng OAuth xin. Suy từ catalog
+                # thay vì chép cứng: thêm một scope vào descriptor không
+                # được làm đỏ một test vốn chỉ muốn nói 'cấp đủ'.
+                scopes=frozenset(SLACK.default_scopes),
             ),
             {"team": {"id": self.team_id, "name": "Acme Corp"}},
         )
@@ -267,11 +271,7 @@ def test_chay_tron_vong_uy_quyen(client: TestClient, oauth: FakeOAuthClient) -> 
     assert connection["status"] == "active"
     assert connection["external_account_id"] == oauth.team_id
     assert connection["display_name"] == "Slack — Acme Corp"
-    assert sorted(connection["granted_scopes"]) == [
-        "channels:read",
-        "chat:write",
-        "users:read",
-    ]
+    assert sorted(connection["granted_scopes"]) == sorted(SLACK.default_scopes)
 
 
 def test_phan_hoi_khong_bao_gio_chua_credential(client: TestClient, oauth: FakeOAuthClient) -> None:

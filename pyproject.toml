@@ -39,6 +39,10 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "services/api/tests/*" = ["S", "ARG"]
 "services/api/alembic/versions/*" = ["N999", "E501"]
+# Catalog sinh ra từ packages/schemas/tool/. Mô tả tool là văn xuôi cho LLM
+# đọc, nên nó dài — và bẻ dòng bằng tay thì lần sinh sau xoá mất. Cùng lý do
+# mà migration được miễn E501.
+"services/api/app/domains/integration/domain/generated/*" = ["E501"]
 # Script sinh code trong packages/ chạy bằng tay ở terminal, nên nó phải in ra
 # được thứ nó vừa làm. `src` có kể packages/ nên ruff soi cả thư mục này.
 "packages/**/*.py" = ["T20"]

@@ -1,13 +1,13 @@
-"""Tài liệu trong `packages/schemas/tool/` phải hợp lệ.
+"""Tài liệu trong `packages/schemas/tool/` phải hợp lệ và khớp với code.
 
-Đây là tầng kiểm cho **nguồn chân lý**, và nó cố ý chỉ dùng `jsonschema` —
-không import gì từ `app`. Contract JSON phải đứng vững một mình: nếu nó chỉ
-kiểm được thông qua parser Python thì parser trở thành định nghĩa thật, và
-JSON tụt xuống thành tài liệu.
+Đây là tầng kiểm cho **nguồn chân lý**. Test registry ở
+`test_integration_registry.py` kiểm bản Python sinh ra; test này kiểm bản JSON
+mà bản Python kia được sinh từ đó.
 
 Đường dẫn tới `packages/` được suy ra từ vị trí file test. Ở đây làm vậy là an
-toàn — test chỉ chạy trong repo đã checkout, và nếu bố cục repo đổi thì test đỏ
-ngay và ồn ào. Code ứng dụng thì không được phép làm thế.
+toàn — test chỉ chạy trong repo đã checkout, và nếu bố cục repo đổi thì test
+đỏ ngay và ồn ào. Code ứng dụng thì không được phép làm thế; xem docstring của
+`app/domains/integration/infrastructure/specs.py`.
 """
 
 from __future__ import annotations
@@ -19,10 +19,14 @@ from typing import Any
 import jsonschema
 import pytest
 
-SCHEMA_ROOT = Path(__file__).resolve().parents[3] / "packages" / "schemas" / "tool"
+from app.domains.integration.domain.tools import IdempotencyStrategy, SideEffect
+from app.domains.integration.infrastructure.specs import (
+    CONNECTOR_META_SCHEMA,
+    TOOL_META_SCHEMA,
+    load_documents,
+)
 
-TOOL_META_SCHEMA = "tool.schema.json"
-CONNECTOR_META_SCHEMA = "connector.schema.json"
+SCHEMA_ROOT = Path(__file__).resolve().parents[3] / "packages" / "schemas" / "tool"
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -121,6 +125,43 @@ def test_tool_ghi_side_effect_thi_phai_co_chien_luoc_idempotency(path: Path) -> 
             f"{document['tool_id']} có side_effect {document['side_effect']!r} "
             "nhưng không khai chiến lược idempotency."
         )
+
+
+def test_enum_trong_meta_schema_khop_voi_enum_python() -> None:
+    """Hai danh sách này phải khớp từng phần tử.
+
+    Chúng nằm ở hai ngôn ngữ và không bên nào sinh ra bên kia, nên chỉ có test
+    giữ chúng đồng bộ. Lệch nhau thì một tài liệu hợp lệ sẽ làm parser ném ra
+    `ValueError` lúc sinh code — hoặc tệ hơn, một giá trị Python hợp lệ lại
+    không viết được thành tài liệu.
+    """
+    meta = _load(SCHEMA_ROOT / TOOL_META_SCHEMA)
+
+    assert meta["properties"]["side_effect"]["enum"] == [member.value for member in SideEffect]
+    assert meta["$defs"]["idempotencyPolicy"]["properties"]["strategy"]["enum"] == [
+        member.value for member in IdempotencyStrategy
+    ]
+
+
+def test_cap_rate_limit_trong_meta_schema_khop_voi_domain() -> None:
+    from app.domains.integration.domain.tools import RATE_LIMIT_LEVELS
+
+    meta = _load(SCHEMA_ROOT / TOOL_META_SCHEMA)
+    levels = tuple(meta["$defs"]["rateLimitProfile"]["properties"])
+    assert levels == RATE_LIMIT_LEVELS
+
+
+def test_nap_duoc_toan_bo_catalog_tu_json() -> None:
+    """Đường mà `build_catalog.py` đi, chạy trong test."""
+    connectors, tools = load_documents(SCHEMA_ROOT)
+
+    assert [connector.connector_id for connector in connectors] == ["slack"]
+    assert {tool.tool_id for tool in tools} == {
+        "slack.list_channels",
+        "slack.post_message",
+        "slack.list_users",
+        "slack.get_channel_history",
+    }
 
 
 @pytest.mark.parametrize("path", _connector_documents(), ids=lambda p: p.parent.name)
