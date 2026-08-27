@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentworkflow.dev/schemas/tool/1.0/tool.schema.json",
+  "title": "Tool definition",
+  "description": "Một hành động mà Connector phơi ra (§6.2). Mọi trường trong §6.2 đều bắt buộc có mặt — thiếu một trường nghĩa là một quyết định vận hành bị bỏ ngỏ cho tới lúc chạy.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tool_id",
+    "provider",
+    "version",
+    "description",
+    "input_schema",
+    "output_schema",
+    "required_scopes",
+    "side_effect",
+    "retry",
+    "timeout",
+    "idempotency",
+    "approval",
+    "request",
+    "output_mapping"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "Version của ĐỊNH DẠNG tài liệu này, không phải của tool (§40).",
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$"
+    },
+    "tool_id": {
+      "description": "Định danh duy nhất, dạng <provider>.<hành_động>.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$",
+      "maxLength": 128
+    },
+    "provider": {
+      "description": "Id của provider. Trùng với ProviderDescriptor.id bên domain connection, nhưng đây chỉ là một chuỗi — hai domain không import nhau (contract 1).",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "maxLength": 64
+    },
+    "version": {
+      "description": "Version của chính tool này (§6.2). Major là ranh giới tương thích: hai major cùng tồn tại trong registry cho tới hết thời hạn tương thích (§41).",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "description": {
+      "description": "Mô tả ngữ nghĩa. Phase 3 đưa thẳng chuỗi này vào prompt, nên nó phải đủ để một LLM chọn đúng tool mà không cần đọc input_schema.",
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 1000
+    },
+    "input_schema": { "$ref": "#/$defs/payloadSchema" },
+    "output_schema": { "$ref": "#/$defs/payloadSchema" },
+    "required_scopes": {
+      "description": "Scope provider cần để gọi được. Chuỗi thuần — từ vựng của provider, không phải kiểu dữ liệu của domain connection. Gateway chuyển thẳng xuống CredentialProvider.resolve().",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "uniqueItems": true
+    },
+    "side_effect": {
+      "description": "Phân loại tác động ra bên ngoài (§6.2). Policy engine và hệ thống phê duyệt đọc trường này.",
+      "enum": ["none", "read", "write", "destructive"]
+    },
+    "retry": { "$ref": "#/$defs/retryPolicy" },
+    "timeout": { "$ref": "#/$defs/timeoutPolicy" },
+    "rate_limits": {
+      "description": "Ghi đè ngưỡng của connector, theo từng cấp của §22. Cấp nào vắng mặt thì lấy của connector; connector cũng vắng mặt nghĩa là cấp đó không giới hạn.",
+      "$ref": "#/$defs/rateLimitProfile"
+    },
+    "idempotency": { "$ref": "#/$defs/idempotencyPolicy" },
+    "permissions": {
+      "description": "Vai trò tối thiểu để gọi được, mã hoá dạng chuỗi ('ws:admin', 'org:owner') — cùng cách mà core/http_auth.user_principal dùng. Rỗng nghĩa là mọi thành viên workspace đều gọi được.",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^(org|ws):[a-z_]+$" },
+      "uniqueItems": true,
+      "default": []
+    },
+    "approval": { "$ref": "#/$defs/approvalPolicy" },
+    "request": { "$ref": "#/$defs/providerRequest" },
+    "output_mapping": {
+      "description": "Chiếu phản hồi của provider sang output_schema. Chỉ những trường có tên ở đây mới đi ra ngoài — phần còn lại của phản hồi bị bỏ, nên một trường mới của provider không thể tự động rò ra.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/fieldMapping" }
+    },
+    "provider_reference": {
+      "description": "Cách dựng định danh mà provider cấp cho đối tượng vừa tạo. Sổ idempotency cất lại giá trị này, nên một lần phát lại trả về đúng tham chiếu cũ (§15.1).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paths"],
+      "properties": {
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/path" }
+        },
+        "separator": { "type": "string", "maxLength": 4, "default": ":" }
+      }
+    },
+    "enabled": {
+      "description": "Tắt một tool mà không phải gỡ tài liệu của nó. Policy engine trả về DENY với rule_id 'tool_disabled'.",
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "$defs": {
+    "path": {
+      "description": "Đường đi tới một giá trị trong JSON của provider, tính từ gốc.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "payloadSchema": {
+      "description": "Một JSON Schema kèm version riêng. §40 đòi input schema và output schema được đánh version độc lập với tool.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "json_schema"],
+      "properties": {
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+        "json_schema": { "type": "object" }
+      }
+    },
+    "fieldMapping": {
+      "description": "Một trường đầu ra. `items` dùng khi trường là mảng đối tượng: mỗi phần tử được chiếu tiếp một cấp. Chỉ một cấp — sâu nữa thì tài liệu trở nên khó đọc hơn cả đoạn code nó thay thế.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "items": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/$defs/path" }
+        }
+      }
+    },
+    "retryPolicy": {
+      "description": "§15. Chỉ áp dụng cho lỗi thuộc nhóm retryable trong core/errors.py; lỗi vĩnh viễn không bao giờ được thử lại.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_attempts"],
+      "properties": {
+        "max_attempts": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "initial_backoff_seconds": { "type": "number", "exclusiveMinimum": 0, "maximum": 60, "default": 0.5 },
+        "max_backoff_seconds": { "type": "number", "exclusiveMinimum": 0, "maximum": 300, "default": 30 },
+        "multiplier": { "type": "number", "minimum": 1, "maximum": 10, "default": 2 }
+      }
+    },
+    "timeoutPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt_seconds", "total_seconds"],
+      "properties": {
+        "attempt_seconds": { "type": "number", "exclusiveMinimum": 0, "maximum": 300 },
+        "total_seconds": { "type": "number", "exclusiveMinimum": 0, "maximum": 900 }
+      }
+    },
+    "rateLimitRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["limit", "window_seconds"],
+      "properties": {
+        "limit": { "type": "integer", "minimum": 1 },
+        "window_seconds": { "type": "integer", "minimum": 1, "maximum": 86400 }
+      }
+    },
+    "rateLimitProfile": {
+      "description": "Sáu cấp của §22. Cấp nào vắng mặt là cấp đó không được đếm.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "$ref": "#/$defs/rateLimitRule" },
+        "installation": { "$ref": "#/$defs/rateLimitRule" },
+        "tenant": { "$ref": "#/$defs/rateLimitRule" },
+        "connection": { "$ref": "#/$defs/rateLimitRule" },
+        "user": { "$ref": "#/$defs/rateLimitRule" },
+        "tool": { "$ref": "#/$defs/rateLimitRule" }
+      }
+    },
+    "idempotencyPolicy": {
+      "description": "§15.1. `required` buộc người gọi phải cấp khoá; thiếu khoá thì Gateway từ chối trước khi chạm tới provider.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "required"],
+      "properties": {
+        "strategy": {
+          "enum": ["none", "provider_token", "dedup_record", "external_lookup", "deterministic_reference"]
+        },
+        "required": { "type": "boolean" },
+        "ttl_seconds": { "type": "integer", "minimum": 60, "maximum": 2592000, "default": 604800 }
+      }
+    },
+    "approvalPolicy": {
+      "description": "§8. Phase 2 chỉ phân loại; luồng chờ phê duyệt bền vững là Phase 4.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "scope": { "type": "string", "maxLength": 64 }
+      }
+    },
+    "providerRequest": {
+      "description": "Hình dạng lời gọi HTTP. `path` đến từ tài liệu đã commit, không bao giờ đến từ input của người gọi — đó là ranh giới ngăn SSRF (§38).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "path", "body"],
+      "properties": {
+        "method": { "enum": ["GET", "POST"] },
+        "path": { "type": "string", "pattern": "^/[A-Za-z0-9._/-]+$", "maxLength": 200 },
+        "body": {
+          "description": "Cách đóng gói input: query string, form urlencoded, hay JSON.",
+          "enum": ["query", "form", "json"]
+        }
+      }
+    }
+  }
+}

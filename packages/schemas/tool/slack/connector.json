@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0",
+  "connector_id": "slack",
+  "version": "1.0",
+  "label": "Slack",
+  "base_url": "https://slack.com/api",
+  "auth": {
+    "kind": "oauth2",
+    "header": "authorization",
+    "prefix": "Bearer "
+  },
+  "tools": [
+    "slack.list_channels",
+    "slack.post_message",
+    "slack.list_users",
+    "slack.get_channel_history"
+  ],
+  "default_rate_limits": {
+    "provider": { "limit": 600, "window_seconds": 60 },
+    "tenant": { "limit": 120, "window_seconds": 60 },
+    "connection": { "limit": 60, "window_seconds": 60 },
+    "user": { "limit": 60, "window_seconds": 60 }
+  },
+  "error_mapping": {
+    "ratelimited": "RateLimited",
+    "rate_limited": "RateLimited",
+    "internal_error": "ProviderUnavailable",
+    "service_unavailable": "ProviderUnavailable",
+    "fatal_error": "ProviderUnavailable",
+    "request_timeout": "ProviderUnavailable",
+    "invalid_auth": "ConnectionExpired",
+    "not_authed": "ConnectionExpired",
+    "account_inactive": "ConnectionExpired",
+    "token_revoked": "ConnectionExpired",
+    "token_expired": "ConnectionExpired",
+    "missing_scope": "MissingScope",
+    "not_allowed_token_type": "MissingScope",
+    "restricted_action": "AuthorizationError",
+    "ekm_access_denied": "AuthorizationError",
+    "channel_not_found": "ValidationError",
+    "user_not_found": "ValidationError",
+    "invalid_arguments": "ValidationError",
+    "invalid_cursor": "ValidationError",
+    "invalid_limit": "ValidationError",
+    "msg_too_long": "ValidationError",
+    "no_text": "ValidationError",
+    "not_in_channel": "ValidationError",
+    "is_archived": "ValidationError"
+  },
+  "circuit_breaker": {
+    "failure_threshold": 5,
+    "window_seconds": 60,
+    "open_seconds": 30
+  },
+  "webhooks": {
+    "supported": true,
+    "signature_header": "x-slack-signature",
+    "timestamp_header": "x-slack-request-timestamp"
+  },
+  "events": {
+    "supported": true,
+    "event_types": ["message", "channel_created", "member_joined_channel"]
+  },
+  "notes": "Slack trả HTTP 200 kèm {\"ok\": false} cho mọi thất bại, kể cả rate limit — nên `ok` phải được kiểm trước status code. Bot token không hết hạn, vì vậy token_revoked là tín hiệu duy nhất khi app bị gỡ."
+}

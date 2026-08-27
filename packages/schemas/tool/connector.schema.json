@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentworkflow.dev/schemas/tool/1.0/connector.schema.json",
+  "title": "Connector definition",
+  "description": "Một tích hợp provider (§6.1). Được đánh version độc lập với các tool nó chứa — đổi base_url hay bảng lỗi là việc của connector, không đụng tới version của tool nào.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "connector_id",
+    "version",
+    "label",
+    "base_url",
+    "auth",
+    "tools",
+    "error_mapping",
+    "webhooks",
+    "events"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "Version của ĐỊNH DẠNG tài liệu này (§40).",
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$"
+    },
+    "connector_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "maxLength": 64
+    },
+    "version": {
+      "description": "Version của connector (§6.1), tăng độc lập với tool.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "label": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "base_url": {
+      "description": "Gốc của mọi lời gọi. Phải là https và không kèm query — mọi phần còn lại của URL đến từ `request.path` của tool, không đến từ input của người gọi (§38).",
+      "type": "string",
+      "pattern": "^https://[a-z0-9.-]+(/[A-Za-z0-9._/-]*)?$",
+      "maxLength": 200
+    },
+    "auth": { "$ref": "#/$defs/auth" },
+    "tools": {
+      "description": "tool_id của những tool thuộc connector này. Registry đối chiếu hai chiều: thừa hay thiếu đều là lỗi nạp catalog.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$" },
+      "uniqueItems": true
+    },
+    "default_rate_limits": {
+      "description": "Ngưỡng mặc định cho mọi tool của connector (§22). Từng tool ghi đè được theo cấp.",
+      "$ref": "#/$defs/rateLimitProfile"
+    },
+    "error_mapping": {
+      "description": "Mã lỗi của provider → phân loại lỗi nền tảng (§6.1 'provider error mapping', §37). Mã không có trong bảng mặc định là ProviderPermanentError: đoán nhầm 'vĩnh viễn' tốn thêm một thao tác của người dùng, đoán nhầm 'tạm thời' đốt quota trong một vòng retry không bao giờ thành công.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/errorCategory" }
+    },
+    "circuit_breaker": { "$ref": "#/$defs/circuitBreaker" },
+    "webhooks": { "$ref": "#/$defs/webhookCapabilities" },
+    "events": { "$ref": "#/$defs/eventCapabilities" },
+    "notes": { "type": "string", "maxLength": 500 }
+  },
+  "$defs": {
+    "auth": {
+      "description": "Cách gắn credential vào request. Bản thân credential không bao giờ nằm ở đây — tài liệu này được commit vào repo.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "header", "prefix"],
+      "properties": {
+        "kind": { "enum": ["oauth2"] },
+        "header": { "type": "string", "pattern": "^[a-z-]+$", "maxLength": 64 },
+        "prefix": { "type": "string", "maxLength": 16 }
+      }
+    },
+    "errorCategory": {
+      "description": "Giá trị của ErrorCategory trong app/core/errors.py. Danh sách này là §37 và không được mở rộng ở đây.",
+      "enum": [
+        "AuthenticationError",
+        "AuthorizationError",
+        "ConnectionExpired",
+        "MissingScope",
+        "ValidationError",
+        "RateLimited",
+        "ProviderUnavailable",
+        "ProviderPermanentError",
+        "Timeout"
+      ]
+    },
+    "rateLimitRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["limit", "window_seconds"],
+      "properties": {
+        "limit": { "type": "integer", "minimum": 1 },
+        "window_seconds": { "type": "integer", "minimum": 1, "maximum": 86400 }
+      }
+    },
+    "rateLimitProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "$ref": "#/$defs/rateLimitRule" },
+        "installation": { "$ref": "#/$defs/rateLimitRule" },
+        "tenant": { "$ref": "#/$defs/rateLimitRule" },
+        "connection": { "$ref": "#/$defs/rateLimitRule" },
+        "user": { "$ref": "#/$defs/rateLimitRule" },
+        "tool": { "$ref": "#/$defs/rateLimitRule" }
+      }
+    },
+    "circuitBreaker": {
+      "description": "§23. Chỉ lỗi thuộc nhóm retryable mới làm tăng bộ đếm — RateLimited là backpressure bình thường, để nó làm sập mạch là tự biến việc bị tiết lưu thành sự cố.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["failure_threshold", "window_seconds", "open_seconds"],
+      "properties": {
+        "failure_threshold": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "window_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
+        "open_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 }
+      }
+    },
+    "webhookCapabilities": {
+      "description": "§6.1 đòi connector khai năng lực webhook. Phase 2 chỉ KHAI BÁO; đường nhận webhook là §24, Phase 7.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supported"],
+      "properties": {
+        "supported": { "type": "boolean" },
+        "signature_header": { "type": "string", "maxLength": 64 },
+        "timestamp_header": { "type": "string", "maxLength": 64 }
+      }
+    },
+    "eventCapabilities": {
+      "description": "§6.1 đòi connector khai năng lực event. Phase 2 chỉ KHAI BÁO; §33 là Phase 7.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supported"],
+      "properties": {
+        "supported": { "type": "boolean" },
+        "event_types": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 64 },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

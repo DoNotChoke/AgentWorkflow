@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "tool_id": "slack.list_channels",
+  "provider": "slack",
+  "version": "1.0",
+  "description": "Liệt kê các kênh trong workspace Slack. Trả về id, tên và trạng thái riêng tư của từng kênh, kèm con trỏ để lấy trang tiếp theo. Dùng khi cần tìm id của một kênh từ tên của nó trước khi gửi tin nhắn hay đọc lịch sử.",
+  "input_schema": {
+    "version": "1.0",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 },
+        "cursor": { "type": "string", "maxLength": 512 },
+        "exclude_archived": { "type": "boolean", "default": true },
+        "types": {
+          "type": "string",
+          "description": "Danh sách ngăn bởi dấu phẩy: public_channel, private_channel, mpim, im.",
+          "pattern": "^[a-z_]+(,[a-z_]+)*$",
+          "default": "public_channel"
+        }
+      }
+    }
+  },
+  "output_schema": {
+    "version": "1.0",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channels"],
+      "properties": {
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "is_private": { "type": "boolean" },
+              "is_archived": { "type": "boolean" },
+              "num_members": { "type": "integer" }
+            }
+          }
+        },
+        "next_cursor": { "type": ["string", "null"] }
+      }
+    }
+  },
+  "required_scopes": ["channels:read"],
+  "side_effect": "read",
+  "retry": {
+    "max_attempts": 3,
+    "initial_backoff_seconds": 0.5,
+    "max_backoff_seconds": 20,
+    "multiplier": 2
+  },
+  "timeout": { "attempt_seconds": 15, "total_seconds": 60 },
+  "rate_limits": { "tool": { "limit": 20, "window_seconds": 60 } },
+  "idempotency": { "strategy": "none", "required": false },
+  "permissions": [],
+  "approval": { "required": false },
+  "request": { "method": "GET", "path": "/conversations.list", "body": "query" },
+  "output_mapping": {
+    "channels": {
+      "path": ["channels"],
+      "items": {
+        "id": ["id"],
+        "name": ["name"],
+        "is_private": ["is_private"],
+        "is_archived": ["is_archived"],
+        "num_members": ["num_members"]
+      }
+    },
+    "next_cursor": { "path": ["response_metadata", "next_cursor"] }
+  },
+  "enabled": true
+}

@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0",
+  "tool_id": "slack.list_users",
+  "provider": "slack",
+  "version": "1.0",
+  "description": "Liệt kê thành viên của workspace Slack. Trả về id, tên đăng nhập và tên hiển thị, kèm cờ cho biết đó là bot hay tài khoản đã bị xoá. Dùng khi cần đổi tên một người thành id để nhắc tới họ trong tin nhắn.",
+  "input_schema": {
+    "version": "1.0",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 },
+        "cursor": { "type": "string", "maxLength": 512 }
+      }
+    }
+  },
+  "output_schema": {
+    "version": "1.0",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["members"],
+      "properties": {
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "real_name": { "type": "string" },
+              "is_bot": { "type": "boolean" },
+              "deleted": { "type": "boolean" }
+            }
+          }
+        },
+        "next_cursor": { "type": ["string", "null"] }
+      }
+    }
+  },
+  "required_scopes": ["users:read"],
+  "side_effect": "read",
+  "retry": {
+    "max_attempts": 3,
+    "initial_backoff_seconds": 0.5,
+    "max_backoff_seconds": 20,
+    "multiplier": 2
+  },
+  "timeout": { "attempt_seconds": 15, "total_seconds": 60 },
+  "rate_limits": { "tool": { "limit": 20, "window_seconds": 60 } },
+  "idempotency": { "strategy": "none", "required": false },
+  "permissions": [],
+  "approval": { "required": false },
+  "request": { "method": "GET", "path": "/users.list", "body": "query" },
+  "output_mapping": {
+    "members": {
+      "path": ["members"],
+      "items": {
+        "id": ["id"],
+        "name": ["name"],
+        "real_name": ["profile", "real_name"],
+        "is_bot": ["is_bot"],
+        "deleted": ["deleted"]
+      }
+    },
+    "next_cursor": { "path": ["response_metadata", "next_cursor"] }
+  },
+  "enabled": true
+}

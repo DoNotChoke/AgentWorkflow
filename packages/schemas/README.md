@@ -55,7 +55,12 @@ thứ tự các bước sinh code.
 
 ## Trạng thái hiện tại
 
-Trống. IR v1 được chốt ở **Phase 4** — đó là lúc có đủ Execution Trace thật để
+`tool/` — **xong ở Phase 2.** Định nghĩa Tool (§6.2) và Connector (§6.1), cùng
+connector Slack đầu tiên với bốn tool. Xem [`tool/README.md`](tool/README.md).
+
+`event/` — trống, Phase 7 cùng với §33.
+
+`workflow/` — trống. IR v1 được chốt ở **Phase 4** — đó là lúc có đủ Execution Trace thật để
 biết cần biểu diễn những gì. Chốt IR quá sớm, trước khi có dữ liệu thật từ
 Agent, gần như chắc chắn dẫn tới một contract sai mà lại đã bị đóng băng bởi
 quy tắc bất biến ở trên.
