@@ -212,8 +212,12 @@ def parse_connector(document: Mapping[str, Any], *, where: str = "<connector>") 
         circuit_breaker=(
             CircuitBreakerSpec(
                 failure_threshold=int(breaker["failure_threshold"]),
+                global_failure_threshold=int(
+                    breaker.get("global_failure_threshold", int(breaker["failure_threshold"]) * 4)
+                ),
                 window_seconds=int(breaker["window_seconds"]),
                 open_seconds=int(breaker["open_seconds"]),
+                probe_timeout_seconds=int(breaker.get("probe_timeout_seconds", 120)),
             )
             if breaker
             else CircuitBreakerSpec()

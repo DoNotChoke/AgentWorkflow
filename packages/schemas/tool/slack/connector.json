@@ -49,8 +49,10 @@
   },
   "circuit_breaker": {
     "failure_threshold": 5,
+    "global_failure_threshold": 25,
     "window_seconds": 60,
-    "open_seconds": 30
+    "open_seconds": 30,
+    "probe_timeout_seconds": 120
   },
   "webhooks": {
     "supported": true,

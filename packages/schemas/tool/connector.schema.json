@@ -116,9 +116,26 @@
       "additionalProperties": false,
       "required": ["failure_threshold", "window_seconds", "open_seconds"],
       "properties": {
-        "failure_threshold": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "failure_threshold": {
+          "description": "Ngưỡng của mạch theo từng kết nối.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "global_failure_threshold": {
+          "description": "Ngưỡng của mạch toàn provider. Phải cao hơn hẳn ngưỡng theo kết nối: mạch này gom thất bại của mọi kết nối nên nó chạm ngưỡng nhanh hơn, và để hai mạch chung ngưỡng thì mạch theo kết nối không cách ly được gì.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
         "window_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
-        "open_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 }
+        "open_seconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
+        "probe_timeout_seconds": {
+          "description": "Sau ngần này giây, một vé thăm dò chưa có kết quả bị coi là bỏ rơi và giao lại được. Phải dài hơn `timeout.total_seconds` của mọi tool thuộc connector, nếu không một vé đang dùng thật sẽ bị cướp.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        }
       }
     },
     "webhookCapabilities": {

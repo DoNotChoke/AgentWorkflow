@@ -1,4 +1,4 @@
-"""Định nghĩa Connector"""
+"""Connector"""
 
 from __future__ import annotations
 
@@ -9,8 +9,6 @@ from typing import Literal
 from app.core.errors import ErrorCategory
 from app.domains.integration.domain.tools import RateLimitProfile
 
-#: Cách gắn credential vào request. Chỉ OAuth 2.0 ở Phase 2 — đúng bằng những
-#: gì domain `connection` cấp được.
 AuthKind = Literal["oauth2"]
 
 #: Mã lỗi không có trong bảng của connector rơi về đây.
@@ -29,8 +27,10 @@ class CircuitBreakerSpec:
     """Chỉ lỗi thuộc nhóm retryable mới làm tăng bộ đếm."""
 
     failure_threshold: int = 5
+    global_failure_threshold: int = 20
     window_seconds: int = 60
     open_seconds: int = 30
+    probe_timeout_seconds: int = 120
 
 
 @dataclass(frozen=True, slots=True)

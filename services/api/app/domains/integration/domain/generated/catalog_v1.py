@@ -13,6 +13,7 @@ from __future__ import annotations
 from app.core.errors import ErrorCategory
 from app.domains.integration.domain.connectors import (
     AuthSpec,
+    CircuitBreakerSpec,
     ConnectorSpec,
     EventCapabilities,
     WebhookCapabilities,
@@ -106,6 +107,9 @@ CONNECTORS: tuple[ConnectorSpec, ...] = (
                 limit=60,
                 window_seconds=60,
             ),
+        ),
+        circuit_breaker=CircuitBreakerSpec(
+            global_failure_threshold=25,
         ),
         notes='Slack trả HTTP 200 kèm {"ok": false} cho mọi thất bại, kể cả rate limit — nên `ok` phải được kiểm trước status code. Bot token không hết hạn, vì vậy token_revoked là tín hiệu duy nhất khi app bị gỡ.',
     ),
