@@ -16,6 +16,7 @@ from app.domains.integration.domain.connectors import (
     CircuitBreakerSpec,
     ConnectorSpec,
     EventCapabilities,
+    ResponseEnvelope,
     WebhookCapabilities,
 )
 from app.domains.integration.domain.tools import (
@@ -77,6 +78,10 @@ CONNECTORS: tuple[ConnectorSpec, ...] = (
             "not_in_channel": ErrorCategory.VALIDATION,
             "is_archived": ErrorCategory.VALIDATION,
         },
+        response_envelope=ResponseEnvelope(
+            success_field="ok",
+            error_field="error",
+        ),
         webhooks=WebhookCapabilities(
             supported=True,
             signature_header="x-slack-signature",

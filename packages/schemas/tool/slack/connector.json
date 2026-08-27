@@ -47,6 +47,10 @@
     "not_in_channel": "ValidationError",
     "is_archived": "ValidationError"
   },
+  "response_envelope": {
+    "success_field": "ok",
+    "error_field": "error"
+  },
   "circuit_breaker": {
     "failure_threshold": 5,
     "global_failure_threshold": 25,

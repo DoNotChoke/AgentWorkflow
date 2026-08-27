@@ -34,6 +34,22 @@ class CircuitBreakerSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class ResponseEnvelope:
+    """Provider báo thất bại trong thân phản hồi thay vì bằng mã HTTP."""
+
+    success_field: str
+    error_field: str
+    detail_field: str | None = None
+
+    def failure_code(self, body: Mapping[str, object]) -> str | None:
+        """Mã lỗi provider báo trong thân, hoặc `None` nếu thân báo thành công."""
+        if body.get(self.success_field) is not False:
+            return None
+        code = body.get(self.error_field)
+        return str(code) if code else "unknown_error"
+
+
+@dataclass(frozen=True, slots=True)
 class WebhookCapabilities:
     supported: bool = False
     signature_header: str | None = None
@@ -55,6 +71,7 @@ class ConnectorSpec:
     auth: AuthSpec
     tool_ids: tuple[str, ...]
     error_mapping: Mapping[str, ErrorCategory]
+    response_envelope: ResponseEnvelope | None = None
     webhooks: WebhookCapabilities = field(default_factory=WebhookCapabilities)
     events: EventCapabilities = field(default_factory=EventCapabilities)
     default_rate_limits: RateLimitProfile = field(default_factory=RateLimitProfile)

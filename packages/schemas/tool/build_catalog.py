@@ -70,6 +70,7 @@ IMPORTABLE: dict[str, tuple[str, ...]] = {
         "CircuitBreakerSpec",
         "ConnectorSpec",
         "EventCapabilities",
+        "ResponseEnvelope",
         "WebhookCapabilities",
     ),
     "app.domains.integration.domain.tools": (

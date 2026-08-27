@@ -58,6 +58,7 @@
       "minProperties": 1,
       "additionalProperties": { "$ref": "#/$defs/errorCategory" }
     },
+    "response_envelope": { "$ref": "#/$defs/responseEnvelope" },
     "circuit_breaker": { "$ref": "#/$defs/circuitBreaker" },
     "webhooks": { "$ref": "#/$defs/webhookCapabilities" },
     "events": { "$ref": "#/$defs/eventCapabilities" },
@@ -108,6 +109,21 @@
         "connection": { "$ref": "#/$defs/rateLimitRule" },
         "user": { "$ref": "#/$defs/rateLimitRule" },
         "tool": { "$ref": "#/$defs/rateLimitRule" }
+      }
+    },
+    "responseEnvelope": {
+      "description": "Provider báo thất bại trong THÂN phản hồi thay vì bằng mã HTTP. Slack trả 200 kèm {\"ok\": false, \"error\": \"...\"} cho mọi thất bại, kể cả rate limit — nên `ok` phải được kiểm trước status code. Khai ở đây để driver chung đọc được, thay vì phải có một nhánh `if provider == \"slack\"` (§6 cấm điều đó).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["success_field", "error_field"],
+      "properties": {
+        "success_field": { "type": "string", "maxLength": 64 },
+        "error_field": { "type": "string", "maxLength": 64 },
+        "detail_field": {
+          "description": "Trường mang thông tin chẩn đoán thêm, nếu provider có.",
+          "type": "string",
+          "maxLength": 64
+        }
       }
     },
     "circuitBreaker": {

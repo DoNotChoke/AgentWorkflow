@@ -21,6 +21,7 @@ from app.domains.integration.domain.connectors import (
     CircuitBreakerSpec,
     ConnectorSpec,
     EventCapabilities,
+    ResponseEnvelope,
     WebhookCapabilities,
 )
 from app.domains.integration.domain.tools import (
@@ -181,6 +182,7 @@ def parse_connector(document: Mapping[str, Any], *, where: str = "<connector>") 
     _check_document_version(document, where)
 
     breaker = document.get("circuit_breaker")
+    envelope = document.get("response_envelope")
     webhooks = document["webhooks"]
     events = document["events"]
 
@@ -199,6 +201,15 @@ def parse_connector(document: Mapping[str, Any], *, where: str = "<connector>") 
             str(code): ErrorCategory(category)
             for code, category in document["error_mapping"].items()
         },
+        response_envelope=(
+            ResponseEnvelope(
+                success_field=str(envelope["success_field"]),
+                error_field=str(envelope["error_field"]),
+                detail_field=envelope.get("detail_field"),
+            )
+            if envelope
+            else None
+        ),
         webhooks=WebhookCapabilities(
             supported=bool(webhooks["supported"]),
             signature_header=webhooks.get("signature_header"),
