@@ -22,6 +22,7 @@ from app.core.db import DOMAIN_SCHEMAS, Base
 # autogenerate kế tiếp mới lộ ra, dưới dạng một migration xoá bảng.
 from app.domains.connection.infrastructure import models as connection_models  # noqa: F401
 from app.domains.identity.infrastructure import models as identity_models  # noqa: F401
+from app.domains.integration.infrastructure import models as integration_models  # noqa: F401
 from app.domains.tenant.infrastructure import models as tenant_models  # noqa: F401
 
 config = context.config
