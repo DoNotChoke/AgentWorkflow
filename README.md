@@ -140,13 +140,31 @@ mà chỉ chính chủ nhìn thấy và dùng được. **Chính sách** của o
 khoản riêng, `managed` chỉ cho dùng tài khoản chung. Mặc định là `open` cho org
 và `private` cho từng kết nối — hẹp ở chỗ quan trọng, rộng ở chỗ vô hại.
 
+**Phase 2 — hoàn tất.** Integration Plane. Tool và Connector được định nghĩa
+bằng JSON Schema trong `packages/schemas/tool/` rồi sinh thành catalog Python
+đã commit. Integration Gateway chạy đủ mười bốn trách nhiệm của §6.3: phân giải
+kết nối, giải mã credential, kiểm scope, chính sách, idempotency, rate limit sáu
+cấp, circuit breaker, retry, chuẩn hoá lỗi, phát trace và usage. Connector Slack
+đầu tiên với bốn tool.
+
+Không có module nào mang tên Slack. Mọi khác biệt của provider — địa chỉ gốc,
+cách gắn token, bảng ánh xạ lỗi, và cả quirk trả HTTP 200 kèm `{"ok": false}` —
+đều là dữ liệu trong tài liệu connector. Thêm provider thứ hai là thêm một thư
+mục JSON. §6 cấm những nhánh điều kiện theo provider, và một test đọc AST của
+driver giữ điều đó.
+
+Ranh giới credential được đính chính ở [ADR-0002](docs/adr/0002-ranh-gioi-credential-nam-o-wiring.md):
+nó nằm ở `entrypoints/wiring.py`, không phải ở Integration Plane như ADR-0001
+mô tả. Contract 6 cấm Agent Runtime với tới đó, kể cả gián tiếp — nên từ Phase 3,
+Agent **buộc** phải gọi Gateway qua HTTP thay vì gọi trong tiến trình.
+
 Lộ trình các phase tiếp theo: xem `docs/adr/0001-*.md` và kế hoạch triển khai.
 
 | Phase | Nội dung |
 |---|---|
 | 0 | Nền móng, hạ tầng, ranh giới ✅ |
 | 1 | Identity, Tenant, Connection, OAuth ✅ |
-| 2 | Integration Plane, connector đầu tiên (Slack) |
+| 2 | Integration Plane, connector đầu tiên (Slack) ✅ |
 | 3 | Agent Runtime, Model Gateway, Execution Trace |
 | 4 | Workflow IR, Generic Executor trên Temporal |
 | 5 | Workflow Compiler (trace → IR) |

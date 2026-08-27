@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     refresh_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     refresh_cookie_domain: str | None = None
 
+    #: Công tắc cho endpoint gọi tool nội bộ (§6.3). Tắt được mà không phải
+    #: deploy lại — một tool hỏng đang gây thiệt hại thì chặn cả cửa nhanh hơn
+    #: là sửa tài liệu tool.
+    integration_internal_tools_enabled: bool = True
+
     kms_provider: Literal["local", "aws", "vault"] = "local"
     kms_local_master_key: SecretStr = SecretStr("thay-doi-truoc-khi-dung-that")
 

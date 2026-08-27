@@ -275,6 +275,13 @@ class IntegrationGateway:
         """
         if attempts <= 1 or not may_retry(tool, error, idempotent=True):
             return error
+
+        # `RateLimited` giữ nguyên hình. Nó mang `Retry-After` — một chỉ dẫn
+        # hành động được — còn `RetryExhausted` thì thành 502 và nói với người
+        # gọi rằng provider hỏng, điều không đúng: provider vẫn khoẻ, mình chỉ
+        # đang bị tiết lưu.
+        if error.category is ErrorCategory.RATE_LIMITED:
+            return error
         return RetryExhaustedError(
             f"{tool.tool_id} thất bại sau {attempts} lần thử.",
             details={"tool_id": tool.tool_id, "attempts": str(attempts)},

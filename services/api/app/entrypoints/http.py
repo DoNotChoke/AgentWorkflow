@@ -27,6 +27,11 @@ from app.domains.connection.infrastructure.http import TENANT_GUARD_FACTORY
 from app.domains.connection.infrastructure.http import router as connection_router
 from app.domains.identity.infrastructure.http import TENANT_PROVISIONER_FACTORY
 from app.domains.identity.infrastructure.http import router as identity_router
+from app.domains.integration.infrastructure.http import (
+    CREDENTIAL_PROVIDER_FACTORY,
+    INTEGRATION_TENANT_GUARD_FACTORY,
+)
+from app.domains.integration.infrastructure.http import router as integration_router
 from app.domains.tenant.infrastructure.http import USER_DIRECTORY_FACTORY, build_tenant_service
 from app.domains.tenant.infrastructure.http import router as tenant_router
 from app.entrypoints.middleware import (
@@ -34,7 +39,12 @@ from app.entrypoints.middleware import (
     app_error_handler,
     unhandled_error_handler,
 )
-from app.entrypoints.wiring import build_tenant_guard, build_user_directory
+from app.entrypoints.wiring import (
+    build_credential_provider,
+    build_integration_tenant_guard,
+    build_tenant_guard,
+    build_user_directory,
+)
 
 log = get_logger(__name__)
 
@@ -94,12 +104,18 @@ def create_app() -> FastAPI:
     setattr(app.state, USER_DIRECTORY_FACTORY, build_user_directory)
     setattr(app.state, TENANT_GUARD_FACTORY, build_tenant_guard)
 
+    # Integration ← Connection: cổng credential. Chỉ tiến trình này được nối —
+    # contract 6 cấm `entrypoints/agent.py` chạm tới `wiring` (ADR-0002).
+    setattr(app.state, CREDENTIAL_PROVIDER_FACTORY, build_credential_provider)
+    setattr(app.state, INTEGRATION_TENANT_GUARD_FACTORY, build_integration_tenant_guard)
+
     # Router của từng domain được mount ở đây. Entrypoint chỉ chạm tới tầng
     # `infrastructure` của domain, không bao giờ import thẳng tầng `domain`
     # (contract 5 trong pyproject.toml).
     app.include_router(identity_router)
     app.include_router(tenant_router)
     app.include_router(connection_router)
+    app.include_router(integration_router)
 
     instrument_fastapi(app)
     return app

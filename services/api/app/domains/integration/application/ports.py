@@ -170,3 +170,33 @@ class CredentialProvider(Protocol):
     async def report_unusable(self, *, connection_id: str, tenant_id: str, reason: str) -> None:
         """Provider vừa từ chối token này."""
         ...
+
+
+# ─── Tenant ──────────────────────────────────────────────────────────────────
+
+
+class InvocationContext(Protocol):
+    """Tenant của lời gọi, đã phân giải từ token và membership (§19).
+
+    Hẹp hơn `WorkspaceContext` của Connection có chủ đích: Integration Plane chỉ
+    cần bốn trường này. Protocol là structural typing, nên cùng một adapter
+    trong `wiring.py` thoả được cả hai mà hai domain không phải biết nhau.
+    """
+
+    @property
+    def user_id(self) -> str: ...
+
+    @property
+    def organization_id(self) -> str: ...
+
+    @property
+    def workspace_id(self) -> str: ...
+
+    @property
+    def roles(self) -> frozenset[str]: ...
+
+
+class TenantGuard(Protocol):
+    async def require_workspace_context(
+        self, *, user_id: str, organization_id: str | None, workspace_id: str | None
+    ) -> InvocationContext: ...
