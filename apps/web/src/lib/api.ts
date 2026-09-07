@@ -21,6 +21,8 @@ export type ErrorCategory =
   | "ApprovalRejected"
   | "WorkflowDefinitionError"
   | "WorkflowExecutionError"
+  | "MissingConnection"
+  | "ConnectionChoiceRequired"
   | "InternalError";
 
 type ErrorBody = {
@@ -236,4 +238,18 @@ export type ConnectionPolicySettings = {
 export type Authorization = {
   authorize_url: string;
   expires_in_seconds: number;
+};
+
+// ─── Agent — lựa chọn connection (ADR-0004) ──────────────────────────────────
+
+/**
+ * Một ứng viên connection cho một provider, khi có từ hai trở lên và Agent
+ * Runtime chưa biết dùng cái nào — đúng hình dạng `details.candidates` của
+ * lỗi `ConnectionChoiceRequired` (`error_category` ở SSE `tool_call_completed`).
+ */
+export type ConnectionCandidate = {
+  connection_id: string;
+  display_name: string;
+  sharing: SharingPolicy;
+  external_account_label: string | null;
 };
