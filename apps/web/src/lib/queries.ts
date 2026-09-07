@@ -518,3 +518,29 @@ export function useSetConnectionPolicy(organizationId: string | null) {
     },
   });
 }
+
+// ─── Agent Runtime — lựa chọn connection (ADR-0004) ──────────────────────────
+//
+// Endpoint thuộc Agent Runtime (`entrypoints/agent.py`), không phải Control
+// Plane — tiến trình riêng, cổng riêng, nhưng cùng đi qua rewrite của Next
+// (xem `next.config.ts`) nên gọi giống hệt mọi endpoint khác ở file này.
+// Không có query nào đọc lại lựa chọn đã lưu — nơi dùng hook này tự giữ trạng
+// thái "đang dùng connection nào" từ sự kiện SSE của chính lượt chat, không
+// phải từ một lần fetch riêng.
+
+/** Chốt (hoặc đổi) connection dùng cho một provider trong một conversation. */
+export function useSetConversationConnection(
+  organizationId: string | null,
+  workspaceId: string | null,
+) {
+  const { accessToken } = useSession();
+  return useMutation({
+    mutationFn: (input: { conversationId: string; provider: string; connectionId: string }) =>
+      apiRequest<void>(`/v1/conversations/${input.conversationId}/connections`, {
+        method: "POST",
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+        body: { provider: input.provider, connection_id: input.connectionId },
+      }),
+  });
+}
