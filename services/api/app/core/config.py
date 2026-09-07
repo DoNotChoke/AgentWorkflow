@@ -118,6 +118,10 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr = SecretStr("")
     openai_default_model: str = "gpt-5.4-mini"
 
+    # ─── Agent Runtime ──────────────────────────────────────────────────
+    #: Nơi Agent Runtime gọi tool — luôn là Control Plane.
+    control_plane_internal_base_url: str = "http://localhost:8000"
+
     # ─── Tiện ích ────────────────────────────────────────────────────────────
     @property
     def is_production(self) -> bool:
