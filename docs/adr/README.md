@@ -18,6 +18,7 @@ Những thay đổi thông thường không cần ADR. Việc lạm dụng ADR l
 | [0001](0001-single-python-runtime-thay-cho-go-control-plane.md) | Dùng một runtime Python duy nhất thay cho Go Control Plane ở giai đoạn đầu | Accepted |
 | [0002](0002-ranh-gioi-credential-nam-o-wiring.md) | Ranh giới credential nằm ở `entrypoints/wiring`, không ở Integration Plane | Accepted |
 | [0003](0003-agent-wiring-tach-khoi-wiring-va-khong-cham-connection.md) | `entrypoints/agent_wiring.py` tách khỏi `wiring.py`, không chạm domain `connection` | Accepted |
+| [0004](0004-chon-connection-theo-conversation.md) | Chọn connection theo Conversation, không theo Agent hay theo user | Accepted |
 
 Mẫu: [`0000-template.md`](0000-template.md).
 

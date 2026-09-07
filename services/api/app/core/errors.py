@@ -20,6 +20,8 @@ class ErrorCategory(StrEnum):
     APPROVAL_REJECTED = "ApprovalRejected"
     WORKFLOW_DEFINITION = "WorkflowDefinitionError"
     WORKFLOW_EXECUTION = "WorkflowExecutionError"
+    MISSING_CONNECTION = "MissingConnection"
+    CONNECTION_CHOICE_REQUIRED = "ConnectionChoiceRequired"
     INTERNAL = "InternalError"
 
 
@@ -46,6 +48,8 @@ _HTTP_STATUS: dict[ErrorCategory, int] = {
     ErrorCategory.APPROVAL_REJECTED: 409,
     ErrorCategory.WORKFLOW_DEFINITION: 422,
     ErrorCategory.WORKFLOW_EXECUTION: 500,
+    ErrorCategory.MISSING_CONNECTION: 409,
+    ErrorCategory.CONNECTION_CHOICE_REQUIRED: 409,
     ErrorCategory.INTERNAL: 500,
 }
 
@@ -153,6 +157,19 @@ class WorkflowDefinitionError(AppError):
 
 class WorkflowExecutionError(AppError):
     category = ErrorCategory.WORKFLOW_EXECUTION
+
+
+class MissingConnectionError(AppError):
+    """Provider chưa có connection nào khả dụng cho người đang hành động."""
+
+    category = ErrorCategory.MISSING_CONNECTION
+
+
+class ConnectionChoiceRequiredError(AppError):
+    """Provider có từ hai connection khả dụng trở lên và chưa có lựa chọn nào
+    được chốt cho cuộc hội thoại đang hành động — xem ADR-0004."""
+
+    category = ErrorCategory.CONNECTION_CHOICE_REQUIRED
 
 
 class InternalError(AppError):
