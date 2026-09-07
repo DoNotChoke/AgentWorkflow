@@ -27,7 +27,11 @@ from app.core.logging import get_logger
 from app.core.redis import enforce_rate_limit, global_key
 from app.domains.integration.application.gateway import IntegrationGateway
 from app.domains.integration.application.policy_engine import PolicyEngine
-from app.domains.integration.application.ports import CredentialProvider, TenantGuard
+from app.domains.integration.application.ports import (
+    CredentialProvider,
+    TenantGuard,
+    ToolInvocationSink,
+)
 from app.domains.integration.domain.catalog import default_registry
 from app.domains.integration.domain.invocation import CallerRef, ToolInvocation
 from app.domains.integration.infrastructure.circuit_breaker import RedisCircuitBreaker
@@ -39,10 +43,7 @@ from app.domains.integration.infrastructure.policy_defaults import (
 )
 from app.domains.integration.infrastructure.rate_limit import RedisRateLimiter
 from app.domains.integration.infrastructure.repositories import SqlAlchemyIdempotencyStore
-from app.domains.integration.infrastructure.sinks import (
-    LoggingToolInvocationSink,
-    LoggingUsageRecorder,
-)
+from app.domains.integration.infrastructure.sinks import LoggingUsageRecorder
 
 log = get_logger(__name__)
 
@@ -51,10 +52,12 @@ router = APIRouter(prefix="/internal/v1/tools", tags=["integration"], include_in
 ORGANIZATION_HEADER = "x-organization-id"
 WORKSPACE_HEADER = "x-workspace-id"
 
-#: Khoá trong ``app.state``. Cả hai do `entrypoints/http.py` gắn vào — router
-#: không tự dựng được cái nào, và với credential thì đó là điều kiện của §2.4.
+#: Khoá trong ``app.state``. Cả ba do `entrypoints/http.py` gắn vào — router
+#: không tự dựng được cái nào. Với credential đó là điều kiện của §2.4; với
+#: trace sink là vì Contract 1 cấm `integration` import domain `trace`.
 CREDENTIAL_PROVIDER_FACTORY = "credential_provider_factory"
 INTEGRATION_TENANT_GUARD_FACTORY = "integration_tenant_guard_factory"
+TRACE_SINK_FACTORY = "trace_sink_factory"
 
 #: Rate limit ở tầng vận chuyển, đếm theo người gọi. Khác hẳn hạn mức provider
 #: ở §22 — cái này chặn một client hỏng, không liên quan quota của Slack.
@@ -109,6 +112,24 @@ def get_tenant_guard(
     return guard
 
 
+def get_trace_sink(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ToolInvocationSink:
+    """Lấy sink ghi Execution Trace mà entrypoint đã gắn vào app.
+
+    Router **không** tự dựng `TraceService`: nó thuộc domain `trace`, và
+    import thẳng sẽ phá Contract 1 (các domain không import chéo nhau).
+    """
+    factory = _from_state(
+        request,
+        TRACE_SINK_FACTORY,
+        "chỉ Control Plane API được nối trace sink (xem entrypoints/wiring.py).",
+    )
+    sink: ToolInvocationSink = factory(session)
+    return sink
+
+
 async def resolve_context(
     user_id: Annotated[str, Depends(require_user_id)],
     guard: Annotated[TenantGuard, Depends(get_tenant_guard)],
@@ -143,6 +164,7 @@ async def resolve_context(
 def get_gateway(
     session: Annotated[AsyncSession, Depends(get_session)],
     credentials: Annotated[CredentialProvider, Depends(get_credential_provider)],
+    trace: Annotated[ToolInvocationSink, Depends(get_trace_sink)],
 ) -> IntegrationGateway:
     return IntegrationGateway(
         registry=_REGISTRY,
@@ -154,7 +176,7 @@ def get_gateway(
         rate_limiter=RedisRateLimiter(),
         breaker=RedisCircuitBreaker(),
         idempotency=SqlAlchemyIdempotencyStore(session),
-        trace=LoggingToolInvocationSink(),
+        trace=trace,
         usage=LoggingUsageRecorder(),
     )
 
@@ -165,11 +187,30 @@ CurrentContext = Annotated[Any, Depends(resolve_context)]
 # ─── Schema vào/ra ───────────────────────────────────────────────────────────
 
 
+class CallerRequest(BaseModel):
+    """Ai/cái gì đang khởi xướng lời gọi — để đính vào Execution Trace (§9.1).
+
+    Mọi trường đều tuỳ chọn: gọi trực tiếp qua Swagger/curl thì để trống, kết
+    quả vẫn đúng — chỉ là không có trace nào được ghi (xem `IntegrationTraceSink`
+    ở `entrypoints/wiring.py`). `execution_trace_id` sai hoặc thuộc tenant khác
+    cũng chỉ lặng lẽ không ghi được gì, không làm lời gọi tool thất bại — ghi
+    trace là quan sát, không phải một phần của giao dịch.
+    """
+
+    agent_id: str | None = None
+    workflow_id: str | None = None
+    execution_id: str | None = None
+    node_id: str | None = None
+    execution_trace_id: str | None = None
+    parent_step_id: str | None = None
+
+
 class InvokeRequest(BaseModel):
     connection_id: str = Field(max_length=64)
     input: dict[str, Any] = Field(default_factory=dict)
     tool_version: str | None = Field(default=None, max_length=16)
     idempotency_key: str | None = Field(default=None, max_length=255)
+    caller: CallerRequest = Field(default_factory=CallerRequest)
 
     # Cố ý KHÔNG có `acting_user_id`. Nếu người gọi khai được nó thì mọi kết nối
     # riêng trong workspace mở toang — đây là cái bẫy §2.4 trên chính route này.
@@ -260,7 +301,14 @@ async def invoke(
             input=payload.input,
             tool_version=payload.tool_version,
             idempotency_key=payload.idempotency_key,
-            caller=CallerRef(),
+            caller=CallerRef(
+                agent_id=payload.caller.agent_id,
+                workflow_id=payload.caller.workflow_id,
+                execution_id=payload.caller.execution_id,
+                node_id=payload.caller.node_id,
+                execution_trace_id=payload.caller.execution_trace_id,
+                parent_step_id=payload.caller.parent_step_id,
+            ),
         )
     )
 

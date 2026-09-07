@@ -4,8 +4,8 @@ Postgres và Redis thật, `create_app()` thật, cổng credential thật đi q
 thật. Chỉ Slack bị giả, và giả ở **ranh giới ngoài cùng** — `httpx` — nên mọi
 chặng bên trong đều là đường chạy thật.
 
-Đây là chỗ duy nhất chứng minh Gateway, sổ idempotency, rate limit, breaker và
-cổng credential thực sự nối được với nhau.
+Đây là chỗ duy nhất chứng minh Gateway, sổ idempotency, rate limit, breaker,
+cổng credential và sink ghi Execution Trace thực sự nối được với nhau.
 """
 
 from __future__ import annotations
@@ -28,6 +28,11 @@ from sqlalchemy import text  # noqa: E402
 from app.core.db import session_scope  # noqa: E402
 from app.domains.connection.domain.entities import ConnectionStatus, OAuthTokens  # noqa: E402
 from app.domains.connection.domain.providers import SLACK  # noqa: E402
+from app.domains.trace.application.service import TraceService  # noqa: E402
+from app.domains.trace.domain.entities import TraceSource, TraceSubject  # noqa: E402
+from app.domains.trace.infrastructure.repositories import (  # noqa: E402
+    SqlAlchemyExecutionTraceRepository,
+)
 from app.entrypoints.http import create_app  # noqa: E402
 
 pytestmark = pytest.mark.integration
@@ -446,3 +451,114 @@ def test_tool_khong_ton_tai(client: TestClient) -> None:
     )
 
     assert reply.status_code == 422
+
+
+# ─── Trace thật, nối qua entrypoints/wiring.py (WP3) ─────────────────────────
+
+
+async def _seed_trace(tenant_id: str, workspace_id: str) -> str:
+    from datetime import UTC, datetime
+
+    async with session_scope() as session:
+        service = TraceService(traces=SqlAlchemyExecutionTraceRepository(session))
+        trace = await service.start(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            source=TraceSource.AGENT,
+            subject=TraceSubject(agent_id="agt_test", conversation_id="cnv_test"),
+            initiated_by="usr_test",
+            at=datetime.now(UTC),
+        )
+        return trace.id
+
+
+def seed_trace(client: TestClient, tenant_id: str, workspace_id: str) -> str:
+    """Mở một trace y hệt cách Agent Runtime sẽ làm — qua `TraceService`, không
+    qua HTTP (domain `trace` không có route ghi, xem `domains/trace/infrastructure/http.py`)."""
+    assert client.portal is not None
+    return str(client.portal.call(_seed_trace, tenant_id, workspace_id))
+
+
+def test_goi_tool_thanh_cong_ghi_duoc_buoc_tool_call_vao_trace(
+    client: TestClient, slack: FakeSlack
+) -> None:
+    """Chứng minh `IntegrationTraceSink` — trái tim của WP3 — thực sự ghi được
+    vào Postgres, đọc lại qua chính router chỉ-đọc của domain `trace`."""
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    connection = seed(client, _user_id(an), org, workspace, "workspace")
+    trace_id = seed_trace(client, org, workspace)
+
+    slack.next(json={"ok": True, "channel": "C123", "ts": "1712345678.000100"})
+    reply = an.post(
+        f"{TOOLS}/slack.post_message/invoke",
+        json={
+            "connection_id": connection,
+            "input": {"channel": "C123", "text": "xin chào"},
+            "idempotency_key": f"idm_{uuid.uuid4().hex}",
+            "caller": {"execution_trace_id": trace_id},
+        },
+    )
+    assert reply.status_code == 200, reply.text
+
+    trace = an.get(f"/v1/traces/{trace_id}").json()
+
+    assert len(trace["steps"]) == 1
+    step = trace["steps"][0]
+    assert step["kind"] == "tool_call"
+    assert step["status"] == "succeeded"
+    assert step["attributes"]["tool_id"] == "slack.post_message"
+    assert step["attributes"]["provider"] == "slack"
+    assert step["attributes"]["connection_id"] == connection
+
+
+def test_goi_tool_that_bai_cung_ghi_duoc_buoc_that_bai_vao_trace(
+    client: TestClient, slack: FakeSlack
+) -> None:
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    connection = seed(client, _user_id(an), org, workspace, "workspace")
+    trace_id = seed_trace(client, org, workspace)
+
+    slack.next(json={"ok": False, "error": "channel_not_found"})
+    reply = an.post(
+        f"{TOOLS}/slack.post_message/invoke",
+        json={
+            "connection_id": connection,
+            "input": {"channel": "C123", "text": "xin chào"},
+            "idempotency_key": f"idm_{uuid.uuid4().hex}",
+            "caller": {"execution_trace_id": trace_id},
+        },
+    )
+    assert reply.status_code == 422, reply.text
+
+    trace = an.get(f"/v1/traces/{trace_id}").json()
+
+    assert len(trace["steps"]) == 1
+    step = trace["steps"][0]
+    assert step["status"] == "failed"
+    assert step["error_category"] == "ValidationError"
+
+
+def test_khong_khai_caller_thi_khong_ghi_trace_nao_nhung_van_thanh_cong(
+    client: TestClient, slack: FakeSlack
+) -> None:
+    """Không có `execution_trace_id` (mặc định của mọi test khác trong file
+    này) thì sink rơi về log — không có trace nào để ghi, không phải một lỗi."""
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    connection = seed(client, _user_id(an), org, workspace, "workspace")
+    trace_id = seed_trace(client, org, workspace)
+
+    slack.next(json={"ok": True, "channel": "C123", "ts": "1712345678.000100"})
+    reply = an.post(
+        f"{TOOLS}/slack.post_message/invoke",
+        json={
+            "connection_id": connection,
+            "input": {"channel": "C123", "text": "xin chào"},
+            "idempotency_key": f"idm_{uuid.uuid4().hex}",
+        },
+    )
+
+    assert reply.status_code == 200, reply.text
+    assert an.get(f"/v1/traces/{trace_id}").json()["steps"] == []

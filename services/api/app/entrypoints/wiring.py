@@ -272,3 +272,90 @@ def build_integration_tenant_guard(session: AsyncSession) -> TenantGuard:
     thoả cả hai mà không domain nào phải biết domain kia tồn tại.
     """
     return build_tenant_guard(session)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Trace ← Integration
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class IntegrationTraceSink:
+    """Hiện thực `ToolInvocationSink` của Integration bằng `TraceService`.
+
+    Chỉ ghi khi lời gọi tool mang `execution_trace_id` trên `CallerRef` — do
+    Agent Runtime gắn vào khi nó gọi Gateway qua HTTP (Phase 3, phần còn lại).
+    Không có `execution_trace_id` thì rơi về `fallback`: hiện tại
+    `/internal/v1/tools/{id}/invoke` còn gọi được trực tiếp không qua Agent
+    Runtime, và khi đó không có trace nào đang mở để ghi vào — đó không phải
+    một lỗi, chỉ là không có gì để đính kèm.
+
+    Ghi trong một transaction **riêng** (`session_scope()`), không phải
+    transaction của request: một lời gọi tool lỗi giữa chừng không được cuốn
+    theo bước trace đã ghi trước đó, đúng lúc chúng cần nhất để biết vì sao
+    nó hỏng.
+    """
+
+    def __init__(self, fallback: Any) -> None:
+        self._fallback = fallback
+
+    async def record(self, invocation: object) -> None:
+        trace_id = invocation.execution_trace_id  # type: ignore[attr-defined]
+        if trace_id is None:
+            await self._fallback.record(invocation)
+            return
+
+        input_ref = invocation.input_ref  # type: ignore[attr-defined]
+        output_ref = invocation.output_ref  # type: ignore[attr-defined]
+        idempotency_key = invocation.idempotency_key  # type: ignore[attr-defined]
+
+        attributes: dict[str, Any] = {
+            "tool_id": invocation.tool_id,  # type: ignore[attr-defined]
+            "tool_version": invocation.tool_version,  # type: ignore[attr-defined]
+            "provider": invocation.provider,  # type: ignore[attr-defined]
+            "connection_id": invocation.connection_id,  # type: ignore[attr-defined]
+            "attempt": invocation.attempt,  # type: ignore[attr-defined]
+        }
+        if idempotency_key:
+            attributes["idempotency_key"] = idempotency_key
+
+        from app.core.db import session_scope
+        from app.domains.trace.application.service import TraceService
+        from app.domains.trace.infrastructure.repositories import (
+            SqlAlchemyExecutionTraceRepository,
+        )
+
+        async with session_scope() as session:
+            traces = TraceService(traces=SqlAlchemyExecutionTraceRepository(session))
+            await traces.record_tool_call(
+                tenant_id=invocation.tenant_id,  # type: ignore[attr-defined]
+                trace_id=trace_id,
+                status=invocation.status,  # type: ignore[attr-defined]
+                started_at=invocation.started_at,  # type: ignore[attr-defined]
+                completed_at=invocation.completed_at,  # type: ignore[attr-defined]
+                parent_step_id=invocation.parent_step_id,  # type: ignore[attr-defined]
+                input_sha256=input_ref.sha256,
+                input_byte_size=input_ref.byte_size,
+                output_sha256=output_ref.sha256,
+                output_byte_size=output_ref.byte_size,
+                attributes=attributes,
+                error_category=invocation.error_category,  # type: ignore[attr-defined]
+                otel_trace_id=invocation.otel_trace_id,  # type: ignore[attr-defined]
+                otel_span_id=invocation.otel_span_id,  # type: ignore[attr-defined]
+            )
+
+
+def build_execution_trace_sink(_session: AsyncSession) -> IntegrationTraceSink:
+    """Dựng sink thật của Integration Gateway, để gắn vào ``app.state``.
+
+    Nhận `_session` chỉ để khớp chữ ký chung của mọi factory trong module này
+    (`get_gateway` gọi `factory(session)` như với credential provider) — nhưng
+    không dùng nó: `IntegrationTraceSink` tự mở transaction riêng cho mỗi lần
+    ghi, xem docstring của nó.
+
+    Usage (`LoggingUsageRecorder`) không đổi ở đây: sổ usage thật là domain
+    `usage`, thuộc Phase 7 (§18) — gộp nó vào `trace` bây giờ sẽ lẫn quyền sở
+    hữu dữ liệu giữa hai domain, đúng điều ADR-0001 quy tắc 3 cấm.
+    """
+    from app.domains.integration.infrastructure.sinks import LoggingToolInvocationSink
+
+    return IntegrationTraceSink(fallback=LoggingToolInvocationSink())

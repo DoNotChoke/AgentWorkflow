@@ -30,10 +30,13 @@ from app.domains.identity.infrastructure.http import router as identity_router
 from app.domains.integration.infrastructure.http import (
     CREDENTIAL_PROVIDER_FACTORY,
     INTEGRATION_TENANT_GUARD_FACTORY,
+    TRACE_SINK_FACTORY,
 )
 from app.domains.integration.infrastructure.http import router as integration_router
 from app.domains.tenant.infrastructure.http import USER_DIRECTORY_FACTORY, build_tenant_service
 from app.domains.tenant.infrastructure.http import router as tenant_router
+from app.domains.trace.infrastructure.http import TRACE_TENANT_GUARD_FACTORY
+from app.domains.trace.infrastructure.http import router as trace_router
 from app.entrypoints.middleware import (
     RequestContextMiddleware,
     app_error_handler,
@@ -41,6 +44,7 @@ from app.entrypoints.middleware import (
 )
 from app.entrypoints.wiring import (
     build_credential_provider,
+    build_execution_trace_sink,
     build_integration_tenant_guard,
     build_tenant_guard,
     build_user_directory,
@@ -109,6 +113,14 @@ def create_app() -> FastAPI:
     setattr(app.state, CREDENTIAL_PROVIDER_FACTORY, build_credential_provider)
     setattr(app.state, INTEGRATION_TENANT_GUARD_FACTORY, build_integration_tenant_guard)
 
+    # Trace ← Integration: sink thật ghi TOOL_CALL vào Execution Trace, thay
+    # `LoggingToolInvocationSink` của Phase 2 (xem entrypoints/wiring.py).
+    setattr(app.state, TRACE_SINK_FACTORY, build_execution_trace_sink)
+
+    # Trace ← Tenant: cùng hình dạng với Integration, cùng lý do — Trace chỉ
+    # cần biết "ai, thuộc tenant/workspace nào", không cần domain nào khác.
+    setattr(app.state, TRACE_TENANT_GUARD_FACTORY, build_tenant_guard)
+
     # Router của từng domain được mount ở đây. Entrypoint chỉ chạm tới tầng
     # `infrastructure` của domain, không bao giờ import thẳng tầng `domain`
     # (contract 5 trong pyproject.toml).
@@ -116,6 +128,7 @@ def create_app() -> FastAPI:
     app.include_router(tenant_router)
     app.include_router(connection_router)
     app.include_router(integration_router)
+    app.include_router(trace_router)
 
     instrument_fastapi(app)
     return app
