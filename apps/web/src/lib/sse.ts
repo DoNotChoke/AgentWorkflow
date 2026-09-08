@@ -54,7 +54,10 @@ export async function* streamSse(
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+    // SSE cho phép `\r\n`, `\r`, hoặc `\n` làm ký tự xuống dòng (và
+    // `sse-starlette` ở backend dùng `\r\n`). Chuẩn hoá về `\n` rồi tách khối
+    // theo một dòng trống.
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n?/g, "\n");
 
     let separatorIndex: number;
     while ((separatorIndex = buffer.indexOf("\n\n")) !== -1) {

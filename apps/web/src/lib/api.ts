@@ -253,3 +253,86 @@ export type ConnectionCandidate = {
   sharing: SharingPolicy;
   external_account_label: string | null;
 };
+
+/** Một lựa chọn connection đã chốt cho một conversation (`GET /v1/conversations/{id}/connections`). */
+export type ConversationConnection = {
+  provider: string;
+  connection_id: string;
+};
+
+// ─── Agent Runtime — agent, hội thoại, tin nhắn ─────────────────────────────
+//
+// Các endpoint này thuộc tiến trình Agent Runtime (`entrypoints/agent.py`,
+// cổng riêng), nhưng cùng đi qua rewrite của Next như mọi endpoint khác —
+// xem `next.config.ts`.
+
+export type Agent = {
+  id: string;
+  name: string;
+  system_prompt: string;
+  model: string;
+  enabled_tool_ids: string[];
+  max_tool_calls_per_turn: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  /** Agent đã lưu trữ: hội thoại cũ vẫn đọc được, không mở hội thoại mới được. */
+  archived_at: string | null;
+};
+
+export type Conversation = {
+  id: string;
+  agent_id: string;
+  user_id: string;
+  status: "active" | "archived";
+  created_at: string;
+  updated_at: string;
+};
+
+/** Một lời gọi tool model đã quyết định, gắn trên một `ChatMessage` vai trò assistant. */
+export type ChatToolCall = {
+  call_id: string;
+  tool_id: string;
+  input: Record<string, unknown>;
+};
+
+export type ChatMessage = {
+  id: string;
+  role: "user" | "assistant" | "tool";
+  content: string;
+  tool_calls: ChatToolCall[];
+  /** Có trên message vai trò `tool` — trỏ về `call_id` đã sinh ra nó. */
+  tool_call_id: string | null;
+  created_at: string;
+};
+
+/** Một tool trong danh mục, cho màn hình tạo Agent chọn (`GET /v1/tools`). */
+export type ToolSummary = {
+  tool_id: string;
+  version: string;
+  provider: string;
+  description: string;
+  /** `read` hoặc `write` — tool `write` gây side effect ra bên ngoài. */
+  side_effect: string;
+  required_scopes: string[];
+  input_schema: Record<string, unknown>;
+};
+
+// ─── Luồng sự kiện SSE của một lượt chat ────────────────────────────────────
+//
+// `POST /v1/conversations/{id}/messages` trả về một luồng SSE. Mỗi khối là một
+// `{ event, data }` — bốn loại dưới đây (xem `_sse_event` ở entrypoints/agent.py).
+
+export type AgentSseEvent =
+  | { event: "tool_call_started"; data: { tool_id: string } }
+  | {
+      event: "tool_call_completed";
+      data: {
+        tool_id: string;
+        is_error?: boolean;
+        error_category?: ErrorCategory;
+        error_details?: { provider?: string; candidates?: ConnectionCandidate[] };
+      };
+    }
+  | { event: "final"; data: { text: string } }
+  | { event: "error"; data: { message: string } };

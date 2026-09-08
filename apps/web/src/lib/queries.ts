@@ -2,18 +2,23 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  type Agent,
   apiRequest,
   type Authorization,
+  type ChatMessage,
   type Connection,
   type ConnectionAudit,
   type ConnectionPolicy,
   type ConnectionPolicySettings,
+  type Conversation,
+  type ConversationConnection,
   type Member,
   type Organization,
   type OrgRole,
   type Provider,
   type SharingPolicy,
   type SlugAvailability,
+  type ToolSummary,
   type Workspace,
   type WorkspaceRole,
 } from "@/lib/api";
@@ -38,6 +43,15 @@ export const queryKeys = {
     ["connection-audit", organizationId, workspaceId] as const,
   connectionPolicy: (organizationId: string | null) =>
     ["connection-policy", organizationId] as const,
+  tools: ["tools"] as const,
+  agents: (organizationId: string | null, workspaceId: string | null) =>
+    ["agents", organizationId, workspaceId] as const,
+  conversations: (organizationId: string | null, agentId: string | null) =>
+    ["conversations", organizationId, agentId] as const,
+  messages: (organizationId: string | null, conversationId: string | null) =>
+    ["messages", organizationId, conversationId] as const,
+  conversationConnections: (organizationId: string | null, conversationId: string | null) =>
+    ["conversation-connections", organizationId, conversationId] as const,
 };
 
 /** Header chọn tenant cho request hiện tại — bỏ trống thì backend lấy org đầu tiên. */
@@ -534,6 +548,7 @@ export function useSetConversationConnection(
   workspaceId: string | null,
 ) {
   const { accessToken } = useSession();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { conversationId: string; provider: string; connectionId: string }) =>
       apiRequest<void>(`/v1/conversations/${input.conversationId}/connections`, {
@@ -541,6 +556,175 @@ export function useSetConversationConnection(
         accessToken,
         headers: workspaceHeaders(organizationId, workspaceId),
         body: { provider: input.provider, connection_id: input.connectionId },
+      }),
+    onSuccess: (_data, input) =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.conversationConnections(organizationId, input.conversationId),
+      }),
+  });
+}
+
+/** Lựa chọn connection đã chốt cho một conversation — dựng dải "Using" của màn chat. */
+export function useConversationConnections(
+  organizationId: string | null,
+  workspaceId: string | null,
+  conversationId: string | null,
+) {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: queryKeys.conversationConnections(organizationId, conversationId),
+    enabled: status === "authenticated" && organizationId !== null && conversationId !== null,
+    queryFn: () =>
+      apiRequest<ConversationConnection[]>(
+        `/v1/conversations/${conversationId}/connections`,
+        { accessToken, headers: workspaceHeaders(organizationId, workspaceId) },
+      ),
+  });
+}
+
+// ─── Agent Runtime — agent, hội thoại, tin nhắn ────────────────────────────
+//
+// Agent và Conversation đều thuộc **workspace**, nên mọi lời gọi kèm cả hai
+// header — cùng lý do như Connection. Việc GỬI tin nhắn không nằm ở đây: nó là
+// một luồng SSE, xem `useAgentTurn` trong `lib/agent-chat.ts`.
+
+/** Danh mục tool cho màn hình tạo Agent (`GET /v1/tools`, Control Plane). */
+export function useTools() {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: queryKeys.tools,
+    enabled: status === "authenticated",
+    staleTime: 5 * 60 * 1000,
+    queryFn: () => apiRequest<ToolSummary[]>("/v1/tools", { accessToken }),
+  });
+}
+
+export function useAgents(organizationId: string | null, workspaceId: string | null) {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: queryKeys.agents(organizationId, workspaceId),
+    enabled: status === "authenticated" && organizationId !== null && workspaceId !== null,
+    queryFn: () =>
+      apiRequest<Agent[]>("/v1/agents", {
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+      }),
+  });
+}
+
+export function useCreateAgent(organizationId: string | null, workspaceId: string | null) {
+  const { accessToken } = useSession();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      name: string;
+      system_prompt: string;
+      model: string;
+      enabled_tool_ids: string[];
+      max_tool_calls_per_turn: number;
+    }) =>
+      apiRequest<Agent>("/v1/agents", {
+        method: "POST",
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+        body: input,
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agents(organizationId, workspaceId),
+      }),
+  });
+}
+
+/**
+ * Lưu trữ một agent — người tạo hoặc `ws:admin`. Hội thoại cũ vẫn đọc được;
+ * chỉ không mở được hội thoại mới. Đảo ngược được bằng `useUnarchiveAgent`.
+ */
+export function useArchiveAgent(organizationId: string | null, workspaceId: string | null) {
+  const { accessToken } = useSession();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (agentId: string) =>
+      apiRequest<Agent>(`/v1/agents/${agentId}/archive`, {
+        method: "POST",
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agents(organizationId, workspaceId),
+      }),
+  });
+}
+
+/** Đưa một agent đã lưu trữ trở lại danh sách đang hoạt động. */
+export function useUnarchiveAgent(organizationId: string | null, workspaceId: string | null) {
+  const { accessToken } = useSession();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (agentId: string) =>
+      apiRequest<Agent>(`/v1/agents/${agentId}/unarchive`, {
+        method: "POST",
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.agents(organizationId, workspaceId),
+      }),
+  });
+}
+
+export function useConversations(
+  organizationId: string | null,
+  workspaceId: string | null,
+  agentId: string | null,
+) {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: queryKeys.conversations(organizationId, agentId),
+    enabled: status === "authenticated" && organizationId !== null && agentId !== null,
+    queryFn: () =>
+      apiRequest<Conversation[]>(`/v1/agents/${agentId}/conversations`, {
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+      }),
+  });
+}
+
+export function useCreateConversation(
+  organizationId: string | null,
+  workspaceId: string | null,
+) {
+  const { accessToken } = useSession();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (agentId: string) =>
+      apiRequest<Conversation>(`/v1/agents/${agentId}/conversations`, {
+        method: "POST",
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+      }),
+    onSuccess: (_data, agentId) =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.conversations(organizationId, agentId),
+      }),
+  });
+}
+
+export function useConversationMessages(
+  organizationId: string | null,
+  workspaceId: string | null,
+  conversationId: string | null,
+) {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: queryKeys.messages(organizationId, conversationId),
+    enabled: status === "authenticated" && organizationId !== null && conversationId !== null,
+    queryFn: () =>
+      apiRequest<ChatMessage[]>(`/v1/conversations/${conversationId}/messages`, {
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
       }),
   });
 }
