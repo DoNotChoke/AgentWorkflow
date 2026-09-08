@@ -214,6 +214,13 @@ class FakeConnectionSelectionStore:
         self.set_calls.append((conversation_id, provider, connection_id))
         self._store[(conversation_id, provider)] = connection_id
 
+    async def list_for_conversation(self, *, conversation_id: str) -> dict[str, str]:
+        return {
+            provider: connection_id
+            for (cid, provider), connection_id in self._store.items()
+            if cid == conversation_id
+        }
+
 
 class FakeTraceSink:
     def __init__(self) -> None:

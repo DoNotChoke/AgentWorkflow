@@ -544,6 +544,13 @@ def test_can_chon_connection_qua_sse_roi_luu_va_dung_lai_o_luot_sau() -> None:
         )
         assert picked.status_code == 204, picked.text
 
+        # Đọc lại được — dải "đang dùng" của giao diện chat dựng từ đây.
+        listed = agent.get(
+            f"/v1/conversations/{conversation['id']}/connections", headers=nguoi.headers()
+        )
+        assert listed.status_code == 200, listed.text
+        assert listed.json() == [{"provider": "slack", "connection_id": "conn_b"}]
+
         second = agent.post(
             f"/v1/conversations/{conversation['id']}/messages",
             headers=nguoi.headers(),

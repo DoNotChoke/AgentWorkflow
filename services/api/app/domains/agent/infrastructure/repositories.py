@@ -261,6 +261,15 @@ class SqlAlchemyConnectionSelectionRepository:
         )
         return result
 
+    async def list_for_conversation(self, *, conversation_id: str) -> dict[str, str]:
+        rows = await self._session.execute(
+            select(
+                ConversationConnectionModel.provider,
+                ConversationConnectionModel.connection_id,
+            ).where(ConversationConnectionModel.conversation_id == conversation_id)
+        )
+        return {row.provider: row.connection_id for row in rows}
+
     async def set(self, *, conversation_id: str, provider: str, connection_id: str) -> None:
         """Ghi đè nếu conversation đã có lựa chọn cho provider này — lựa chọn
         là "sticky" nhưng đổi được bất cứ lúc nào (ADR-0004), không phải một

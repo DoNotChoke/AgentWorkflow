@@ -174,6 +174,10 @@ class ConnectionSelectionStore(Protocol):
 
     async def set(self, *, conversation_id: str, provider: str, connection_id: str) -> None: ...
 
+    async def list_for_conversation(self, *, conversation_id: str) -> dict[str, str]:
+        """`{provider: connection_id}` đã chốt cho một conversation — để giao
+        diện chat hiện "đang dùng connection nào" khi mở lại một hội thoại cũ."""
+
 
 class ExecutionTraceSink(Protocol):
     """Ghi các bước của một lượt Agent vào Execution Trace đang mở."""

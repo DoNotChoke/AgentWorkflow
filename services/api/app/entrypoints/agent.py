@@ -632,6 +632,35 @@ async def set_conversation_connection(
     )
 
 
+class ConversationConnectionResponse(BaseModel):
+    provider: str
+    connection_id: str
+
+
+@router.get("/conversations/{conversation_id}/connections")
+async def list_conversation_connections(
+    conversation_id: Annotated[str, Path(max_length=64)],
+    context: CurrentContext,
+    admin: Annotated[AgentAdminService, Depends(get_admin_service)],
+    selections: Annotated[ConnectionSelectionStore, Depends(get_connection_selection_store)],
+) -> list[ConversationConnectionResponse]:
+    """Các lựa chọn connection đã chốt cho cuộc hội thoại này (ADR-0004) — để
+    giao diện chat hiện dải "đang dùng" khi mở lại một hội thoại cũ.
+
+    Trả về đúng những gì đã lưu, không xác thực lại với Control Plane: một
+    connection đã bị thu hồi vẫn hiện ở đây cho tới khi người dùng đổi, và lời
+    gọi tool kế tiếp mới là chỗ báo lỗi thật (ADR-0004 mục 5).
+    """
+    await admin.get_conversation(
+        tenant_id=context.organization_id, conversation_id=conversation_id, user_id=context.user_id
+    )
+    chosen = await selections.list_for_conversation(conversation_id=conversation_id)
+    return [
+        ConversationConnectionResponse(provider=provider, connection_id=connection_id)
+        for provider, connection_id in sorted(chosen.items())
+    ]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # App
 # ─────────────────────────────────────────────────────────────────────────────
