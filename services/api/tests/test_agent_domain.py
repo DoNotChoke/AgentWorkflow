@@ -33,6 +33,7 @@ from app.domains.agent.domain.entities import (
     ensure_owns,
     normalize_name,
     normalize_system_prompt,
+    unarchive,
     validate_max_tool_calls_per_turn,
 )
 
@@ -175,6 +176,24 @@ def test_archive_tu_choi_agent_da_luu_tru_roi() -> None:
     agent = make_agent(archived_at=NOW)
     with pytest.raises(ValidationError):
         archive(agent, at=NOW + timedelta(days=1))
+
+
+def test_unarchive_xoa_dau_thoi_gian_luu_tru() -> None:
+    agent = make_agent(archived_at=NOW)
+    at = NOW + timedelta(days=2)
+
+    restored = unarchive(agent, at=at)
+
+    assert restored.is_archived is False
+    assert restored.archived_at is None
+    assert restored.updated_at == at
+    # Bất biến: hàm thuần không sửa đối tượng gốc.
+    assert agent.is_archived is True
+
+
+def test_unarchive_tu_choi_agent_dang_hoat_dong() -> None:
+    with pytest.raises(ValidationError):
+        unarchive(make_agent(), at=NOW)
 
 
 # ─── Agent: quyền quản lý ─────────────────────────────────────────────────────

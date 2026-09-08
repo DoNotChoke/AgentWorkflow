@@ -313,6 +313,34 @@ def test_tao_va_liet_ke_agent_va_hoi_thoai() -> None:
         assert [c["id"] for c in conv_list] == [conv_body["id"]]
 
 
+def test_luu_tru_roi_khoi_phuc_mot_agent() -> None:
+    with agent_client(
+        ScriptedModelClient([]), FakeIntegration(), FakeConnectionResolver()
+    ) as agent:
+        nguoi = _make_user(agent, "Bình")
+        agent_row = agent.post(
+            "/v1/agents",
+            headers=nguoi.headers(),
+            json={"name": "Trợ lý", "model": "claude-sonnet-5", "enabled_tool_ids": []},
+        ).json()
+
+        archived = agent.post(f"/v1/agents/{agent_row['id']}/archive", headers=nguoi.headers())
+        assert archived.status_code == 200, archived.text
+        assert archived.json()["archived_at"] is not None
+
+        # Lưu trữ hai lần bị từ chối.
+        again = agent.post(f"/v1/agents/{agent_row['id']}/archive", headers=nguoi.headers())
+        assert again.status_code == 422, again.text
+
+        restored = agent.post(f"/v1/agents/{agent_row['id']}/unarchive", headers=nguoi.headers())
+        assert restored.status_code == 200, restored.text
+        assert restored.json()["archived_at"] is None
+
+        # Khôi phục một agent đang hoạt động cũng bị từ chối.
+        noop = agent.post(f"/v1/agents/{agent_row['id']}/unarchive", headers=nguoi.headers())
+        assert noop.status_code == 422, noop.text
+
+
 # ─── Gửi tin nhắn — đường chạy đầy đủ qua SSE ─────────────────────────────────
 
 

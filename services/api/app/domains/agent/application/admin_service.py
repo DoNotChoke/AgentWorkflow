@@ -26,6 +26,7 @@ from app.domains.agent.domain.entities import (
     validate_max_tool_calls_per_turn,
 )
 from app.domains.agent.domain.entities import archive as archive_agent_entity
+from app.domains.agent.domain.entities import unarchive as unarchive_agent_entity
 
 #: Không tìm thấy hoặc không thuộc tenant/không phải chủ — cùng thông điệp,
 #: cùng mã lỗi, để không lộ rằng id đó có thật (cùng cách `Connection` làm).
@@ -93,6 +94,15 @@ class AgentAdminService:
         archived = archive_agent_entity(agent, at=datetime.now(UTC))
         await self._agents.update(archived)
         return archived
+
+    async def unarchive_agent(
+        self, *, tenant_id: str, agent_id: str, actor_id: str, can_manage_workspace: bool
+    ) -> Agent:
+        agent = await self.get_agent(tenant_id=tenant_id, agent_id=agent_id)
+        ensure_can_manage(agent, actor_id=actor_id, can_manage_workspace=can_manage_workspace)
+        restored = unarchive_agent_entity(agent, at=datetime.now(UTC))
+        await self._agents.update(restored)
+        return restored
 
     # ─── Conversation ──────────────────────────────────────────────────────
 

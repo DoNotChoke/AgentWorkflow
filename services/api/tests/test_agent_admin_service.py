@@ -170,6 +170,39 @@ async def test_archive_agent_admin_workspace_lam_duoc_du_khong_phai_nguoi_tao(
     assert archived.is_archived is True
 
 
+async def test_unarchive_agent_dua_ve_trang_thai_hoat_dong(service: AgentAdminService) -> None:
+    agent = await _create_agent(service, created_by="usr_1")
+    await service.archive_agent(
+        tenant_id=TENANT, agent_id=agent.id, actor_id="usr_1", can_manage_workspace=False
+    )
+    restored = await service.unarchive_agent(
+        tenant_id=TENANT, agent_id=agent.id, actor_id="usr_1", can_manage_workspace=False
+    )
+    assert restored.is_archived is False
+    assert restored.archived_at is None
+
+
+async def test_unarchive_agent_chua_luu_tru_bao_loi(service: AgentAdminService) -> None:
+    agent = await _create_agent(service, created_by="usr_1")
+    with pytest.raises(ValidationError):
+        await service.unarchive_agent(
+            tenant_id=TENANT, agent_id=agent.id, actor_id="usr_1", can_manage_workspace=False
+        )
+
+
+async def test_unarchive_agent_nguoi_khac_khong_phai_admin_bi_tu_choi(
+    service: AgentAdminService,
+) -> None:
+    agent = await _create_agent(service, created_by="usr_1")
+    await service.archive_agent(
+        tenant_id=TENANT, agent_id=agent.id, actor_id="usr_1", can_manage_workspace=False
+    )
+    with pytest.raises(AuthorizationError):
+        await service.unarchive_agent(
+            tenant_id=TENANT, agent_id=agent.id, actor_id="usr_2", can_manage_workspace=False
+        )
+
+
 # ─── Conversation ──────────────────────────────────────────────────────────────
 
 

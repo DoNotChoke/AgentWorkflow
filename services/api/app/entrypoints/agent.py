@@ -395,6 +395,21 @@ async def archive_agent(
     return _agent_response(agent)
 
 
+@router.post("/agents/{agent_id}/unarchive")
+async def unarchive_agent(
+    agent_id: Annotated[str, Path(max_length=64)],
+    context: CurrentContext,
+    service: Annotated[AgentAdminService, Depends(get_admin_service)],
+) -> AgentResponse:
+    agent = await service.unarchive_agent(
+        tenant_id=context.organization_id,
+        agent_id=agent_id,
+        actor_id=context.user_id,
+        can_manage_workspace=context.can_manage_workspace,
+    )
+    return _agent_response(agent)
+
+
 @router.post("/agents/{agent_id}/conversations", status_code=status.HTTP_201_CREATED)
 async def create_conversation(
     agent_id: Annotated[str, Path(max_length=64)],

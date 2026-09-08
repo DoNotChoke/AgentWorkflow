@@ -96,6 +96,13 @@ def archive(agent: Agent, *, at: datetime) -> Agent:
     return replace(agent, archived_at=at, updated_at=at)
 
 
+def unarchive(agent: Agent, *, at: datetime) -> Agent:
+    """Đưa một agent đã lưu trữ trở lại — lưu trữ là mềm và đảo ngược được."""
+    if not agent.is_archived:
+        raise ValidationError(f"Agent {agent.id} không ở trạng thái lưu trữ.")
+    return replace(agent, archived_at=None, updated_at=at)
+
+
 def ensure_can_manage(agent: Agent, *, actor_id: str, can_manage_workspace: bool) -> None:
     """Sửa cấu hình, lưu trữ — người tạo hoặc quản trị viên workspace."""
     if agent.created_by == actor_id or can_manage_workspace:
