@@ -6,6 +6,7 @@ import { useState } from "react";
 import { NewOrganizationDialog } from "@/components/new-organization-dialog";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { initials } from "@/lib/name";
+import { toggleNavCollapsed, useNavCollapsed } from "@/lib/nav-collapsed";
 import { useTenant } from "@/lib/tenant";
 
 /**
@@ -25,6 +26,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { organizations, organization, selectOrganization } = useTenant();
   const [creatingOrganization, setCreatingOrganization] = useState(false);
+  const collapsed = useNavCollapsed();
+
+  // Settings có điều hướng dọc riêng và không có icon cho từng mục, nên phần
+  // thu gọn chỉ áp cho sidebar ứng dụng.
+  const isSettings = pathname.startsWith("/settings");
+  const railCollapsed = collapsed && !isSettings;
 
   return (
     <div className="flex h-full min-h-0 w-full">
@@ -60,8 +67,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </button>
       </div>
 
-      <div className="flex w-[280px] shrink-0 flex-col border-r border-line bg-sidebar">
-        {pathname.startsWith("/settings") ? <SettingsSidebar /> : <AppSidebar />}
+      <div
+        className={`flex shrink-0 flex-col border-r border-line bg-sidebar transition-[width] duration-150 ${
+          railCollapsed ? "w-[60px]" : "w-[280px]"
+        }`}
+      >
+        {isSettings ? (
+          <SettingsSidebar />
+        ) : (
+          <AppSidebar collapsed={railCollapsed} onToggleCollapse={toggleNavCollapsed} />
+        )}
       </div>
 
       <main className="min-w-0 grow overflow-auto bg-surface">{children}</main>
@@ -81,7 +96,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function AppSidebar() {
+function AppSidebar({
+  collapsed,
+  onToggleCollapse,
+}: {
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+}) {
   const pathname = usePathname();
   const { organization } = useTenant();
 
@@ -95,31 +116,64 @@ function AppSidebar() {
 
   return (
     <>
-      <div className="flex h-16 shrink-0 items-center border-b border-[#e9e9e6] px-4">
-        <span className="truncate text-base font-semibold">{organization.name}</span>
+      <div
+        className={`flex h-16 shrink-0 items-center border-b border-[#e9e9e6] ${
+          collapsed ? "justify-center px-0" : "px-4"
+        }`}
+      >
+        {collapsed ? (
+          <span
+            title={organization.name}
+            className="flex size-8 items-center justify-center rounded-lg bg-surface text-[12px] font-semibold text-ink-2"
+          >
+            {initials(organization.name)}
+          </span>
+        ) : (
+          <span className="truncate text-base font-semibold">{organization.name}</span>
+        )}
       </div>
 
-      <WorkspaceSwitcher />
+      {/* Đổi workspace cần menu rộng — chỉ hiện khi sidebar mở. */}
+      {collapsed ? null : <WorkspaceSwitcher />}
 
-      <nav className="flex flex-col gap-1 px-3 py-3">
+      <nav className={`flex flex-col gap-1 py-3 ${collapsed ? "px-2" : "px-3"}`}>
         {nav.map((item) => {
           const active = pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-[15px] transition-colors ${
+              title={collapsed ? item.label : undefined}
+              aria-label={collapsed ? item.label : undefined}
+              className={`flex items-center rounded-md text-[15px] transition-colors ${
+                collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"
+              } ${
                 active
                   ? "border border-line bg-surface font-medium text-ink"
                   : "border border-transparent text-ink-2 hover:bg-[#eaeae7]"
               }`}
             >
               <span className={active ? "text-accent" : "text-ink-3"}>{item.icon}</span>
-              <span className="grow">{item.label}</span>
+              {collapsed ? null : <span className="grow">{item.label}</span>}
             </Link>
           );
         })}
       </nav>
+
+      <div className="grow" />
+
+      <button
+        type="button"
+        onClick={onToggleCollapse}
+        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        className={`m-2 flex items-center rounded-md border border-transparent py-2 text-[13px] text-ink-3 transition-colors hover:bg-[#eaeae7] ${
+          collapsed ? "justify-center px-0" : "gap-2.5 px-3"
+        }`}
+      >
+        <IconCollapse collapsed={collapsed} />
+        {collapsed ? null : <span>Collapse</span>}
+      </button>
     </>
   );
 }
@@ -252,6 +306,14 @@ const IconPlus = () => (
     aria-hidden
   >
     <path d="M8 3v10M3 8h10" />
+  </svg>
+);
+
+const IconCollapse = ({ collapsed }: { collapsed: boolean }) => (
+  <svg {...stroke} aria-hidden>
+    <rect x="2" y="3" width="12" height="10" rx="1.5" />
+    <path d="M6 3v10" />
+    {collapsed ? <path d="M9.5 6.5L11 8l-1.5 1.5" /> : <path d="M11 6.5L9.5 8l1.5 1.5" />}
   </svg>
 );
 
