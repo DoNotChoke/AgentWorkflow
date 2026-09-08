@@ -32,6 +32,7 @@ from app.domains.integration.infrastructure.http import (
     INTEGRATION_TENANT_GUARD_FACTORY,
     TRACE_SINK_FACTORY,
 )
+from app.domains.integration.infrastructure.http import public_router as tool_catalog_router
 from app.domains.integration.infrastructure.http import router as integration_router
 from app.domains.tenant.infrastructure.http import USER_DIRECTORY_FACTORY, build_tenant_service
 from app.domains.tenant.infrastructure.http import router as tenant_router
@@ -128,6 +129,7 @@ def create_app() -> FastAPI:
     app.include_router(tenant_router)
     app.include_router(connection_router)
     app.include_router(integration_router)
+    app.include_router(tool_catalog_router)
     app.include_router(trace_router)
 
     instrument_fastapi(app)

@@ -323,3 +323,24 @@ async def invoke(
         provider_reference=result.provider_reference,
         output=dict(result.output),
     )
+
+
+# ─── Danh mục tool, đọc công khai ────────────────────────────────────────────
+#
+# `router` ở trên có tiền tố `/internal` và là ranh giới tiến trình của §2.4 —
+# nó nhận `connection_id`, giải mã credential, thực thi side effect. Cái dưới
+# đây chỉ trả về *mô tả* tool (id, provider, mô tả, đọc/ghi), thứ giao diện
+# "tạo Agent" cần để dựng danh sách tool cho người dùng chọn. Không chạm
+# credential, không thực thi gì — nên nó là `/v1` bình thường và chỉ cần một
+# token hợp lệ, không cần tenant context (danh mục là cấu hình triển khai,
+# không đổi theo workspace).
+
+public_router = APIRouter(prefix="/v1/tools", tags=["integration"])
+
+
+@public_router.get("")
+async def list_tool_catalog(
+    _user_id: Annotated[str, Depends(require_user_id)],
+) -> list[ToolSummary]:
+    """Danh mục tool cho giao diện tạo Agent."""
+    return [_summary(tool) for tool in _REGISTRY.list_tools()]

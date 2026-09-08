@@ -38,6 +38,7 @@ from app.entrypoints.http import create_app  # noqa: E402
 pytestmark = pytest.mark.integration
 
 TOOLS = "/internal/v1/tools"
+TOOL_CATALOG = "/v1/tools"
 
 
 # ─── Slack giả, chỉ ở ranh giới httpx ────────────────────────────────────────
@@ -229,6 +230,21 @@ def test_danh_muc_mang_du_thu_agent_can_o_phase_3(client: TestClient) -> None:
 
 def test_chua_dang_nhap_thi_khong_xem_duoc(client: TestClient) -> None:
     assert client.get(TOOLS).status_code == 401
+
+
+def test_danh_muc_cong_khai_cho_giao_dien_tao_agent(client: TestClient) -> None:
+    """`GET /v1/tools` — cùng nội dung `/internal/v1/tools` nhưng không cần
+    tenant context (danh mục là cấu hình triển khai). Giao diện tạo Agent đọc
+    đường này để dựng danh sách tool cho người dùng chọn."""
+    an = Nguoi(client, "An")
+
+    assert client.get(TOOL_CATALOG).status_code == 401
+
+    tools = an.get(TOOL_CATALOG).json()
+    assert {t["tool_id"] for t in tools} == {t["tool_id"] for t in an.get(TOOLS).json()}
+    post = next(t for t in tools if t["tool_id"] == "slack.post_message")
+    assert post["side_effect"] == "write"
+    assert post["provider"] == "slack"
 
 
 # ─── Gọi tool thật, xuyên toàn bộ đường chạy ─────────────────────────────────
