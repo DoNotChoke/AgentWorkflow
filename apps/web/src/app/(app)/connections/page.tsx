@@ -6,6 +6,7 @@ import { ConnectAccountDialog } from "@/components/connect-account-dialog";
 import { ProviderTile } from "@/components/provider-icon";
 import { Button, ErrorNote, Spinner } from "@/components/ui";
 import type { Connection, ConnectionStatus, Provider, SharingPolicy } from "@/lib/api";
+import { CONNECTION_STATUS_LABEL, connectionStatusTone } from "@/lib/connections";
 import {
   useConnectionPolicy,
   useConnections,
@@ -228,15 +229,6 @@ function Section({
   );
 }
 
-const STATUS_LABEL: Record<ConnectionStatus, string> = {
-  active: "Active",
-  expired: "Expired",
-  revoked: "Revoked",
-  missing_scope: "Missing scope",
-  reconnect_required: "Reconnect required",
-  disabled: "Paused",
-};
-
 function ConnectionRow({
   connection,
   isOwner,
@@ -336,24 +328,13 @@ function SharingBadge({ sharing, isOwner }: { sharing: SharingPolicy; isOwner: b
 }
 
 function StatusBadge({ status }: { status: ConnectionStatus }) {
-  const tone =
-    status === "active"
-      ? "bg-ok-wash text-ok"
-      : status === "disabled" || status === "revoked"
-        ? "bg-sunken text-ink-3"
-        : "bg-warn-wash text-warn";
-  const dot =
-    status === "active"
-      ? "bg-ok"
-      : status === "disabled" || status === "revoked"
-        ? "bg-ink-4"
-        : "bg-warn";
+  const tone = connectionStatusTone(status);
   return (
     <span
-      className={`flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${tone}`}
+      className={`flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${tone.badge}`}
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-      {STATUS_LABEL[status]}
+      <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+      {CONNECTION_STATUS_LABEL[status]}
     </span>
   );
 }
