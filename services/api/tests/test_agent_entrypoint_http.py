@@ -147,7 +147,12 @@ class FakeIntegration:
         caller: ToolCallContext | None = None,
     ) -> ToolInvocationResult:
         self.invoke_calls.append(
-            {"name": name, "connection_id": connection_id, "tool_input": dict(tool_input)}
+            {
+                "name": name,
+                "connection_id": connection_id,
+                "tool_input": dict(tool_input),
+                "idempotency_key": idempotency_key,
+            }
         )
         return ToolInvocationResult(output={"ok": True}, invocation_id="ti_fake", replayed=False)
 
@@ -528,6 +533,10 @@ def test_can_chon_connection_qua_sse_roi_luu_va_dung_lai_o_luot_sau() -> None:
         # Store đã chặn — resolver không bị gọi lại lần thứ hai.
         assert connections.calls == ["slack.post_message"]
         assert integration.invoke_calls[-1]["connection_id"] == "conn_b"
+        # Tác động ghi luôn đi kèm khoá idempotency — thiếu thì Integration
+        # Gateway thật từ chối thẳng (ValidationError).
+        last = integration.invoke_calls[-1]
+        assert last["idempotency_key"] and "slack.post_message" in last["idempotency_key"]
 
 
 # ─── Tenant — header bắt buộc ────────────────────────────────────────────────

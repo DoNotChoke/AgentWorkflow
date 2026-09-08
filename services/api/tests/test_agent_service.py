@@ -162,7 +162,12 @@ class FakeToolExecutor:
         caller: ToolCallContext | None = None,
     ) -> ToolInvocationResult:
         self.calls.append(
-            {"name": name, "tool_input": dict(tool_input), "connection_id": connection_id}
+            {
+                "name": name,
+                "tool_input": dict(tool_input),
+                "connection_id": connection_id,
+                "idempotency_key": idempotency_key,
+            }
         )
         result = self._results.get(
             name,
@@ -332,13 +337,15 @@ async def test_mot_vong_goi_tool_roi_tra_loi() -> None:
     assert "C1" in result.messages[2].content
     assert result.final_text == "Đã gửi xong."
 
-    assert executor.calls == [
-        {
-            "name": "slack__post_message",
-            "tool_input": {"channel": "C1"},
-            "connection_id": "conn_slack",
-        }
-    ]
+    assert len(executor.calls) == 1
+    only_call = executor.calls[0]
+    assert only_call["name"] == "slack__post_message"
+    assert only_call["tool_input"] == {"channel": "C1"}
+    assert only_call["connection_id"] == "conn_slack"
+    # Tác động ghi bắt buộc phải kèm khoá idempotency — thiếu thì Integration
+    # Gateway từ chối thẳng. Khoá gắn với lượt và với input.
+    key = only_call["idempotency_key"]
+    assert key and result.messages[0].id in key and "slack.post_message" in key
     assert connections.calls == ["slack.post_message"]
 
     # Lượt gọi model thứ hai phải thấy lại đúng lịch sử: assistant đã gọi tool,
@@ -370,6 +377,45 @@ async def test_nhieu_tool_call_song_song_gop_thanh_mot_luot_ket_qua() -> None:
     assert result_turn.role == "user"
     assert len(result_turn.tool_results) == 2
     assert {r.call_id for r in result_turn.tool_results} == {"call_a", "call_b"}
+
+
+async def test_khoa_idempotency_on_dinh_trong_luot_doi_giua_cac_luot() -> None:
+    """Model gọi lại đúng cùng một thao tác trong một lượt (thường vì thấy lỗi)
+    phải cho **cùng** khoá idempotency — Gateway nhờ đó phát lại kết quả cũ
+    thay vì gửi Slack lần nữa. Input khác thì khoá khác. Lượt sau thì khoá
+    khác hẳn, nên "gửi lại tin đó" vẫn là một lần gửi thật."""
+    same = {"channel": "C1", "text": "hi"}
+    other = {"channel": "C1", "text": "khác"}
+    models = ScriptedModelClient(
+        [
+            _tool_use(ModelToolCall(call_id="c1", name="slack__post_message", input=same)),
+            _tool_use(ModelToolCall(call_id="c2", name="slack__post_message", input=dict(same))),
+            _tool_use(ModelToolCall(call_id="c3", name="slack__post_message", input=other)),
+            _end_turn("Xong."),
+        ]
+    )
+    executor = FakeToolExecutor()
+    runtime = make_runtime(models=models, executor=executor)
+
+    result = await run(runtime, make_agent(), make_conversation())
+
+    keys = [c["idempotency_key"] for c in executor.calls]
+    assert keys[0] == keys[1]  # cùng thao tác, cùng lượt → cùng khoá
+    assert keys[2] != keys[0]  # input khác → khoá khác
+    assert all(result.messages[0].id in k for k in keys)
+
+    # Lượt thứ hai: cùng input hệt lượt đầu, nhưng khoá phải khác.
+    models_2 = ScriptedModelClient(
+        [
+            _tool_use(ModelToolCall(call_id="d1", name="slack__post_message", input=dict(same))),
+            _end_turn("Xong."),
+        ]
+    )
+    executor_2 = FakeToolExecutor()
+    runtime_2 = make_runtime(models=models_2, executor=executor_2)
+    await run(runtime_2, make_agent(), make_conversation())
+
+    assert executor_2.calls[0]["idempotency_key"] != keys[0]
 
 
 # ─── Tool hỏng không làm vỡ lượt ──────────────────────────────────────────────
