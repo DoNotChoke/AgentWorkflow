@@ -6,6 +6,7 @@ import base64
 import hashlib
 import secrets
 from dataclasses import dataclass, field
+from typing import Literal
 from urllib.parse import urlencode
 
 from app.core.errors import ValidationError
@@ -27,6 +28,15 @@ class ProviderDescriptor:
     #: RFC 6749 quy định dấu cách. Slack thì dùng dấu phẩy.
     scope_delimiter: str = " "
 
+    #: Provider có dùng scope OAuth không.
+    #:
+    #: ``False`` nghĩa là quyền được cấp bằng cơ chế khác hẳn: Notion cấp quyền
+    #: theo từng trang người dùng chia sẻ với integration, và endpoint uỷ quyền
+    #: của họ không nhận tham số ``scope`` nào cả. Khai ``True`` cho một provider
+    #: như thế thì mình gửi sang một tham số vô nghĩa rồi lưu lại một tập
+    #: ``granted_scopes`` không phản ánh điều gì có thật.
+    uses_scopes: bool = True
+
     #: PKCE (RFC 7636). Bật khi provider hỗ trợ
     supports_pkce: bool = False
 
@@ -35,6 +45,14 @@ class ProviderDescriptor:
 
     #: Tham số riêng phải kèm vào URL uỷ quyền.
     extra_authorize_params: tuple[tuple[str, str], ...] = ()
+
+    #: Danh tính client đi ở đâu khi gọi endpoint token và endpoint thu hồi.
+    #: RFC 6749 §2.3.1 cho phép cả hai chỗ và nói header Basic là chỗ được ưu
+    #: tiên; Slack và Google nhận cả hai, Notion **chỉ** nhận Basic.
+    client_auth: Literal["body", "basic"] = "body"
+
+    #: Định dạng thân của hai request ấy.
+    request_format: Literal["form", "json"] = "form"
 
     #: Nơi tra danh tính tài khoản sau khi đổi được token. Bỏ trống nghĩa là
     #: danh tính đã nằm sẵn trong phản hồi token — Slack trả kèm khối ``team``.
@@ -90,8 +108,33 @@ GOOGLE = ProviderDescriptor(
     account_label_path=("email",),
 )
 
+NOTION = ProviderDescriptor(
+    id="notion",
+    label="Notion",
+    authorize_url="https://api.notion.com/v1/oauth/authorize",
+    token_url="https://api.notion.com/v1/oauth/token",  # noqa: S106 — URL, không phải token
+    revoke_url="https://api.notion.com/v1/oauth/revoke",
+    uses_scopes=False,
+    supports_pkce=False,
+    supports_refresh=False,
+    # ``owner=user`` là bắt buộc: nó nói với Notion rằng đây là một integration
+    # công khai xin quyền của một người dùng, chứ không phải integration nội bộ.
+    extra_authorize_params=(("owner", "user"),),
+    client_auth="basic",
+    request_format="json",
+    # Notion trả kèm khối workspace ngay trong phản hồi token, nên không cần
+    # thêm một lượt gọi tra danh tính.
+    account_id_path=("workspace_id",),
+    account_label_path=("workspace_name",),
+    notes=(
+        "Notion không dùng scope. Quyền được cấp theo từng trang bạn chọn chia "
+        "sẻ ở màn hình chấp thuận — muốn thêm trang thì kết nối lại. Token "
+        "không hết hạn."
+    ),
+)
+
 #: Danh mục provider được hỗ trợ. Thêm provider = thêm một dòng ở đây.
-PROVIDERS: dict[str, ProviderDescriptor] = {p.id: p for p in (SLACK, GOOGLE)}
+PROVIDERS: dict[str, ProviderDescriptor] = {p.id: p for p in (SLACK, GOOGLE, NOTION)}
 
 
 def get_provider(provider_id: str) -> ProviderDescriptor:
@@ -156,13 +199,19 @@ def build_authorize_url(
     if pkce is not None and not descriptor.supports_pkce:
         raise ValidationError(f"{descriptor.label} không hỗ trợ PKCE.")
 
+    if scopes and not descriptor.uses_scopes:
+        raise ValidationError(f"{descriptor.label} không dùng scope OAuth.")
+
     params: dict[str, str] = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": descriptor.scope_delimiter.join(sorted(scopes)),
         "state": state,
     }
+    # Provider không dùng scope thì **không** gắn tham số rỗng: một `scope=`
+    # trống là thứ provider có quyền từ chối, và nó nói sai về điều đang xảy ra.
+    if descriptor.uses_scopes:
+        params["scope"] = descriptor.scope_delimiter.join(sorted(scopes))
     params.update(dict(descriptor.extra_authorize_params))
 
     if pkce is not None:

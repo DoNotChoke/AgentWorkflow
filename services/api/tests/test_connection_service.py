@@ -263,7 +263,9 @@ class FakeOAuth:
 
 
 class FakeProviderCredentials:
-    def __init__(self, configured: frozenset[str] = frozenset({"slack", "google"})) -> None:
+    def __init__(
+        self, configured: frozenset[str] = frozenset({"slack", "google", "notion"})
+    ) -> None:
         self._configured = configured
 
     def get(self, provider_id: str) -> ClientCredentials | None:
@@ -401,6 +403,35 @@ async def test_bat_dau_uy_quyen_cat_state_va_tra_ve_url() -> None:
     assert pending.workspace_id == WS
     assert pending.user_id == USER
     assert pending.redirect_uri == CALLBACK
+
+
+async def test_uy_quyen_provider_khong_dung_scope_xin_tap_rong() -> None:
+    """Notion cấp quyền theo từng trang được chia sẻ, không theo scope.
+
+    Tập rỗng phải đi trót lọt tới cuối: `ensure_scopes_requestable` chặn tập
+    rỗng, nên nếu nó vẫn nằm trên đường này thì nút "Connect" của Notion ném
+    lỗi trước cả khi trình duyệt rời trang.
+    """
+    service, _, _, states, _ = build_service()
+
+    authorization = await service.start_authorization(
+        context=context(), provider="notion", sharing=SharingPolicy.WORKSPACE
+    )
+
+    assert authorization.authorize_url.startswith("https://api.notion.com/v1/oauth/authorize?")
+    assert next(iter(states.rows.values())).requested_scopes == frozenset()
+
+
+async def test_uy_quyen_tu_choi_scope_gui_toi_provider_khong_dung_scope() -> None:
+    service, _, _, _, _ = build_service()
+
+    with pytest.raises(ValidationError):
+        await service.start_authorization(
+            context=context(),
+            provider="notion",
+            scopes=frozenset({"read_content"}),
+            sharing=SharingPolicy.WORKSPACE,
+        )
 
 
 async def test_state_du_dai_de_khong_doan_duoc() -> None:
@@ -814,7 +845,7 @@ async def test_danh_muc_provider_bao_dung_cai_nao_da_cau_hinh() -> None:
     )
 
     views = {v.descriptor.id: v.configured for v in service.list_providers()}
-    assert views == {"slack": True, "google": False}
+    assert views == {"slack": True, "google": False, "notion": False}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

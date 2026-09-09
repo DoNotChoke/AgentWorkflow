@@ -13,6 +13,8 @@ Hai thứ được canh ở đây, cả hai đều hỏng lặng lẽ nếu sai:
 
 from __future__ import annotations
 
+import base64
+import json
 from typing import Any
 
 import httpx
@@ -31,6 +33,7 @@ from app.domains.connection.infrastructure.oauth_client import HttpxOAuthClient
 CREDENTIALS = {
     "slack": ClientCredentials(client_id="slack-cid", client_secret="slack-secret"),
     "google": ClientCredentials(client_id="google-cid", client_secret="google-secret"),
+    "notion": ClientCredentials(client_id="notion-cid", client_secret="notion-secret"),
 }
 
 
@@ -121,6 +124,53 @@ async def test_than_phan_hoi_tra_len_tren_da_bo_moi_bi_mat(transport: Any) -> No
     # Phần còn dùng được thì vẫn phải còn.
     assert body["team"] == {"id": "T1", "name": "Acme"}
     assert body["authed_user"]["id"] == "U1"
+
+
+async def test_danh_tinh_client_di_dung_cho_provider_doc_no(transport: Any) -> None:
+    """RFC 6749 §2.3.1 cho phép hai chỗ; provider thì mỗi bên chọn một.
+
+    Slack đọc ``client_id``/``client_secret`` trong thân form. Notion **chỉ**
+    đọc header Basic và trả 400 cho thân form — không tách được hai thứ này ra
+    thành dữ liệu của descriptor thì Notion không bao giờ đổi được token, và
+    thất bại đó chỉ hiện ra sau khi người dùng đã bấm đồng ý.
+    """
+    transport["handler"] = respond(200, {"access_token": "at"})
+
+    await client().exchange_code(
+        provider="slack", code="c", redirect_uri="https://a/cb", code_verifier=None
+    )
+    slack = transport["requests"][-1]
+    assert slack.headers["content-type"].startswith("application/x-www-form-urlencoded")
+    assert b"client_secret=slack-secret" in slack.content
+    assert "authorization" not in slack.headers
+
+    await client().exchange_code(
+        provider="notion", code="c", redirect_uri="https://a/cb", code_verifier=None
+    )
+    notion = transport["requests"][-1]
+    assert notion.headers["content-type"].startswith("application/json")
+    expected = base64.b64encode(b"notion-cid:notion-secret").decode()
+    assert notion.headers["authorization"] == f"Basic {expected}"
+    # Bí mật đi trong header thì không được đồng thời nằm trong thân.
+    assert b"notion-secret" not in notion.content
+    assert json.loads(notion.content)["grant_type"] == "authorization_code"
+
+
+async def test_thu_hoi_theo_notion_dung_basic_thay_vi_bearer(transport: Any) -> None:
+    """Danh tính client thắng Bearer khi provider khai ``token_auth="basic"``.
+
+    Lời gọi thu hồi của Slack tự xác thực bằng chính token bị thu hồi, nên
+    Bearer là mặc định đúng ở đó. Notion xác thực bằng client — gửi Bearer sang
+    là bị từ chối, và `revoke` nuốt mọi lỗi nên nó sẽ hỏng hoàn toàn im lặng.
+    """
+    transport["handler"] = respond(200, {})
+
+    await client().revoke(provider="notion", tokens=OAuthTokens(access_token="secret-token"))
+
+    request = transport["requests"][-1]
+    expected = base64.b64encode(b"notion-cid:notion-secret").decode()
+    assert request.headers["authorization"] == f"Basic {expected}"
+    assert json.loads(request.content) == {"token": "secret-token"}
 
 
 async def test_pkce_verifier_duoc_gui_kem_khi_co(transport: Any) -> None:

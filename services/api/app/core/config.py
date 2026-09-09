@@ -100,6 +100,8 @@ class Settings(BaseSettings):
     oauth_slack_client_secret: SecretStr = SecretStr("")
     oauth_google_client_id: str = ""
     oauth_google_client_secret: SecretStr = SecretStr("")
+    oauth_notion_client_id: str = ""
+    oauth_notion_client_secret: SecretStr = SecretStr("")
 
     @property
     def oauth_callback_url(self) -> str:

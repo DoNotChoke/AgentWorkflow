@@ -3,17 +3,14 @@
 Hai trách nhiệm, và chỉ hai:
 
 1. Chuẩn hoá lỗi của provider về error model §37, để phía trên biết lỗi nào
-   đáng retry mà không phải hiểu quy ước riêng của từng provider (§23).
+   đáng retry mà không phải hiểu quy ước riêng của từng provider.
 2. Không để credential rò ra ngoài qua lỗi hay log. Thân của phản hồi token
    **chính là** nơi chứa token, nên nó không bao giờ được đính vào exception.
-
-URL đích lấy từ danh mục tĩnh trong ``domain/providers.py``, không bao giờ từ
-dữ liệu người dùng gửi lên — đó là thứ giữ cho module này không trở thành một
-cái cổng SSRF (§38).
 """
 
 from __future__ import annotations
 
+import base64
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -119,32 +116,33 @@ class HttpxOAuthClient:
         descriptor = get_provider(provider)
         client = self._require_client(descriptor)
 
-        form = {
+        payload = {
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": redirect_uri,
-            "client_id": client.client_id,
-            "client_secret": client.client_secret,
         }
         if code_verifier is not None:
-            form["code_verifier"] = code_verifier
+            payload["code_verifier"] = code_verifier
 
-        body = await self._post_form(descriptor, descriptor.token_url, form)
+        body = await self._post(
+            descriptor,
+            descriptor.token_url,
+            self._token_request(descriptor, payload, client=client),
+        )
         return self._to_tokens(descriptor, body), _redact(body)
 
     async def refresh(self, *, provider: str, refresh_token: str) -> OAuthTokens:
         descriptor = get_provider(provider)
         client = self._require_client(descriptor)
 
-        body = await self._post_form(
+        body = await self._post(
             descriptor,
             descriptor.token_url,
-            {
-                "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
-                "client_id": client.client_id,
-                "client_secret": client.client_secret,
-            },
+            self._token_request(
+                descriptor,
+                {"grant_type": "refresh_token", "refresh_token": refresh_token},
+                client=client,
+            ),
         )
         return self._to_tokens(descriptor, body)
 
@@ -197,19 +195,19 @@ class HttpxOAuthClient:
         if descriptor.revoke_url is None:
             return
 
-        client = self._credentials.get(descriptor.id)
-        form = {"token": tokens.access_token}
-        if client is not None:
-            form["client_id"] = client.client_id
-            form["client_secret"] = client.client_secret
+        # Bearer chỉ là mặc định, cho provider xác thực lời gọi thu hồi bằng
+        # chính token bị thu hồi (Slack). Provider đòi Basic sẽ ghi đè header
+        # này trong `_token_request` — danh tính client thắng.
+        request = self._token_request(
+            descriptor,
+            {"token": tokens.access_token},
+            client=self._credentials.get(descriptor.id),
+            headers={"authorization": f"Bearer {tokens.access_token}"},
+        )
 
         try:
             async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as http:
-                response = await http.post(
-                    descriptor.revoke_url,
-                    data=form,
-                    headers={"authorization": f"Bearer {tokens.access_token}"},
-                )
+                response = await http.post(descriptor.revoke_url, **request)
             if response.status_code >= 400:
                 log.warning(
                     "connection_provider_revoke_rejected",
@@ -234,16 +232,37 @@ class HttpxOAuthClient:
             )
         return client
 
-    async def _post_form(
-        self, descriptor: ProviderDescriptor, url: str, form: dict[str, str]
+    def _token_request(
+        self,
+        descriptor: ProviderDescriptor,
+        payload: dict[str, str],
+        *,
+        client: ClientCredentials | None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Dựng kwargs httpx cho một lời gọi tới endpoint token hoặc thu hồi."""
+        body = dict(payload)
+        request_headers = {"accept": "application/json", **(headers or {})}
+
+        if client is not None:
+            if descriptor.client_auth == "basic":
+                raw = f"{client.client_id}:{client.client_secret}".encode()
+                request_headers["authorization"] = f"Basic {base64.b64encode(raw).decode()}"
+            else:
+                body["client_id"] = client.client_id
+                body["client_secret"] = client.client_secret
+
+        return {
+            "headers": request_headers,
+            "json" if descriptor.request_format == "json" else "data": body,
+        }
+
+    async def _post(
+        self, descriptor: ProviderDescriptor, url: str, request: dict[str, Any]
     ) -> dict[str, Any]:
         try:
             async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as http:
-                response = await http.post(
-                    url,
-                    data=form,
-                    headers={"accept": "application/json"},
-                )
+                response = await http.post(url, **request)
         except httpx.TimeoutException as exc:
             raise PlatformTimeoutError(
                 f"{descriptor.label} không phản hồi kịp.",

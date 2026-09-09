@@ -1,15 +1,10 @@
-"""Tra ``client_id`` / ``client_secret`` của app mình, đọc từ cấu hình.
-
-Bảng ánh xạ ở đây được viết tay chứ không dùng ``getattr`` theo tên provider.
-Đổi lại vài dòng lặp, ta được: mypy kiểm được từng trường, và thêm provider mới
-mà quên cấu hình thì lỗi hiện ra lúc đọc code chứ không lúc chạy.
-"""
+"""Tra ``client_id`` / ``client_secret`` của app mình, đọc từ cấu hình."""
 
 from __future__ import annotations
 
 from app.core.config import Settings
 from app.domains.connection.application.ports import ClientCredentials
-from app.domains.connection.domain.providers import GOOGLE, SLACK
+from app.domains.connection.domain.providers import GOOGLE, NOTION, SLACK
 
 
 def _pair(client_id: str, client_secret: str) -> ClientCredentials | None:
@@ -36,6 +31,10 @@ def build_provider_credentials(settings: Settings) -> dict[str, ClientCredential
         GOOGLE.id: _pair(
             settings.oauth_google_client_id,
             settings.oauth_google_client_secret.get_secret_value(),
+        ),
+        NOTION.id: _pair(
+            settings.oauth_notion_client_id,
+            settings.oauth_notion_client_secret.get_secret_value(),
         ),
     }
     for provider_id, credentials in candidates.items():

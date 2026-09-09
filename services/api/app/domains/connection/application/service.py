@@ -95,6 +95,24 @@ class Authorization:
     expires_in_seconds: int
 
 
+def _requested_scopes(
+    descriptor: ProviderDescriptor, scopes: frozenset[str] | None
+) -> frozenset[str]:
+    """Tập quyền sẽ xin ở vòng uỷ quyền này.
+
+    Provider không dùng scope thì tập rỗng là câu trả lời **đúng**, không phải
+    một thiếu sót cần chặn: Notion cấp quyền theo từng trang người dùng chọn
+    chia sẻ ở màn hình chấp thuận, và endpoint uỷ quyền của họ không có tham số
+    ``scope``. Lưu một tập bịa ra ở đây sẽ khiến `missing_scopes` phía sau so
+    sánh hai thứ đều không có thật.
+    """
+    if not descriptor.uses_scopes:
+        if scopes:
+            raise ValidationError(f"{descriptor.label} không dùng scope OAuth.")
+        return frozenset()
+    return ensure_scopes_requestable(scopes if scopes is not None else descriptor.default_scopes)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Use case người dùng
 # ─────────────────────────────────────────────────────────────────────────────
@@ -218,9 +236,7 @@ class ConnectionService:
             actor=_actor(context),
         )
 
-        requested = ensure_scopes_requestable(
-            scopes if scopes is not None else descriptor.default_scopes
-        )
+        requested = _requested_scopes(descriptor, scopes)
 
         if reconnect_connection_id is not None:
             existing = await self._require_connection(reconnect_connection_id, context)

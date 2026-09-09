@@ -38,6 +38,7 @@ from app.domains.connection.domain.entities import (
 )
 from app.domains.connection.domain.providers import (
     GOOGLE,
+    NOTION,
     PROVIDERS,
     SLACK,
     build_authorize_url,
@@ -321,10 +322,17 @@ def test_id_cua_descriptor_khop_voi_khoa_trong_danh_muc() -> None:
         assert key == descriptor.id
 
 
-def test_moi_provider_deu_co_scope_mac_dinh() -> None:
-    """Không có scope mặc định thì nút "Connect" không bấm được."""
+def test_scope_mac_dinh_khop_voi_viec_provider_co_dung_scope_hay_khong() -> None:
+    """Hai chiều, vì cả hai chiều đều hỏng theo cách chỉ lộ ra lúc chạy thật.
+
+    Provider dùng scope mà bỏ trống ``default_scopes`` thì
+    ``ensure_scopes_requestable`` ném lỗi ngay khi bấm "Connect". Provider
+    không dùng scope mà lại khai một tập scope thì mình gửi sang provider một
+    tham số họ không đọc, rồi lưu lại một ``granted_scopes`` không phản ánh
+    quyền có thật nào.
+    """
     for descriptor in list_providers():
-        assert descriptor.default_scopes
+        assert bool(descriptor.default_scopes) is descriptor.uses_scopes, descriptor.id
 
 
 def test_slack_dung_dau_phay_va_khong_lam_moi_duoc() -> None:
@@ -404,6 +412,42 @@ def test_build_authorize_url_kem_tham_so_rieng_cua_provider() -> None:
     assert query["access_type"] == ["offline"]
     assert query["code_challenge_method"] == ["S256"]
     assert query["code_challenge"]
+
+
+def test_build_authorize_url_bo_han_scope_voi_provider_khong_dung_scope() -> None:
+    """``scope=`` rỗng không phải là "không xin gì" — nó là một tham số sai.
+
+    Notion không có tham số ``scope``; quyền là danh sách trang người dùng chọn
+    chia sẻ ở màn hình chấp thuận. Gửi kèm một tham số rỗng là thứ provider có
+    quyền từ chối, và nó nói sai về điều đang xảy ra.
+    """
+    url = build_authorize_url(
+        NOTION,
+        client_id="cid",
+        redirect_uri="https://app.example.com/cb",
+        scopes=frozenset(),
+        state="s",
+        pkce=None,
+    )
+    query = parse_qs(urlparse(url).query)
+
+    assert "scope" not in query
+    assert query["owner"] == ["user"]
+    assert query["state"] == ["s"]
+
+
+def test_build_authorize_url_tu_choi_scope_gui_toi_provider_khong_dung_scope() -> None:
+    """Lọt qua đây thì `granted_scopes` lưu lại một tập bịa: provider không dội
+    scope về, nên `complete_authorization` coi những gì mình xin là đã được cấp."""
+    with pytest.raises(ValidationError):
+        build_authorize_url(
+            NOTION,
+            client_id="cid",
+            redirect_uri="https://app.example.com/cb",
+            scopes=frozenset({"read_content"}),
+            state="s",
+            pkce=None,
+        )
 
 
 def test_build_authorize_url_khong_gui_pkce_toi_provider_khong_ho_tro() -> None:
