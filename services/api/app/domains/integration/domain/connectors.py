@@ -41,9 +41,13 @@ class ResponseEnvelope:
     error_field: str
     detail_field: str | None = None
 
+    #: Giá trị của `success_field` báo hiệu THẤT BẠI. Slack dùng `ok: false`;
+    #: Notion không có cờ boolean nào mà đổi hẳn `object` thành `"error"`.
+    failure_value: bool | str = False
+
     def failure_code(self, body: Mapping[str, object]) -> str | None:
         """Mã lỗi provider báo trong thân, hoặc `None` nếu thân báo thành công."""
-        if body.get(self.success_field) is not False:
+        if body.get(self.success_field) != self.failure_value:
             return None
         code = body.get(self.error_field)
         return str(code) if code else "unknown_error"
@@ -71,6 +75,10 @@ class ConnectorSpec:
     auth: AuthSpec
     tool_ids: tuple[str, ...]
     error_mapping: Mapping[str, ErrorCategory]
+
+    #: Header cố định của provider, gắn vào mọi lời gọi.
+    static_headers: Mapping[str, str] = field(default_factory=dict)
+
     response_envelope: ResponseEnvelope | None = None
     webhooks: WebhookCapabilities = field(default_factory=WebhookCapabilities)
     events: EventCapabilities = field(default_factory=EventCapabilities)

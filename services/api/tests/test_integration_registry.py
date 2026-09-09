@@ -198,13 +198,18 @@ def test_catalog_sinh_ra_khop_voi_json() -> None:
 def test_registry_mac_dinh_dung_duoc_ngay() -> None:
     registry = default_registry()
 
-    assert [connector.connector_id for connector in registry.list_connectors()] == ["slack"]
+    assert sorted(c.connector_id for c in registry.list_connectors()) == ["notion", "slack"]
     assert len(registry.list_tools(provider="slack")) == 4
+    assert len(registry.list_tools(provider="notion")) == 8
 
     post = registry.get_tool("slack.post_message")
     assert post.side_effect is SideEffect.WRITE
     assert post.idempotency.required is True
     assert post.required_scopes == frozenset({"chat:write"})
+
+    # Notion không có scope: quyền nằm ở danh sách trang người dùng chia sẻ với
+    # integration, nên tập rỗng ở đây là câu trả lời đúng chứ không phải thiếu.
+    assert registry.get_tool("notion.search").required_scopes == frozenset()
 
 
 def test_moi_scope_tool_can_deu_nam_trong_scope_mac_dinh_cua_provider() -> None:

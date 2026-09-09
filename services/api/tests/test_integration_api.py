@@ -203,7 +203,7 @@ def _tenant_of(nguoi: Nguoi) -> tuple[str, str]:
 # ─── Danh mục ────────────────────────────────────────────────────────────────
 
 
-def test_liet_ke_du_bon_tool_slack(client: TestClient) -> None:
+def test_liet_ke_du_moi_tool_trong_danh_muc(client: TestClient) -> None:
     an = Nguoi(client, "An")
 
     tools = an.get(TOOLS).json()
@@ -213,6 +213,14 @@ def test_liet_ke_du_bon_tool_slack(client: TestClient) -> None:
         "slack.post_message",
         "slack.list_users",
         "slack.get_channel_history",
+        "notion.search",
+        "notion.get_page",
+        "notion.get_block_children",
+        "notion.query_database",
+        "notion.list_users",
+        "notion.create_page",
+        "notion.append_blocks",
+        "notion.create_comment",
     }
 
 

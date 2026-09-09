@@ -79,6 +79,11 @@
     },
     "approval": { "$ref": "#/$defs/approvalPolicy" },
     "request": { "$ref": "#/$defs/providerRequest" },
+    "input_mapping": {
+      "description": "Template dựng THÂN request từ input của người gọi. Bỏ trống thì input được gửi thẳng, đủ cho provider nhận thân phẳng. Khai nó khi provider đòi cây lồng nhau — tạo một trang Notion đòi `{\"parent\": {\"page_id\": …}, \"properties\": {\"title\": {\"title\": [{\"text\": {\"content\": …}}]}}}`, và bắt `input_schema` mang đúng hình ấy là biến tool thành thứ LLM gõ sai nhiều hơn gõ đúng. Ba luật: chuỗi đúng bằng `{{ten}}` được thay bằng giá trị của `ten`; `{\"for_each\": \"ten\", \"template\": …}` lặp template trên từng phần tử của mảng `ten` với `{{item}}` là phần tử hiện tại; còn lại là hằng. Khoá không có giá trị thì biến mất khỏi thân, không thành `null`.",
+      "type": "object",
+      "minProperties": 1
+    },
     "output_mapping": {
       "description": "Chiếu phản hồi của provider sang output_schema. Chỉ những trường có tên ở đây mới đi ra ngoài — phần còn lại của phản hồi bị bỏ, nên một trường mới của provider không thể tự động rò ra.",
       "type": "object",
@@ -107,10 +112,28 @@
   },
   "$defs": {
     "path": {
-      "description": "Đường đi tới một giá trị trong JSON của provider, tính từ gốc.",
+      "description": "Đường đi tới một giá trị trong JSON của provider, tính từ gốc. Segment `*` nhận mọi phần tử của một mảng và chiếu tiếp phần đuôi lên từng cái, cho ra một danh sách — cần nó vì giá trị dùng được thường nằm TRONG một mảng chứ không phải chính mảng đó.",
       "type": "array",
       "minItems": 1,
       "items": { "type": "string", "minLength": 1 }
+    },
+    "itemSelector": {
+      "description": "Chỗ lấy một trường của phần tử: một đường, hoặc một danh sách đường mà cái đầu tiên tới nơi sẽ thắng. Nhiều đường là để đọc union có discriminator — Notion đặt nội dung của một khối dưới khoá trùng với `type` của chính khối đó, nên không đường tĩnh nào tới được nó và cũng không đường nào đúng cho mọi khối.",
+      "oneOf": [
+        { "$ref": "#/$defs/path" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["any_of"],
+          "properties": {
+            "any_of": {
+              "type": "array",
+              "minItems": 2,
+              "items": { "$ref": "#/$defs/path" }
+            }
+          }
+        }
+      ]
     },
     "payloadSchema": {
       "description": "Một JSON Schema kèm version riêng. §40 đòi input schema và output schema được đánh version độc lập với tool.",
@@ -132,7 +155,7 @@
         "items": {
           "type": "object",
           "minProperties": 1,
-          "additionalProperties": { "$ref": "#/$defs/path" }
+          "additionalProperties": { "$ref": "#/$defs/itemSelector" }
         }
       }
     },
@@ -207,13 +230,18 @@
       }
     },
     "providerRequest": {
-      "description": "Hình dạng lời gọi HTTP. `path` đến từ tài liệu đã commit, không bao giờ đến từ input của người gọi — đó là ranh giới ngăn SSRF (§38).",
+      "description": "Hình dạng lời gọi HTTP. Khung của `path` đến từ tài liệu đã commit; người gọi chỉ điền được nội dung của những segment khai bằng placeholder, và giá trị đó được percent-encode nên không thoát ra khỏi một segment (ADR-0005, §38).",
       "type": "object",
       "additionalProperties": false,
       "required": ["method", "path", "body"],
       "properties": {
-        "method": { "enum": ["GET", "POST"] },
-        "path": { "type": "string", "pattern": "^/[A-Za-z0-9._/-]+$", "maxLength": 200 },
+        "method": { "enum": ["GET", "POST", "PATCH"] },
+        "path": {
+          "description": "Đường dẫn dưới `base_url` của connector. Một `{ten_truong}` là chỗ điền: `ten_truong` phải là một property `required`, kiểu chuỗi, có `pattern` hẹp trong `input_schema` — test đọc tài liệu canh điều đó. Lúc gọi, giá trị được percent-encode toàn bộ và khoá ấy bị loại khỏi query hay thân request (ADR-0005).",
+          "type": "string",
+          "pattern": "^/[A-Za-z0-9._/-]*([{][a-z0-9_]+[}][A-Za-z0-9._/-]*)*$",
+          "maxLength": 200
+        },
         "body": {
           "description": "Cách đóng gói input: query string, form urlencoded, hay JSON.",
           "enum": ["query", "form", "json"]

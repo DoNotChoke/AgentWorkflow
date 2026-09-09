@@ -9,13 +9,24 @@ tool/
 ├── tool.schema.json          meta-schema của một tài liệu tool
 ├── connector.schema.json     meta-schema của một tài liệu connector
 ├── build_catalog.py          sinh catalog Python
-└── slack/
+├── slack/
+│   ├── connector.json
+│   └── tools/
+│       ├── list_channels.v1.json
+│       ├── post_message.v1.json
+│       ├── list_users.v1.json
+│       └── get_channel_history.v1.json
+└── notion/
     ├── connector.json
     └── tools/
-        ├── list_channels.v1.json
-        ├── post_message.v1.json
+        ├── search.v1.json
+        ├── get_page.v1.json
+        ├── get_block_children.v1.json
+        ├── query_database.v1.json
         ├── list_users.v1.json
-        └── get_channel_history.v1.json
+        ├── create_page.v2.json
+        ├── append_blocks.v2.json
+        └── create_comment.v1.json
 ```
 
 Tên file mang cả tool lẫn major: `post_message.v1.json`. §41 cho phép hai major
@@ -84,6 +95,92 @@ cho tới hết thời hạn tương thích đã công bố (§41).
   tool khai scope mà vòng OAuth không bao giờ xin sẽ chỉ lộ ra lúc người dùng
   thật bấm nút.
 
+## Chỗ điền trong `request.path`
+
+`"/blocks/{block_id}/children"` — `{block_id}` là chỗ người gọi điền. Quyết định
+và lập luận đầy đủ ở [ADR-0005](../../../docs/adr/0005-tham-so-duong-dan-trong-tai-lieu-tool.md);
+phần cần nhớ khi viết tài liệu:
+
+- tên trong ngoặc phải là một property `required`, kiểu chuỗi, **có `pattern`
+  hẹp** trong `input_schema`;
+- pattern ấy phải từ chối `..`, `a/b`, `a?b`, `a#b`, `%2F`, `http://…` — một
+  test đọc tài liệu và thử từng chuỗi đó;
+- lúc gọi, giá trị được percent-encode toàn bộ (`/` thành `%2F`) và khoá ấy bị
+  loại khỏi query string hay thân request.
+
+## Dựng thân request: `input_mapping`
+
+Hình dạng mà provider đòi và hình dạng mà một LLM viết đúng được là hai thứ
+khác nhau. Tạo một trang Notion đòi bốn tầng lồng nhau:
+
+```json
+{"parent": {"page_id": "…"},
+ "properties": {"title": {"title": [{"text": {"content": "…"}}]}}}
+```
+
+Bỏ trống `input_mapping` thì input được gửi thẳng — đủ cho Slack, nơi thân
+request phẳng. Khai nó thì `input_schema` giữ được ba trường phẳng mà LLM viết
+đúng được, còn cái cây kia nằm đúng chỗ của nó là tài liệu connector.
+
+Bốn luật, hết:
+
+- chuỗi **đúng bằng** `{{ten}}` được thay bằng giá trị của `ten`, giữ nguyên
+  kiểu — số vẫn là số. Không nội suy giữa chuỗi;
+- tên có thể là một đường: `{{item.type}}` đọc trường `type` của phần tử đang
+  lặp. Lạc đường thì coi như vắng mặt;
+- `{"for_each": "ten", "template": …}` lặp template trên từng phần tử của mảng
+  `ten`, với `{{item}}` là phần tử hiện tại. Một cấp, không lồng nhau — cùng
+  giới hạn với `output_mapping.items`;
+- placeholder đứng được ở **vị trí khoá**, và còn lại là hằng.
+
+Không có điều kiện, và bốn luật trên không cần tới nó.
+
+Khoá không có giá trị **biến mất** khỏi thân, không thành `null`: `null` nói
+với provider "đặt nó rỗng", vắng mặt nói "tôi không nhắc tới nó".
+
+### Khoá động, và vì sao nó thay được một đống nhánh
+
+Vài provider đặt **tên khoá theo chính dữ liệu**. Một khối Notion để nội dung
+dưới khoá trùng với `type` của nó:
+
+```json
+{"object": "block", "type": "bulleted_list_item",
+ "bulleted_list_item": {"rich_text": [{"text": {"content": "…"}}]}}
+```
+
+Hình dạng ấy đồng nhất cho mọi loại khối, nên **một** template phủ hết — đoạn
+văn, tiêu đề, gạch đầu dòng, danh sách đánh số, việc cần làm, toggle:
+
+```json
+{"for_each": "blocks", "template": {
+   "object": "block",
+   "type": "{{item.type}}",
+   "{{item.type}}": {
+     "rich_text": [{"text": {"content": "{{item.text}}"}}],
+     "checked": "{{item.checked}}"
+   }}}
+```
+
+`checked` chỉ hiện ở khối `to_do`, nhờ đúng luật "khoá không có giá trị thì
+biến mất". Không nhánh nào cả — đây là tra cứu, không phải điều kiện.
+
+Khoá động là thứ duy nhất trong template đổi được **hình dạng** thân request
+chứ không chỉ nội dung, nên nó có ba hàng rào:
+
+- lúc chạy, khoá phải là **chuỗi không rỗng**;
+- lúc chạy, khoá động **không ghi đè** khoá hằng nào — nếu không, một `type`
+  mang giá trị `"object"` sẽ thay được hằng `"object": "block"` mà tài liệu đã
+  khai;
+- lúc nạp tài liệu, trường dùng làm khoá động **phải khai `enum`**, để tập khoá
+  người gọi tạo ra được là một danh sách đóng, đọc bằng mắt ngay trong tài liệu.
+  Cùng vai trò với lớp tài liệu của ADR-0005, và `test_khoa_dong_chi_dung_truong_da_bi_gioi_han_bang_enum`
+  canh nó.
+
+`test_input_mapping_phu_dung_cac_truong_cua_input_schema` đối chiếu hai chiều —
+một `{{ten}}` không có trong schema là chỗ không bao giờ được điền, một property
+không template nào đọc tới là tham số LLM gửi đi rồi rơi vào hư không. Trường
+nằm trong `request.path` được trừ ra vì nó đã đi vào URL.
+
 ## Chiếu output, và vì sao nó hẹp
 
 `output_mapping` liệt kê từng trường đi ra và chỗ lấy nó. Phần còn lại của phản
@@ -96,3 +193,29 @@ cách rẻ nhất để tuân thủ là để mặc định là **bỏ**, không
 Cùng lập luận khiến `oauth_client._redact` tồn tại.
 
 Hệ quả kèm theo: một trường mới mà provider thêm vào sẽ không tự động rò ra.
+
+### Hai thứ mà một đường tĩnh không tới được
+
+`*` trong một `path` nhận mọi phần tử của mảng và chiếu tiếp phần đuôi lên từng
+cái. Tiêu đề một trang Notion bị cắt thành nhiều đoạn theo định dạng chữ, nên
+`["properties", "title", "title", "*", "plain_text"]` cho ra
+`["Ghi chú ", "tuần này"]` — lấy đoạn đầu là mất phần còn lại, lấy nguyên mảng
+là trả về cả khối annotation và màu.
+
+`any_of` bên trong `items` khai nhiều đường và lấy đường đầu tiên tới nơi. Cần
+nó cho union có discriminator: Notion đặt nội dung của một khối dưới khoá
+**trùng với `type` của chính khối đó** (`paragraph.rich_text`,
+`heading_1.rich_text`, …), nên không đường tĩnh nào tới được, và cũng không
+đường nào đúng cho mọi khối.
+
+```json
+"text": {
+  "any_of": [
+    ["paragraph", "rich_text", "*", "plain_text"],
+    ["heading_1", "rich_text", "*", "plain_text"]
+  ]
+}
+```
+
+Không đường nào tới nơi thì trường ấy **vắng mặt** khỏi output, không phải rỗng
+— một `divider` không mang chữ, và nói thế đúng hơn là nói nó mang chuỗi rỗng.

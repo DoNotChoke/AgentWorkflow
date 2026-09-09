@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "tool_id": "notion.create_comment",
+  "provider": "notion",
+  "version": "1.0",
+  "description": "Thêm một bình luận vào một trang Notion. Bình luận hiện ở đầu trang chứ không gắn vào một đoạn cụ thể. Dùng khi cần ghi chú mà không muốn sửa nội dung trang.",
+  "input_schema": {
+    "version": "1.0",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page_id", "text"],
+      "properties": {
+        "page_id": {
+          "type": "string",
+          "description": "Id trang, 32 ký tự hex có hoặc không có dấu gạch nối.",
+          "pattern": "^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$"
+        },
+        "text": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      }
+    }
+  },
+  "output_schema": {
+    "version": "1.0",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "discussion_id": { "type": "string" }
+      }
+    }
+  },
+  "required_scopes": [],
+  "side_effect": "write",
+  "retry": {
+    "max_attempts": 3,
+    "initial_backoff_seconds": 1,
+    "max_backoff_seconds": 30,
+    "multiplier": 2
+  },
+  "timeout": { "attempt_seconds": 20, "total_seconds": 60 },
+  "rate_limits": { "tool": { "limit": 30, "window_seconds": 60 } },
+  "idempotency": {
+    "strategy": "dedup_record",
+    "required": true,
+    "ttl_seconds": 604800
+  },
+  "permissions": [],
+  "approval": { "required": false },
+  "request": { "method": "POST", "path": "/comments", "body": "json" },
+  "input_mapping": {
+    "parent": { "type": "page_id", "page_id": "{{page_id}}" },
+    "rich_text": [{ "text": { "content": "{{text}}" } }]
+  },
+  "output_mapping": {
+    "id": { "path": ["id"] },
+    "discussion_id": { "path": ["discussion_id"] }
+  },
+  "provider_reference": { "paths": [["id"]] },
+  "enabled": true
+}

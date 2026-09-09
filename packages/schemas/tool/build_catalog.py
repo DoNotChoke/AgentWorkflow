@@ -78,6 +78,7 @@ IMPORTABLE: dict[str, tuple[str, ...]] = {
         "FieldMapping",
         "IdempotencyPolicy",
         "IdempotencyStrategy",
+        "ItemSelector",
         "PayloadSchema",
         "ProviderReference",
         "ProviderRequest",

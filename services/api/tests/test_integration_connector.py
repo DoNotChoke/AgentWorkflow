@@ -10,6 +10,8 @@ chạy được một provider có thật mà không cần một dòng code nào
 
 from __future__ import annotations
 
+import json
+from dataclasses import replace
 from datetime import datetime
 from typing import Any
 
@@ -31,6 +33,7 @@ from app.domains.integration.infrastructure.connectors import HttpConnector
 
 REGISTRY = default_registry()
 SLACK = REGISTRY.get_connector("slack")
+NOTION = REGISTRY.get_connector("notion")
 
 
 class FakeCredential:
@@ -353,6 +356,360 @@ async def test_token_khong_xuat_hien_trong_thong_diep_loi(transport: dict[str, A
 
     rendered = f"{caught.value} {caught.value.to_payload()}"
     assert FakeCredential.access_token not in rendered
+
+
+# ─── Khác biệt của provider, khai bằng tài liệu ──────────────────────────────
+
+
+async def call_notion(
+    box: dict[str, Any], tool_id: str, payload: dict[str, Any] | None = None
+) -> Any:
+    return await HttpConnector().call(
+        tool=REGISTRY.get_tool(tool_id),
+        connector=NOTION,
+        credential=FakeCredential(),
+        payload=payload or {},
+    )
+
+
+async def test_header_co_dinh_cua_connector_di_kem_moi_loi_goi(
+    transport: dict[str, Any],
+) -> None:
+    """Notion trả 400 `missing_version` cho request thiếu `Notion-Version`.
+
+    Không có chỗ khai header cố định thì lựa chọn còn lại là một nhánh
+    `if provider == ...` trong driver — thứ §6 cấm.
+    """
+    replying(transport, json={"object": "list", "results": []})
+
+    await call_notion(transport, "notion.search")
+
+    request = transport["seen"][0]
+    assert request.headers["notion-version"] == "2022-06-28"
+    assert request.headers["authorization"] == "Bearer xoxb-bi-mat"
+
+
+async def test_header_co_dinh_khong_cuop_duoc_cho_cua_credential(
+    transport: dict[str, Any],
+) -> None:
+    """Tài liệu connector là dữ liệu, và dữ liệu không được thay token.
+
+    Đây là lý do driver gắn header auth SAU `static_headers` chứ không trộn hai
+    dict theo thứ tự ngược lại.
+    """
+    replying(transport, json={"object": "list", "results": []})
+    doctored = replace(NOTION, static_headers={"authorization": "Bearer token-ke-tan-cong"})
+
+    await HttpConnector().call(
+        tool=REGISTRY.get_tool("notion.search"),
+        connector=doctored,
+        credential=FakeCredential(),
+        payload={},
+    )
+
+    assert transport["seen"][0].headers["authorization"] == "Bearer xoxb-bi-mat"
+
+
+async def test_envelope_doc_duoc_provider_bao_loi_bang_object_thay_vi_co_boolean(
+    transport: dict[str, Any],
+) -> None:
+    """Notion không có `ok: false`; nó đổi hẳn `object` thành `"error"`.
+
+    Đọc được mã trong thân mới phân biệt được `object_not_found` với
+    `restricted_resource` — hai thứ cùng ra HTTP 404 nhưng một cái bảo agent
+    thử id khác, cái kia bảo người dùng đi chia sẻ trang.
+    """
+    replying(
+        transport,
+        404,
+        json={"object": "error", "status": 404, "code": "object_not_found", "message": "..."},
+    )
+
+    with pytest.raises(ValidationError) as caught:
+        await call_notion(transport, "notion.search", {"query": "ghi chú"})
+
+    assert caught.value.details["provider_code"] == "object_not_found"
+
+
+async def test_envelope_khong_doc_nham_phan_hoi_thanh_cong_thanh_loi(
+    transport: dict[str, Any],
+) -> None:
+    """`object` của một phản hồi tốt là `"list"` hay `"page"` — chỉ `"error"`
+    mới là thất bại. So sánh với `false` như envelope của Slack thì mọi phản
+    hồi Notion đều lọt qua, kể cả những cái hỏng."""
+    replying(
+        transport,
+        json={"object": "list", "results": [{"id": "p1", "object": "page"}], "has_more": False},
+    )
+
+    result = await call_notion(transport, "notion.search")
+
+    assert result.output["results"] == [{"id": "p1", "object": "page"}]
+
+
+# ─── Tham số đường dẫn (ADR-0005) ────────────────────────────────────────────
+
+TRANG = "1f0a2b3c4d5e6f708192a3b4c5d6e7f8"
+
+
+async def test_tham_so_di_vao_duong_dan_va_khong_di_them_lan_nua(
+    transport: dict[str, Any],
+) -> None:
+    """Đã điền vào URL thì không được điền tiếp vào query — Notion coi một
+    trường lạ trên query string là lỗi và từ chối cả lời gọi."""
+    replying(transport, json={"object": "page", "id": TRANG})
+
+    await call_notion(transport, "notion.get_page", {"page_id": TRANG})
+
+    url = transport["seen"][0].url
+    assert str(url) == f"https://api.notion.com/v1/pages/{TRANG}"
+    assert not url.params
+
+
+async def test_tham_so_duong_dan_bi_loai_khoi_than_request(transport: dict[str, Any]) -> None:
+    replying(transport, json={"object": "list", "results": []})
+
+    await call_notion(transport, "notion.query_database", {"database_id": TRANG, "page_size": 10})
+
+    request = transport["seen"][0]
+    assert str(request.url) == f"https://api.notion.com/v1/databases/{TRANG}/query"
+    assert json.loads(request.content) == {"page_size": 10}
+
+
+async def test_gia_tri_thu_dich_khong_thoat_duoc_khoi_mot_segment(
+    transport: dict[str, Any],
+) -> None:
+    """ADR-0005 lớp một — ranh giới SSRF thật, và nó nằm ở đây.
+
+    Driver nằm *dưới* tầng validate của Gateway, nên nó phải tự đứng vững:
+    `pattern` trong `input_schema` là ràng buộc thiết kế, không phải hàng rào.
+    Đổi `quote(..., safe="")` thành `safe="/"` là test này đỏ.
+    """
+    replying(transport, json={"object": "page", "id": "x"})
+
+    await call_notion(transport, "notion.get_page", {"page_id": "../../oauth/token"})
+
+    url = str(transport["seen"][0].url)
+    assert url.startswith("https://api.notion.com/v1/pages/")
+    assert "/oauth/token" not in url
+    assert "%2F" in url
+
+
+async def test_thieu_tham_so_duong_dan_thi_hong_o_tang_minh(transport: dict[str, Any]) -> None:
+    """Không có nó thì `fill_path` ném `KeyError` — một lỗi 500 không nói được
+    thiếu cái gì, cho một tài liệu tool khai sai."""
+    replying(transport, json={})
+
+    with pytest.raises(ValidationError) as caught:
+        await call_notion(transport, "notion.get_page", {})
+
+    assert caught.value.details["field"] == "page_id"
+
+
+# ─── Chiếu output: qua mảng, và qua union có discriminator ───────────────────
+
+
+async def test_wildcard_gom_gia_tri_nam_trong_mang(transport: dict[str, Any]) -> None:
+    """Tiêu đề Notion bị cắt thành nhiều đoạn theo định dạng chữ. Lấy đoạn đầu
+    là mất phần còn lại; lấy nguyên mảng là trả về cả khối annotation."""
+    replying(
+        transport,
+        json={
+            "object": "page",
+            "id": TRANG,
+            "properties": {
+                "title": {
+                    "title": [
+                        {"plain_text": "Ghi chú ", "annotations": {"bold": False}},
+                        {"plain_text": "tuần này", "annotations": {"bold": True}},
+                    ]
+                }
+            },
+        },
+    )
+
+    result = await call_notion(transport, "notion.get_page", {"page_id": TRANG})
+
+    assert result.output["title"] == ["Ghi chú ", "tuần này"]
+
+
+async def test_any_of_doc_duoc_union_co_discriminator(transport: dict[str, Any]) -> None:
+    """Notion đặt chữ của khối dưới khoá trùng với `type` của chính khối đó,
+    nên không đường tĩnh nào đúng cho mọi khối. Khối không mang chữ thì trường
+    `text` vắng mặt, chứ không phải rỗng — `additionalProperties: false` của
+    output_schema sẽ bắt được nếu chiếu ra thứ không khai báo."""
+    replying(
+        transport,
+        json={
+            "object": "list",
+            "results": [
+                {
+                    "id": "b1",
+                    "type": "paragraph",
+                    "has_children": False,
+                    "paragraph": {"rich_text": [{"plain_text": "Đoạn văn."}]},
+                },
+                {
+                    "id": "b2",
+                    "type": "heading_2",
+                    "has_children": False,
+                    "heading_2": {"rich_text": [{"plain_text": "Tiêu đề phụ"}]},
+                },
+                {"id": "b3", "type": "divider", "has_children": False, "divider": {}},
+            ],
+            "has_more": False,
+        },
+    )
+
+    result = await call_notion(transport, "notion.get_block_children", {"block_id": TRANG})
+
+    assert result.output["results"] == [
+        {"id": "b1", "type": "paragraph", "has_children": False, "text": ["Đoạn văn."]},
+        {"id": "b2", "type": "heading_2", "has_children": False, "text": ["Tiêu đề phụ"]},
+        {"id": "b3", "type": "divider", "has_children": False},
+    ]
+
+
+# ─── Dựng thân request từ template ───────────────────────────────────────────
+
+
+async def test_template_dung_cay_ma_provider_doi_tu_input_phang(
+    transport: dict[str, Any],
+) -> None:
+    """Đây là toàn bộ lý do `input_mapping` tồn tại.
+
+    Input mà LLM viết được là ba trường phẳng. Thứ Notion đòi là bốn tầng lồng
+    nhau. Không có tầng dịch thì `input_schema` phải mang đúng cái cây kia, và
+    tool trở thành thứ gõ sai nhiều hơn gõ đúng.
+    """
+    replying(transport, json={"object": "page", "id": "p1", "url": "https://notion.so/p1"})
+
+    await call_notion(
+        transport,
+        "notion.create_page",
+        {
+            "parent_page_id": TRANG,
+            "title": "Ghi chú tuần",
+            "blocks": [{"type": "paragraph", "text": "Dòng một."}],
+        },
+    )
+
+    assert json.loads(transport["seen"][0].content) == {
+        "parent": {"type": "page_id", "page_id": TRANG},
+        "properties": {"title": {"title": [{"text": {"content": "Ghi chú tuần"}}]}},
+        "children": [
+            {
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {"rich_text": [{"text": {"content": "Dòng một."}}]},
+            }
+        ],
+    }
+
+
+async def test_khoa_dong_phu_moi_loai_khoi_bang_mot_template(
+    transport: dict[str, Any],
+) -> None:
+    """Notion để nội dung khối dưới khoá **trùng với `type` của chính khối đó**.
+
+    Không có khoá động thì mỗi loại khối cần một nhánh, và một nhánh theo dữ
+    liệu trong tài liệu là bước đầu tiên biến template thành ngôn ngữ. Đây là
+    tra cứu: một template, mọi loại khối.
+
+    `checked` chỉ có nghĩa với `to_do`; nó vắng mặt ở những khối khác nhờ đúng
+    luật "khoá không có giá trị thì biến mất".
+    """
+    replying(transport, json={"object": "list", "results": []})
+
+    await call_notion(
+        transport,
+        "notion.append_blocks",
+        {
+            "block_id": TRANG,
+            "blocks": [
+                {"type": "heading_2", "text": "Việc tuần này"},
+                {"type": "bulleted_list_item", "text": "Gạch đầu dòng"},
+                {"type": "numbered_list_item", "text": "Đánh số"},
+                {"type": "toggle", "text": "Gập được"},
+                {"type": "to_do", "text": "Chưa xong", "checked": False},
+            ],
+        },
+    )
+
+    assert json.loads(transport["seen"][0].content)["children"] == [
+        {
+            "object": "block",
+            "type": "heading_2",
+            "heading_2": {"rich_text": [{"text": {"content": "Việc tuần này"}}]},
+        },
+        {
+            "object": "block",
+            "type": "bulleted_list_item",
+            "bulleted_list_item": {"rich_text": [{"text": {"content": "Gạch đầu dòng"}}]},
+        },
+        {
+            "object": "block",
+            "type": "numbered_list_item",
+            "numbered_list_item": {"rich_text": [{"text": {"content": "Đánh số"}}]},
+        },
+        {
+            "object": "block",
+            "type": "toggle",
+            "toggle": {"rich_text": [{"text": {"content": "Gập được"}}]},
+        },
+        {
+            "object": "block",
+            "type": "to_do",
+            "to_do": {"rich_text": [{"text": {"content": "Chưa xong"}}], "checked": False},
+        },
+    ]
+
+
+async def test_truong_tuy_chon_vang_mat_khoi_than_thay_vi_thanh_null(
+    transport: dict[str, Any],
+) -> None:
+    """`null` nói với provider "đặt nó rỗng"; vắng mặt nói "tôi không nhắc tới
+    nó". Với một tool tạo trang thì hai câu đó khác nhau."""
+    replying(transport, json={"object": "page", "id": "p1"})
+
+    await call_notion(
+        transport, "notion.create_page", {"parent_page_id": TRANG, "title": "Chỉ tiêu đề"}
+    )
+
+    assert "children" not in json.loads(transport["seen"][0].content)
+
+
+async def test_method_cua_tai_lieu_duoc_ton_trong(transport: dict[str, Any]) -> None:
+    """Notion dùng PATCH để viết thêm vào cuối một khối. Gửi POST tới đó là 405."""
+    replying(transport, json={"object": "list", "results": [{"id": "b1"}, {"id": "b2"}]})
+
+    result = await call_notion(
+        transport,
+        "notion.append_blocks",
+        {"block_id": TRANG, "blocks": [{"type": "paragraph", "text": "a"}]},
+    )
+
+    request = transport["seen"][0]
+    assert request.method == "PATCH"
+    assert str(request.url) == f"https://api.notion.com/v1/blocks/{TRANG}/children"
+    # `*` ở đầu một `path` thường: gom id của từng khối vừa tạo.
+    assert result.output["block_ids"] == ["b1", "b2"]
+
+
+async def test_tham_so_duong_dan_khong_lot_vao_than_da_dung_template(
+    transport: dict[str, Any],
+) -> None:
+    """`block_id` đã nằm trong URL. Nó cũng không có chỗ nào trong template —
+    lọt vào thân thì Notion từ chối vì một khoá lạ."""
+    replying(transport, json={"object": "list", "results": []})
+
+    await call_notion(
+        transport,
+        "notion.append_blocks",
+        {"block_id": TRANG, "blocks": [{"type": "paragraph", "text": "a"}]},
+    )
+
+    assert set(json.loads(transport["seen"][0].content)) == {"children"}
 
 
 # ─── §6: không nhánh nào theo provider ───────────────────────────────────────

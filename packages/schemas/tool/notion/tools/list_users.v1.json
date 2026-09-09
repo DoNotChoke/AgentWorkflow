@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0",
+  "tool_id": "notion.list_users",
+  "provider": "notion",
+  "version": "1.0",
+  "description": "Liệt kê thành viên của workspace Notion. Trả về id, tên hiển thị và loại tài khoản (người hay bot). Dùng khi cần đổi tên một người thành id để gán họ vào một thuộc tính người dùng.",
+  "input_schema": {
+    "version": "1.0",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "page_size": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 },
+        "start_cursor": { "type": "string", "maxLength": 512 }
+      }
+    }
+  },
+  "output_schema": {
+    "version": "1.0",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["results"],
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "type": { "type": "string" }
+            }
+          }
+        },
+        "next_cursor": { "type": ["string", "null"] },
+        "has_more": { "type": "boolean" }
+      }
+    }
+  },
+  "required_scopes": [],
+  "side_effect": "read",
+  "retry": {
+    "max_attempts": 3,
+    "initial_backoff_seconds": 0.5,
+    "max_backoff_seconds": 20,
+    "multiplier": 2
+  },
+  "timeout": { "attempt_seconds": 15, "total_seconds": 60 },
+  "rate_limits": { "tool": { "limit": 20, "window_seconds": 60 } },
+  "idempotency": { "strategy": "none", "required": false },
+  "permissions": [],
+  "approval": { "required": false },
+  "request": { "method": "GET", "path": "/users", "body": "query" },
+  "output_mapping": {
+    "results": {
+      "path": ["results"],
+      "items": {
+        "id": ["id"],
+        "name": ["name"],
+        "type": ["type"]
+      }
+    },
+    "next_cursor": { "path": ["next_cursor"] },
+    "has_more": { "path": ["has_more"] }
+  },
+  "enabled": true
+}

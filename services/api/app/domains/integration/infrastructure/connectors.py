@@ -25,7 +25,8 @@ from app.core.logging import get_logger
 from app.domains.integration.application.ports import ProviderCredential
 from app.domains.integration.domain.connectors import ConnectorSpec
 from app.domains.integration.domain.projection import build_reference, project
-from app.domains.integration.domain.tools import ToolSpec
+from app.domains.integration.domain.template import render_body
+from app.domains.integration.domain.tools import ToolSpec, fill_path
 
 log = get_logger(__name__)
 
@@ -100,18 +101,33 @@ class HttpConnector:
         credential: ProviderCredential,
         payload: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Địa chỉ đích đến từ tài liệu đã commit, không từ input người gọi.
+        """Khung địa chỉ đến từ tài liệu đã commit; người gọi chỉ điền nội dung.
 
-        Đó là ranh giới ngăn tool trở thành cổng SSRF (§38): không tham số nào
-        của người gọi lọt được vào URL.
+        `fill_path` percent-encode mọi giá trị điền vào, kể cả `/`, nên một
+        tham số không thoát ra khỏi đúng một segment: host đến từ `base_url`,
+        cấu trúc đường dẫn đến từ `request.path`, và không input nào đổi được
+        hai thứ đó. Đó là ranh giới SSRF sau ADR-0005 (§38).
         """
+        # Header cố định trước, credential sau. Thứ tự đó là một ràng buộc chứ
+        # không phải thẩm mỹ: một tài liệu connector khai nhầm — hay bị sửa ác
+        # ý — trùng tên với `auth.header` sẽ bị ghi đè, không thay được token.
         request: dict[str, Any] = {
             "method": tool.request.method,
-            "url": connector.endpoint(tool.request.path),
-            "headers": {connector.auth.header: f"{connector.auth.prefix}{credential.access_token}"},
+            "url": connector.endpoint(fill_path(tool.request.path, self._segments(tool, payload))),
+            "headers": {
+                **connector.static_headers,
+                connector.auth.header: f"{connector.auth.prefix}{credential.access_token}",
+            },
         }
 
-        body = dict(payload)
+        # Tham số đã đi vào đường dẫn thì không đi thêm lần nữa vào query hay
+        # thân: provider sẽ coi đó là một trường lạ và từ chối cả lời gọi.
+        body: dict[str, Any] = {
+            k: v for k, v in payload.items() if k not in tool.request.path_params
+        }
+        if tool.input_mapping is not None:
+            body = render_body(tool.input_mapping, body)
+
         if tool.request.body == "query":
             request["params"] = body
         elif tool.request.body == "form":
@@ -120,6 +136,24 @@ class HttpConnector:
             request["json"] = body
 
         return request
+
+    def _segments(self, tool: ToolSpec, payload: Mapping[str, Any]) -> dict[str, str]:
+        """Giá trị cho từng chỗ điền, đã kiểm là chuỗi dùng được.
+
+        `input_schema` đã bắt buộc và đã hẹp những trường này, nên tới đây mà
+        vẫn thiếu thì tài liệu tool sai chứ không phải người gọi sai — nhưng
+        `ValidationError` vẫn đúng hơn `KeyError`, vì nó nói được thiếu cái gì.
+        """
+        segments: dict[str, str] = {}
+        for name in tool.request.path_params:
+            value = payload.get(name)
+            if not isinstance(value, str) or not value:
+                raise ValidationError(
+                    f"{tool.tool_id} cần {name!r} là một chuỗi không rỗng.",
+                    details={"tool_id": tool.tool_id, "field": name},
+                )
+            segments[name] = value
+        return segments
 
     # ─── Đọc phản hồi ────────────────────────────────────────────────────────
 

@@ -41,6 +41,13 @@
       "maxLength": 200
     },
     "auth": { "$ref": "#/$defs/auth" },
+    "static_headers": {
+      "description": "Header cố định gắn vào MỌI lời gọi của connector. Notion đòi `Notion-Version` trên từng request và trả 400 khi thiếu. Đây là hằng số của provider, không phải bí mật và không phải dữ liệu người gọi — nên nó nằm trong tài liệu đã commit. Không được khai lại header của `auth`: driver gắn auth SAU cùng, nên một khai báo như thế chỉ là chết lặng.",
+      "type": "object",
+      "additionalProperties": { "type": "string", "maxLength": 200 },
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 64 },
+      "maxProperties": 10
+    },
     "tools": {
       "description": "tool_id của những tool thuộc connector này. Registry đối chiếu hai chiều: thừa hay thiếu đều là lỗi nạp catalog.",
       "type": "array",
@@ -123,6 +130,11 @@
           "description": "Trường mang thông tin chẩn đoán thêm, nếu provider có.",
           "type": "string",
           "maxLength": 64
+        },
+        "failure_value": {
+          "description": "Giá trị của `success_field` báo hiệu THẤT BẠI. Mặc định `false` (Slack: `ok: false`). Notion không có cờ boolean — nó đổi hẳn `object` thành `\"error\"`, nên envelope của nó khai `success_field: \"object\"` và `failure_value: \"error\"`.",
+          "type": ["boolean", "string"],
+          "default": false
         }
       }
     },

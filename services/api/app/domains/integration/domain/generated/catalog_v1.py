@@ -24,6 +24,7 @@ from app.domains.integration.domain.tools import (
     FieldMapping,
     IdempotencyPolicy,
     IdempotencyStrategy,
+    ItemSelector,
     PayloadSchema,
     ProviderReference,
     ProviderRequest,
@@ -36,6 +37,77 @@ from app.domains.integration.domain.tools import (
 )
 
 CONNECTORS: tuple[ConnectorSpec, ...] = (
+    ConnectorSpec(
+        connector_id="notion",
+        version="1.2",
+        label="Notion",
+        base_url="https://api.notion.com/v1",
+        auth=AuthSpec(
+            kind="oauth2",
+            header="authorization",
+            prefix="Bearer ",
+        ),
+        tool_ids=(
+            "notion.search",
+            "notion.get_page",
+            "notion.get_block_children",
+            "notion.query_database",
+            "notion.list_users",
+            "notion.create_page",
+            "notion.append_blocks",
+            "notion.create_comment",
+        ),
+        error_mapping={
+            "rate_limited": ErrorCategory.RATE_LIMITED,
+            "internal_server_error": ErrorCategory.PROVIDER_UNAVAILABLE,
+            "service_unavailable": ErrorCategory.PROVIDER_UNAVAILABLE,
+            "bad_gateway": ErrorCategory.PROVIDER_UNAVAILABLE,
+            "database_connection_unavailable": ErrorCategory.PROVIDER_UNAVAILABLE,
+            "conflict_error": ErrorCategory.PROVIDER_UNAVAILABLE,
+            "gateway_timeout": ErrorCategory.TIMEOUT,
+            "unauthorized": ErrorCategory.CONNECTION_EXPIRED,
+            "invalid_grant": ErrorCategory.CONNECTION_EXPIRED,
+            "restricted_resource": ErrorCategory.AUTHORIZATION,
+            "insufficient_permissions": ErrorCategory.AUTHORIZATION,
+            "object_not_found": ErrorCategory.VALIDATION,
+            "validation_error": ErrorCategory.VALIDATION,
+            "invalid_json": ErrorCategory.VALIDATION,
+            "invalid_request": ErrorCategory.VALIDATION,
+            "invalid_request_url": ErrorCategory.VALIDATION,
+            "missing_version": ErrorCategory.VALIDATION,
+        },
+        static_headers={
+            "notion-version": "2022-06-28",
+        },
+        response_envelope=ResponseEnvelope(
+            success_field="object",
+            error_field="code",
+            detail_field="message",
+            failure_value="error",
+        ),
+        default_rate_limits=RateLimitProfile(
+            provider=RateLimitRule(
+                limit=180,
+                window_seconds=60,
+            ),
+            tenant=RateLimitRule(
+                limit=90,
+                window_seconds=60,
+            ),
+            connection=RateLimitRule(
+                limit=60,
+                window_seconds=60,
+            ),
+            user=RateLimitRule(
+                limit=60,
+                window_seconds=60,
+            ),
+        ),
+        circuit_breaker=CircuitBreakerSpec(
+            global_failure_threshold=25,
+        ),
+        notes="Integration chỉ thấy những trang người dùng đã chia sẻ với nó, nên object_not_found thường nghĩa là 'chưa được chia sẻ' chứ không phải 'không tồn tại'. Notion không dùng scope: quyền nằm ở danh sách trang được chia sẻ, chọn lúc chấp thuận.",
+    ),
     ConnectorSpec(
         connector_id="slack",
         version="1.0",
@@ -121,6 +193,1066 @@ CONNECTORS: tuple[ConnectorSpec, ...] = (
 )
 
 TOOLS: tuple[ToolSpec, ...] = (
+    ToolSpec(
+        tool_id="notion.append_blocks",
+        provider="notion",
+        version="2.0",
+        description="Viết thêm nội dung vào cuối một trang hoặc một khối Notion. Id của trang cũng chính là id của khối gốc, nên truyền thẳng page_id vào đây. Mỗi phần tử của blocks là một khối, chọn kiểu bằng type: đoạn văn, tiêu đề, gạch đầu dòng, danh sách đánh số, việc cần làm, toggle, trích dẫn hay callout. Chỉ thêm vào cuối, không sửa và không xoá nội dung đang có.",
+        input_schema=PayloadSchema(
+            version="2.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "block_id",
+                    "blocks",
+                ],
+                "properties": {
+                    "block_id": {
+                        "type": "string",
+                        "description": "Id khối hoặc id trang, 32 ký tự hex có hoặc không có dấu gạch nối.",
+                        "pattern": "^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$",
+                    },
+                    "blocks": {
+                        "type": "array",
+                        "description": "Các khối cần thêm, theo đúng thứ tự.",
+                        "minItems": 1,
+                        "maxItems": 100,
+                        "items": {
+                            "$ref": "#/$defs/block",
+                        },
+                    },
+                },
+                "$defs": {
+                    "block": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": [
+                            "type",
+                            "text",
+                        ],
+                        "properties": {
+                            "type": {
+                                "description": "Kiểu khối. bulleted_list_item là gạch đầu dòng, numbered_list_item là danh sách đánh số, to_do là ô tích, toggle là khối gập được.",
+                                "enum": [
+                                    "paragraph",
+                                    "heading_1",
+                                    "heading_2",
+                                    "heading_3",
+                                    "bulleted_list_item",
+                                    "numbered_list_item",
+                                    "to_do",
+                                    "toggle",
+                                    "quote",
+                                    "callout",
+                                ],
+                            },
+                            "text": {
+                                "type": "string",
+                                "description": "Nội dung khối. Xuống dòng trong cùng một khối thì dùng \n.",
+                                "minLength": 1,
+                                "maxLength": 2000,
+                            },
+                            "checked": {
+                                "type": "boolean",
+                                "description": "Chỉ có ý nghĩa với to_do. Bỏ trống thì ô chưa tích.",
+                            },
+                        },
+                    },
+                },
+            },
+        ),
+        output_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "block_ids",
+                ],
+                "properties": {
+                    "block_ids": {
+                        "type": "array",
+                        "description": "Id của từng khối vừa được thêm, theo đúng thứ tự đã gửi.",
+                        "items": {
+                            "type": "string",
+                        },
+                    },
+                },
+            },
+        ),
+        required_scopes=frozenset(),
+        side_effect=SideEffect.WRITE,
+        retry=RetryPolicy(
+            initial_backoff_seconds=1.0,
+        ),
+        timeout=TimeoutPolicy(
+            attempt_seconds=20.0,
+        ),
+        idempotency=IdempotencyPolicy(
+            strategy=IdempotencyStrategy.DEDUP_RECORD,
+            required=True,
+        ),
+        approval=ApprovalPolicy(),
+        request=ProviderRequest(
+            method="PATCH",
+            path="/blocks/{block_id}/children",
+            body="json",
+            path_params=("block_id",),
+        ),
+        output_mapping={
+            "block_ids": FieldMapping(
+                path=(
+                    "results",
+                    "*",
+                    "id",
+                ),
+            ),
+        },
+        input_mapping={
+            "children": {
+                "for_each": "blocks",
+                "template": {
+                    "object": "block",
+                    "type": "{{item.type}}",
+                    "{{item.type}}": {
+                        "rich_text": [
+                            {
+                                "text": {
+                                    "content": "{{item.text}}",
+                                },
+                            },
+                        ],
+                        "checked": "{{item.checked}}",
+                    },
+                },
+            },
+        },
+        rate_limits=RateLimitProfile(
+            tool=RateLimitRule(
+                limit=30,
+                window_seconds=60,
+            ),
+        ),
+    ),
+    ToolSpec(
+        tool_id="notion.create_comment",
+        provider="notion",
+        version="1.0",
+        description="Thêm một bình luận vào một trang Notion. Bình luận hiện ở đầu trang chứ không gắn vào một đoạn cụ thể. Dùng khi cần ghi chú mà không muốn sửa nội dung trang.",
+        input_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "page_id",
+                    "text",
+                ],
+                "properties": {
+                    "page_id": {
+                        "type": "string",
+                        "description": "Id trang, 32 ký tự hex có hoặc không có dấu gạch nối.",
+                        "pattern": "^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$",
+                    },
+                    "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000,
+                    },
+                },
+            },
+        ),
+        output_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "id",
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                    },
+                    "discussion_id": {
+                        "type": "string",
+                    },
+                },
+            },
+        ),
+        required_scopes=frozenset(),
+        side_effect=SideEffect.WRITE,
+        retry=RetryPolicy(
+            initial_backoff_seconds=1.0,
+        ),
+        timeout=TimeoutPolicy(
+            attempt_seconds=20.0,
+        ),
+        idempotency=IdempotencyPolicy(
+            strategy=IdempotencyStrategy.DEDUP_RECORD,
+            required=True,
+        ),
+        approval=ApprovalPolicy(),
+        request=ProviderRequest(
+            method="POST",
+            path="/comments",
+            body="json",
+        ),
+        output_mapping={
+            "id": FieldMapping(
+                path=("id",),
+            ),
+            "discussion_id": FieldMapping(
+                path=("discussion_id",),
+            ),
+        },
+        input_mapping={
+            "parent": {
+                "type": "page_id",
+                "page_id": "{{page_id}}",
+            },
+            "rich_text": [
+                {
+                    "text": {
+                        "content": "{{text}}",
+                    },
+                },
+            ],
+        },
+        rate_limits=RateLimitProfile(
+            tool=RateLimitRule(
+                limit=30,
+                window_seconds=60,
+            ),
+        ),
+        provider_reference=ProviderReference(
+            paths=(("id",),),
+        ),
+    ),
+    ToolSpec(
+        tool_id="notion.create_page",
+        provider="notion",
+        version="2.0",
+        description="Tạo một trang mới bên trong một trang Notion có sẵn. Cần id của trang cha — lấy từ notion.search — và trang cha phải nằm trong số những trang người dùng đã chia sẻ với integration. Truyền blocks để viết luôn nội dung; mỗi phần tử là một khối, chọn kiểu bằng type. Không tạo được trang trong database bằng tool này.",
+        input_schema=PayloadSchema(
+            version="2.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "parent_page_id",
+                    "title",
+                ],
+                "properties": {
+                    "parent_page_id": {
+                        "type": "string",
+                        "description": "Id trang cha, 32 ký tự hex có hoặc không có dấu gạch nối.",
+                        "pattern": "^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$",
+                    },
+                    "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000,
+                    },
+                    "blocks": {
+                        "type": "array",
+                        "description": "Nội dung trang, theo đúng thứ tự. Bỏ trống thì tạo trang rỗng.",
+                        "maxItems": 100,
+                        "items": {
+                            "$ref": "#/$defs/block",
+                        },
+                    },
+                },
+                "$defs": {
+                    "block": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": [
+                            "type",
+                            "text",
+                        ],
+                        "properties": {
+                            "type": {
+                                "description": "Kiểu khối. bulleted_list_item là gạch đầu dòng, numbered_list_item là danh sách đánh số, to_do là ô tích, toggle là khối gập được.",
+                                "enum": [
+                                    "paragraph",
+                                    "heading_1",
+                                    "heading_2",
+                                    "heading_3",
+                                    "bulleted_list_item",
+                                    "numbered_list_item",
+                                    "to_do",
+                                    "toggle",
+                                    "quote",
+                                    "callout",
+                                ],
+                            },
+                            "text": {
+                                "type": "string",
+                                "description": "Nội dung khối. Xuống dòng trong cùng một khối thì dùng \n.",
+                                "minLength": 1,
+                                "maxLength": 2000,
+                            },
+                            "checked": {
+                                "type": "boolean",
+                                "description": "Chỉ có ý nghĩa với to_do. Bỏ trống thì ô chưa tích.",
+                            },
+                        },
+                    },
+                },
+            },
+        ),
+        output_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "id",
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                    },
+                    "url": {
+                        "type": "string",
+                    },
+                },
+            },
+        ),
+        required_scopes=frozenset(),
+        side_effect=SideEffect.WRITE,
+        retry=RetryPolicy(
+            initial_backoff_seconds=1.0,
+        ),
+        timeout=TimeoutPolicy(
+            attempt_seconds=20.0,
+        ),
+        idempotency=IdempotencyPolicy(
+            strategy=IdempotencyStrategy.DEDUP_RECORD,
+            required=True,
+        ),
+        approval=ApprovalPolicy(),
+        request=ProviderRequest(
+            method="POST",
+            path="/pages",
+            body="json",
+        ),
+        output_mapping={
+            "id": FieldMapping(
+                path=("id",),
+            ),
+            "url": FieldMapping(
+                path=("url",),
+            ),
+        },
+        input_mapping={
+            "parent": {
+                "type": "page_id",
+                "page_id": "{{parent_page_id}}",
+            },
+            "properties": {
+                "title": {
+                    "title": [
+                        {
+                            "text": {
+                                "content": "{{title}}",
+                            },
+                        },
+                    ],
+                },
+            },
+            "children": {
+                "for_each": "blocks",
+                "template": {
+                    "object": "block",
+                    "type": "{{item.type}}",
+                    "{{item.type}}": {
+                        "rich_text": [
+                            {
+                                "text": {
+                                    "content": "{{item.text}}",
+                                },
+                            },
+                        ],
+                        "checked": "{{item.checked}}",
+                    },
+                },
+            },
+        },
+        rate_limits=RateLimitProfile(
+            tool=RateLimitRule(
+                limit=30,
+                window_seconds=60,
+            ),
+        ),
+        provider_reference=ProviderReference(
+            paths=(("id",),),
+        ),
+    ),
+    ToolSpec(
+        tool_id="notion.get_block_children",
+        provider="notion",
+        version="1.0",
+        description="Đọc nội dung bên trong một trang hoặc một khối Notion. Id của trang cũng chính là id của khối gốc, nên truyền thẳng page_id vào đây. Trả về từng khối theo thứ tự, kèm phần chữ của nó. Khối nào có has_children là true thì nội dung con phải gọi thêm một lần nữa với id của chính khối đó.",
+        input_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "block_id",
+                ],
+                "properties": {
+                    "block_id": {
+                        "type": "string",
+                        "description": "Id khối hoặc id trang, 32 ký tự hex có hoặc không có dấu gạch nối.",
+                        "pattern": "^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$",
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 50,
+                    },
+                    "start_cursor": {
+                        "type": "string",
+                        "maxLength": 512,
+                    },
+                },
+            },
+        ),
+        output_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "results",
+                ],
+                "properties": {
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                },
+                                "type": {
+                                    "type": "string",
+                                },
+                                "text": {
+                                    "type": "array",
+                                    "description": "Các đoạn chữ của khối, ghép lại theo thứ tự thì ra nội dung khối. Vắng mặt với khối không mang chữ, ví dụ divider hay image.",
+                                    "items": {
+                                        "type": "string",
+                                    },
+                                },
+                                "has_children": {
+                                    "type": "boolean",
+                                },
+                            },
+                        },
+                    },
+                    "next_cursor": {
+                        "type": [
+                            "string",
+                            "null",
+                        ],
+                    },
+                    "has_more": {
+                        "type": "boolean",
+                    },
+                },
+            },
+        ),
+        required_scopes=frozenset(),
+        side_effect=SideEffect.READ,
+        retry=RetryPolicy(
+            max_backoff_seconds=20.0,
+        ),
+        timeout=TimeoutPolicy(),
+        idempotency=IdempotencyPolicy(),
+        approval=ApprovalPolicy(),
+        request=ProviderRequest(
+            method="GET",
+            path="/blocks/{block_id}/children",
+            body="query",
+            path_params=("block_id",),
+        ),
+        output_mapping={
+            "results": FieldMapping(
+                path=("results",),
+                items={
+                    "id": ItemSelector(
+                        paths=(("id",),),
+                    ),
+                    "type": ItemSelector(
+                        paths=(("type",),),
+                    ),
+                    "has_children": ItemSelector(
+                        paths=(("has_children",),),
+                    ),
+                    "text": ItemSelector(
+                        paths=(
+                            (
+                                "paragraph",
+                                "rich_text",
+                                "*",
+                                "plain_text",
+                            ),
+                            (
+                                "heading_1",
+                                "rich_text",
+                                "*",
+                                "plain_text",
+                            ),
+                            (
+                                "heading_2",
+                                "rich_text",
+                                "*",
+                                "plain_text",
+                            ),
+                            (
+                                "heading_3",
+                                "rich_text",
+                                "*",
+                                "plain_text",
+                            ),
+                            (
+                                "bulleted_list_item",
+                                "rich_text",
+                                "*",
+                                "plain_text",
+                            ),
+                            (
+                                "numbered_list_item",
+                                "rich_text",
+                                "*",
+                                "plain_text",
+                            ),
+                            (
+                                "to_do",
+                                "rich_text",
+                                "*",
+                                "plain_text",
+                            ),
+                            (
+                                "toggle",
+                                "rich_text",
+                                "*",
+                                "plain_text",
+                            ),
+                            (
+                                "quote",
+                                "rich_text",
+                                "*",
+                                "plain_text",
+                            ),
+                            (
+                                "callout",
+                                "rich_text",
+                                "*",
+                                "plain_text",
+                            ),
+                            (
+                                "code",
+                                "rich_text",
+                                "*",
+                                "plain_text",
+                            ),
+                        ),
+                    ),
+                },
+            ),
+            "next_cursor": FieldMapping(
+                path=("next_cursor",),
+            ),
+            "has_more": FieldMapping(
+                path=("has_more",),
+            ),
+        },
+        rate_limits=RateLimitProfile(
+            tool=RateLimitRule(
+                limit=60,
+                window_seconds=60,
+            ),
+        ),
+    ),
+    ToolSpec(
+        tool_id="notion.get_page",
+        provider="notion",
+        version="1.0",
+        description="Đọc thông tin một trang Notion theo id: tiêu đề, đường dẫn, thời điểm tạo và sửa lần cuối. Không trả về nội dung trong trang — dùng notion.get_block_children với cùng id để đọc phần thân. Lấy id từ notion.search.",
+        input_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "page_id",
+                ],
+                "properties": {
+                    "page_id": {
+                        "type": "string",
+                        "description": "Id trang, 32 ký tự hex có hoặc không có dấu gạch nối.",
+                        "pattern": "^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$",
+                    },
+                },
+            },
+        ),
+        output_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "id",
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                    },
+                    "url": {
+                        "type": "string",
+                    },
+                    "title": {
+                        "type": "array",
+                        "description": "Các đoạn của tiêu đề, ghép lại theo thứ tự thì ra tiêu đề đầy đủ. Vắng mặt với dòng của một database: ở đó tiêu đề nằm dưới tên cột do người dùng đặt chứ không dưới khoá `title`. Phần đuôi của `url` vẫn mang tiêu đề.",
+                        "items": {
+                            "type": "string",
+                        },
+                    },
+                    "created_time": {
+                        "type": "string",
+                    },
+                    "last_edited_time": {
+                        "type": "string",
+                    },
+                    "archived": {
+                        "type": "boolean",
+                    },
+                    "parent_type": {
+                        "type": "string",
+                    },
+                },
+            },
+        ),
+        required_scopes=frozenset(),
+        side_effect=SideEffect.READ,
+        retry=RetryPolicy(
+            max_backoff_seconds=20.0,
+        ),
+        timeout=TimeoutPolicy(),
+        idempotency=IdempotencyPolicy(),
+        approval=ApprovalPolicy(),
+        request=ProviderRequest(
+            method="GET",
+            path="/pages/{page_id}",
+            body="query",
+            path_params=("page_id",),
+        ),
+        output_mapping={
+            "id": FieldMapping(
+                path=("id",),
+            ),
+            "url": FieldMapping(
+                path=("url",),
+            ),
+            "title": FieldMapping(
+                path=(
+                    "properties",
+                    "title",
+                    "title",
+                    "*",
+                    "plain_text",
+                ),
+            ),
+            "created_time": FieldMapping(
+                path=("created_time",),
+            ),
+            "last_edited_time": FieldMapping(
+                path=("last_edited_time",),
+            ),
+            "archived": FieldMapping(
+                path=("archived",),
+            ),
+            "parent_type": FieldMapping(
+                path=(
+                    "parent",
+                    "type",
+                ),
+            ),
+        },
+        rate_limits=RateLimitProfile(
+            tool=RateLimitRule(
+                limit=60,
+                window_seconds=60,
+            ),
+        ),
+    ),
+    ToolSpec(
+        tool_id="notion.list_users",
+        provider="notion",
+        version="1.0",
+        description="Liệt kê thành viên của workspace Notion. Trả về id, tên hiển thị và loại tài khoản (người hay bot). Dùng khi cần đổi tên một người thành id để gán họ vào một thuộc tính người dùng.",
+        input_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "page_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 50,
+                    },
+                    "start_cursor": {
+                        "type": "string",
+                        "maxLength": 512,
+                    },
+                },
+            },
+        ),
+        output_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "results",
+                ],
+                "properties": {
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                },
+                                "name": {
+                                    "type": "string",
+                                },
+                                "type": {
+                                    "type": "string",
+                                },
+                            },
+                        },
+                    },
+                    "next_cursor": {
+                        "type": [
+                            "string",
+                            "null",
+                        ],
+                    },
+                    "has_more": {
+                        "type": "boolean",
+                    },
+                },
+            },
+        ),
+        required_scopes=frozenset(),
+        side_effect=SideEffect.READ,
+        retry=RetryPolicy(
+            max_backoff_seconds=20.0,
+        ),
+        timeout=TimeoutPolicy(),
+        idempotency=IdempotencyPolicy(),
+        approval=ApprovalPolicy(),
+        request=ProviderRequest(
+            method="GET",
+            path="/users",
+            body="query",
+        ),
+        output_mapping={
+            "results": FieldMapping(
+                path=("results",),
+                items={
+                    "id": ItemSelector(
+                        paths=(("id",),),
+                    ),
+                    "name": ItemSelector(
+                        paths=(("name",),),
+                    ),
+                    "type": ItemSelector(
+                        paths=(("type",),),
+                    ),
+                },
+            ),
+            "next_cursor": FieldMapping(
+                path=("next_cursor",),
+            ),
+            "has_more": FieldMapping(
+                path=("has_more",),
+            ),
+        },
+        rate_limits=RateLimitProfile(
+            tool=RateLimitRule(
+                limit=20,
+                window_seconds=60,
+            ),
+        ),
+    ),
+    ToolSpec(
+        tool_id="notion.query_database",
+        provider="notion",
+        version="1.0",
+        description="Liệt kê các dòng của một database Notion. Trả về id và đường dẫn của từng dòng theo thứ tự mặc định của database; đọc nội dung một dòng bằng notion.get_page với id đó. Lấy id database từ notion.search.",
+        input_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "database_id",
+                ],
+                "properties": {
+                    "database_id": {
+                        "type": "string",
+                        "description": "Id database, 32 ký tự hex có hoặc không có dấu gạch nối.",
+                        "pattern": "^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$",
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 50,
+                    },
+                    "start_cursor": {
+                        "type": "string",
+                        "maxLength": 512,
+                    },
+                },
+            },
+        ),
+        output_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "results",
+                ],
+                "properties": {
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                },
+                                "url": {
+                                    "type": "string",
+                                },
+                                "created_time": {
+                                    "type": "string",
+                                },
+                                "last_edited_time": {
+                                    "type": "string",
+                                },
+                                "archived": {
+                                    "type": "boolean",
+                                },
+                            },
+                        },
+                    },
+                    "next_cursor": {
+                        "type": [
+                            "string",
+                            "null",
+                        ],
+                    },
+                    "has_more": {
+                        "type": "boolean",
+                    },
+                },
+            },
+        ),
+        required_scopes=frozenset(),
+        side_effect=SideEffect.READ,
+        retry=RetryPolicy(
+            max_backoff_seconds=20.0,
+        ),
+        timeout=TimeoutPolicy(),
+        idempotency=IdempotencyPolicy(),
+        approval=ApprovalPolicy(),
+        request=ProviderRequest(
+            method="POST",
+            path="/databases/{database_id}/query",
+            body="json",
+            path_params=("database_id",),
+        ),
+        output_mapping={
+            "results": FieldMapping(
+                path=("results",),
+                items={
+                    "id": ItemSelector(
+                        paths=(("id",),),
+                    ),
+                    "url": ItemSelector(
+                        paths=(("url",),),
+                    ),
+                    "created_time": ItemSelector(
+                        paths=(("created_time",),),
+                    ),
+                    "last_edited_time": ItemSelector(
+                        paths=(("last_edited_time",),),
+                    ),
+                    "archived": ItemSelector(
+                        paths=(("archived",),),
+                    ),
+                },
+            ),
+            "next_cursor": FieldMapping(
+                path=("next_cursor",),
+            ),
+            "has_more": FieldMapping(
+                path=("has_more",),
+            ),
+        },
+        rate_limits=RateLimitProfile(
+            tool=RateLimitRule(
+                limit=30,
+                window_seconds=60,
+            ),
+        ),
+    ),
+    ToolSpec(
+        tool_id="notion.search",
+        provider="notion",
+        version="1.0",
+        description="Tìm trang và database trong Notion theo tiêu đề. Chỉ thấy những thứ người dùng đã chia sẻ với integration này — kết quả rỗng thường nghĩa là chưa được chia sẻ, không phải không tồn tại. Bỏ trống `query` để liệt kê mọi thứ đang thấy được. Trả về id và đường dẫn của từng mục; tiêu đề nằm trong phần cuối của `url`.",
+        input_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Khớp theo tiêu đề. Bỏ trống thì trả về mọi mục thấy được.",
+                        "maxLength": 500,
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 50,
+                    },
+                    "start_cursor": {
+                        "type": "string",
+                        "maxLength": 512,
+                    },
+                },
+            },
+        ),
+        output_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "results",
+                ],
+                "properties": {
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                },
+                                "object": {
+                                    "type": "string",
+                                },
+                                "url": {
+                                    "type": "string",
+                                },
+                                "created_time": {
+                                    "type": "string",
+                                },
+                                "last_edited_time": {
+                                    "type": "string",
+                                },
+                                "archived": {
+                                    "type": "boolean",
+                                },
+                            },
+                        },
+                    },
+                    "next_cursor": {
+                        "type": [
+                            "string",
+                            "null",
+                        ],
+                    },
+                    "has_more": {
+                        "type": "boolean",
+                    },
+                },
+            },
+        ),
+        required_scopes=frozenset(),
+        side_effect=SideEffect.READ,
+        retry=RetryPolicy(
+            max_backoff_seconds=20.0,
+        ),
+        timeout=TimeoutPolicy(),
+        idempotency=IdempotencyPolicy(),
+        approval=ApprovalPolicy(),
+        request=ProviderRequest(
+            method="POST",
+            path="/search",
+            body="json",
+        ),
+        output_mapping={
+            "results": FieldMapping(
+                path=("results",),
+                items={
+                    "id": ItemSelector(
+                        paths=(("id",),),
+                    ),
+                    "object": ItemSelector(
+                        paths=(("object",),),
+                    ),
+                    "url": ItemSelector(
+                        paths=(("url",),),
+                    ),
+                    "created_time": ItemSelector(
+                        paths=(("created_time",),),
+                    ),
+                    "last_edited_time": ItemSelector(
+                        paths=(("last_edited_time",),),
+                    ),
+                    "archived": ItemSelector(
+                        paths=(("archived",),),
+                    ),
+                },
+            ),
+            "next_cursor": FieldMapping(
+                path=("next_cursor",),
+            ),
+            "has_more": FieldMapping(
+                path=("has_more",),
+            ),
+        },
+        rate_limits=RateLimitProfile(
+            tool=RateLimitRule(
+                limit=30,
+                window_seconds=60,
+            ),
+        ),
+    ),
     ToolSpec(
         tool_id="slack.get_channel_history",
         provider="slack",
@@ -230,11 +1362,21 @@ TOOLS: tuple[ToolSpec, ...] = (
             "messages": FieldMapping(
                 path=("messages",),
                 items={
-                    "ts": ("ts",),
-                    "user": ("user",),
-                    "text": ("text",),
-                    "type": ("type",),
-                    "thread_ts": ("thread_ts",),
+                    "ts": ItemSelector(
+                        paths=(("ts",),),
+                    ),
+                    "user": ItemSelector(
+                        paths=(("user",),),
+                    ),
+                    "text": ItemSelector(
+                        paths=(("text",),),
+                    ),
+                    "type": ItemSelector(
+                        paths=(("type",),),
+                    ),
+                    "thread_ts": ItemSelector(
+                        paths=(("thread_ts",),),
+                    ),
                 },
             ),
             "has_more": FieldMapping(
@@ -347,11 +1489,21 @@ TOOLS: tuple[ToolSpec, ...] = (
             "channels": FieldMapping(
                 path=("channels",),
                 items={
-                    "id": ("id",),
-                    "name": ("name",),
-                    "is_private": ("is_private",),
-                    "is_archived": ("is_archived",),
-                    "num_members": ("num_members",),
+                    "id": ItemSelector(
+                        paths=(("id",),),
+                    ),
+                    "name": ItemSelector(
+                        paths=(("name",),),
+                    ),
+                    "is_private": ItemSelector(
+                        paths=(("is_private",),),
+                    ),
+                    "is_archived": ItemSelector(
+                        paths=(("is_archived",),),
+                    ),
+                    "num_members": ItemSelector(
+                        paths=(("num_members",),),
+                    ),
                 },
             ),
             "next_cursor": FieldMapping(
@@ -451,14 +1603,26 @@ TOOLS: tuple[ToolSpec, ...] = (
             "members": FieldMapping(
                 path=("members",),
                 items={
-                    "id": ("id",),
-                    "name": ("name",),
-                    "real_name": (
-                        "profile",
-                        "real_name",
+                    "id": ItemSelector(
+                        paths=(("id",),),
                     ),
-                    "is_bot": ("is_bot",),
-                    "deleted": ("deleted",),
+                    "name": ItemSelector(
+                        paths=(("name",),),
+                    ),
+                    "real_name": ItemSelector(
+                        paths=(
+                            (
+                                "profile",
+                                "real_name",
+                            ),
+                        ),
+                    ),
+                    "is_bot": ItemSelector(
+                        paths=(("is_bot",),),
+                    ),
+                    "deleted": ItemSelector(
+                        paths=(("deleted",),),
+                    ),
                 },
             ),
             "next_cursor": FieldMapping(

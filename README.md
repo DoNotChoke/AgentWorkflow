@@ -144,14 +144,33 @@ và `private` cho từng kết nối — hẹp ở chỗ quan trọng, rộng �
 bằng JSON Schema trong `packages/schemas/tool/` rồi sinh thành catalog Python
 đã commit. Integration Gateway chạy đủ mười bốn trách nhiệm của §6.3: phân giải
 kết nối, giải mã credential, kiểm scope, chính sách, idempotency, rate limit sáu
-cấp, circuit breaker, retry, chuẩn hoá lỗi, phát trace và usage. Connector Slack
-đầu tiên với bốn tool.
+cấp, circuit breaker, retry, chuẩn hoá lỗi, phát trace và usage. Hai connector:
+Slack với bốn tool, Notion với tám — đọc và ghi.
 
-Không có module nào mang tên Slack. Mọi khác biệt của provider — địa chỉ gốc,
-cách gắn token, bảng ánh xạ lỗi, và cả quirk trả HTTP 200 kèm `{"ok": false}` —
-đều là dữ liệu trong tài liệu connector. Thêm provider thứ hai là thêm một thư
-mục JSON. §6 cấm những nhánh điều kiện theo provider, và một test đọc AST của
-driver giữ điều đó.
+Không có module nào mang tên Slack hay Notion. Mọi khác biệt của provider — địa
+chỉ gốc, cách gắn token, header bắt buộc, bảng ánh xạ lỗi, quirk trả HTTP 200
+kèm `{"ok": false}` của Slack và `{"object": "error"}` của Notion — đều là dữ
+liệu trong tài liệu connector. §6 cấm những nhánh điều kiện theo provider, và
+một test đọc AST của driver giữ điều đó.
+
+Provider thứ hai không hoàn toàn là "thêm một thư mục JSON": hình dạng tài liệu
+trước đó vừa khít với đúng một provider, nên Notion đòi mở rộng nó — header cố
+định, cách provider báo lỗi trong thân, hai trường phía OAuth, chỗ điền trong
+đường dẫn, hai cách chiếu output mà một đường tĩnh không tới được, và một
+template dựng thân request. Cái
+*không* phải thêm mới là điều đáng kể: không một nhánh `if` nào trong driver, và
+Agent Runtime không đổi một dòng.
+
+Chỗ điền trong `request.path` là ngoại lệ có kiểm soát đầu tiên của §38 và có
+ADR riêng: [ADR-0005](docs/adr/0005-tham-so-duong-dan-trong-tai-lieu-tool.md).
+Ranh giới SSRF được phát biểu lại thành một câu kiểm chứng được — người gọi đổi
+được nội dung của đúng một segment, không đổi được cấu trúc — thay vì "người gọi
+không chạm vào URL".
+
+Notion cũng là provider đầu tiên **không dùng scope**: quyền của nó là danh
+sách trang người dùng chọn chia sẻ ở màn hình chấp thuận, nằm bên phía Notion.
+`ProviderDescriptor.uses_scopes` khai điều đó, và URL uỷ quyền bỏ hẳn tham số
+`scope` thay vì gửi một giá trị rỗng.
 
 Ranh giới credential được đính chính ở [ADR-0002](docs/adr/0002-ranh-gioi-credential-nam-o-wiring.md):
 nó nằm ở `entrypoints/wiring.py`, không phải ở Integration Plane như ADR-0001

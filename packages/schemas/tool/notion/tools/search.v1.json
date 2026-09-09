@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "tool_id": "notion.search",
+  "provider": "notion",
+  "version": "1.0",
+  "description": "Tìm trang và database trong Notion theo tiêu đề. Chỉ thấy những thứ người dùng đã chia sẻ với integration này — kết quả rỗng thường nghĩa là chưa được chia sẻ, không phải không tồn tại. Bỏ trống `query` để liệt kê mọi thứ đang thấy được. Trả về id và đường dẫn của từng mục; tiêu đề nằm trong phần cuối của `url`.",
+  "input_schema": {
+    "version": "1.0",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Khớp theo tiêu đề. Bỏ trống thì trả về mọi mục thấy được.",
+          "maxLength": 500
+        },
+        "page_size": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 },
+        "start_cursor": { "type": "string", "maxLength": 512 }
+      }
+    }
+  },
+  "output_schema": {
+    "version": "1.0",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["results"],
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "object": { "type": "string" },
+              "url": { "type": "string" },
+              "created_time": { "type": "string" },
+              "last_edited_time": { "type": "string" },
+              "archived": { "type": "boolean" }
+            }
+          }
+        },
+        "next_cursor": { "type": ["string", "null"] },
+        "has_more": { "type": "boolean" }
+      }
+    }
+  },
+  "required_scopes": [],
+  "side_effect": "read",
+  "retry": {
+    "max_attempts": 3,
+    "initial_backoff_seconds": 0.5,
+    "max_backoff_seconds": 20,
+    "multiplier": 2
+  },
+  "timeout": { "attempt_seconds": 15, "total_seconds": 60 },
+  "rate_limits": { "tool": { "limit": 30, "window_seconds": 60 } },
+  "idempotency": { "strategy": "none", "required": false },
+  "permissions": [],
+  "approval": { "required": false },
+  "request": { "method": "POST", "path": "/search", "body": "json" },
+  "output_mapping": {
+    "results": {
+      "path": ["results"],
+      "items": {
+        "id": ["id"],
+        "object": ["object"],
+        "url": ["url"],
+        "created_time": ["created_time"],
+        "last_edited_time": ["last_edited_time"],
+        "archived": ["archived"]
+      }
+    },
+    "next_cursor": { "path": ["next_cursor"] },
+    "has_more": { "path": ["has_more"] }
+  },
+  "enabled": true
+}

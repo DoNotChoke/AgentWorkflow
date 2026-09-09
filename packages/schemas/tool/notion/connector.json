@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "connector_id": "notion",
+  "version": "1.2",
+  "label": "Notion",
+  "base_url": "https://api.notion.com/v1",
+  "auth": {
+    "kind": "oauth2",
+    "header": "authorization",
+    "prefix": "Bearer "
+  },
+  "static_headers": {
+    "notion-version": "2022-06-28"
+  },
+  "tools": [
+    "notion.search",
+    "notion.get_page",
+    "notion.get_block_children",
+    "notion.query_database",
+    "notion.list_users",
+    "notion.create_page",
+    "notion.append_blocks",
+    "notion.create_comment"
+  ],
+  "default_rate_limits": {
+    "provider": {
+      "limit": 180,
+      "window_seconds": 60
+    },
+    "tenant": {
+      "limit": 90,
+      "window_seconds": 60
+    },
+    "connection": {
+      "limit": 60,
+      "window_seconds": 60
+    },
+    "user": {
+      "limit": 60,
+      "window_seconds": 60
+    }
+  },
+  "error_mapping": {
+    "rate_limited": "RateLimited",
+    "internal_server_error": "ProviderUnavailable",
+    "service_unavailable": "ProviderUnavailable",
+    "bad_gateway": "ProviderUnavailable",
+    "database_connection_unavailable": "ProviderUnavailable",
+    "conflict_error": "ProviderUnavailable",
+    "gateway_timeout": "Timeout",
+    "unauthorized": "ConnectionExpired",
+    "invalid_grant": "ConnectionExpired",
+    "restricted_resource": "AuthorizationError",
+    "insufficient_permissions": "AuthorizationError",
+    "object_not_found": "ValidationError",
+    "validation_error": "ValidationError",
+    "invalid_json": "ValidationError",
+    "invalid_request": "ValidationError",
+    "invalid_request_url": "ValidationError",
+    "missing_version": "ValidationError"
+  },
+  "response_envelope": {
+    "success_field": "object",
+    "failure_value": "error",
+    "error_field": "code",
+    "detail_field": "message"
+  },
+  "circuit_breaker": {
+    "failure_threshold": 5,
+    "global_failure_threshold": 25,
+    "window_seconds": 60,
+    "open_seconds": 30,
+    "probe_timeout_seconds": 120
+  },
+  "webhooks": {
+    "supported": false
+  },
+  "events": {
+    "supported": false
+  },
+  "notes": "Integration chỉ thấy những trang người dùng đã chia sẻ với nó, nên object_not_found thường nghĩa là 'chưa được chia sẻ' chứ không phải 'không tồn tại'. Notion không dùng scope: quyền nằm ở danh sách trang được chia sẻ, chọn lúc chấp thuận."
+}

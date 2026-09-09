@@ -1,0 +1,95 @@
+{
+  "schema_version": "1.0",
+  "tool_id": "notion.get_block_children",
+  "provider": "notion",
+  "version": "1.0",
+  "description": "Đọc nội dung bên trong một trang hoặc một khối Notion. Id của trang cũng chính là id của khối gốc, nên truyền thẳng page_id vào đây. Trả về từng khối theo thứ tự, kèm phần chữ của nó. Khối nào có has_children là true thì nội dung con phải gọi thêm một lần nữa với id của chính khối đó.",
+  "input_schema": {
+    "version": "1.0",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["block_id"],
+      "properties": {
+        "block_id": {
+          "type": "string",
+          "description": "Id khối hoặc id trang, 32 ký tự hex có hoặc không có dấu gạch nối.",
+          "pattern": "^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$"
+        },
+        "page_size": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 },
+        "start_cursor": { "type": "string", "maxLength": 512 }
+      }
+    }
+  },
+  "output_schema": {
+    "version": "1.0",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["results"],
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "type": { "type": "string" },
+              "text": {
+                "type": "array",
+                "description": "Các đoạn chữ của khối, ghép lại theo thứ tự thì ra nội dung khối. Vắng mặt với khối không mang chữ, ví dụ divider hay image.",
+                "items": { "type": "string" }
+              },
+              "has_children": { "type": "boolean" }
+            }
+          }
+        },
+        "next_cursor": { "type": ["string", "null"] },
+        "has_more": { "type": "boolean" }
+      }
+    }
+  },
+  "required_scopes": [],
+  "side_effect": "read",
+  "retry": {
+    "max_attempts": 3,
+    "initial_backoff_seconds": 0.5,
+    "max_backoff_seconds": 20,
+    "multiplier": 2
+  },
+  "timeout": { "attempt_seconds": 15, "total_seconds": 60 },
+  "rate_limits": { "tool": { "limit": 60, "window_seconds": 60 } },
+  "idempotency": { "strategy": "none", "required": false },
+  "permissions": [],
+  "approval": { "required": false },
+  "request": { "method": "GET", "path": "/blocks/{block_id}/children", "body": "query" },
+  "output_mapping": {
+    "results": {
+      "path": ["results"],
+      "items": {
+        "id": ["id"],
+        "type": ["type"],
+        "has_children": ["has_children"],
+        "text": {
+          "any_of": [
+            ["paragraph", "rich_text", "*", "plain_text"],
+            ["heading_1", "rich_text", "*", "plain_text"],
+            ["heading_2", "rich_text", "*", "plain_text"],
+            ["heading_3", "rich_text", "*", "plain_text"],
+            ["bulleted_list_item", "rich_text", "*", "plain_text"],
+            ["numbered_list_item", "rich_text", "*", "plain_text"],
+            ["to_do", "rich_text", "*", "plain_text"],
+            ["toggle", "rich_text", "*", "plain_text"],
+            ["quote", "rich_text", "*", "plain_text"],
+            ["callout", "rich_text", "*", "plain_text"],
+            ["code", "rich_text", "*", "plain_text"]
+          ]
+        }
+      }
+    },
+    "next_cursor": { "path": ["next_cursor"] },
+    "has_more": { "path": ["has_more"] }
+  },
+  "enabled": true
+}

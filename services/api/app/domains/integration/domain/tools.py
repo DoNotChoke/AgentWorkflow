@@ -2,16 +2,31 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
+from urllib.parse import quote
 
 from app.core.errors import ValidationError
 
 RequestBody = Literal["query", "form", "json"]
 
-HttpMethod = Literal["GET", "POST"]
+HttpMethod = Literal["GET", "POST", "PATCH"]
+
+#: Chỗ điền trong `ProviderRequest.path`.
+_PLACEHOLDER = re.compile(r"\{([a-z0-9_]+)\}")
+
+
+def path_placeholders(path: str) -> tuple[str, ...]:
+    """Tên các chỗ điền trong một `path`, theo thứ tự xuất hiện."""
+    return tuple(_PLACEHOLDER.findall(path))
+
+
+def fill_path(path: str, values: Mapping[str, str]) -> str:
+    """Thay từng chỗ điền bằng giá trị đã percent-encode."""
+    return _PLACEHOLDER.sub(lambda m: quote(values[m.group(1)], safe=""), path)
 
 
 class SideEffect(StrEnum):
@@ -157,13 +172,31 @@ class ProviderRequest:
     path: str
     body: RequestBody
 
+    #: Tên các placeholder `{...}` trong `path`, theo thứ tự xuất hiện.
+    path_params: tuple[str, ...] = ()
+
+
+#: Segment nhận mọi phần tử của một mảng và chiếu tiếp phần đuôi lên từng cái.
+#: Kết quả là một danh sách. Cần nó vì giá trị dùng được thường nằm *trong* một
+#: mảng chứ không phải chính mảng đó: một đoạn văn Notion là
+#: `rich_text[].plain_text`, và lấy nguyên `rich_text` là trả về cả khối
+#: annotation, màu, href — thứ không ai đọc.
+WILDCARD = "*"
+
+
+@dataclass(frozen=True, slots=True)
+class ItemSelector:
+    """Chỗ lấy một trường của phần tử. Đường đầu tiên tới nơi sẽ thắng."""
+
+    paths: tuple[tuple[str, ...], ...]
+
 
 @dataclass(frozen=True, slots=True)
 class FieldMapping:
     """Một trường đầu ra, và chỗ lấy nó trong phản hồi của provider."""
 
     path: tuple[str, ...]
-    items: Mapping[str, tuple[str, ...]] | None = None
+    items: Mapping[str, ItemSelector] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +225,13 @@ class ToolSpec:
     approval: ApprovalPolicy
     request: ProviderRequest
     output_mapping: Mapping[str, FieldMapping]
+
+    #: Template dựng thân request từ input, hoặc `None` để gửi thẳng input đi.
+    #:
+    #: `None` đủ cho provider nhận thân phẳng. Provider đòi cây lồng nhau thì
+    #: khai template ở đây, để `input_schema` giữ được hình dạng mà một LLM
+    #: viết đúng được — xem `domain/template.py`.
+    input_mapping: Mapping[str, Any] | None = None
     rate_limits: RateLimitProfile = field(default_factory=RateLimitProfile)
     permissions: frozenset[str] = frozenset()
     provider_reference: ProviderReference | None = None

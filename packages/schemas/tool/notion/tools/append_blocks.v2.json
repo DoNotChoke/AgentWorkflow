@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.0",
+  "tool_id": "notion.append_blocks",
+  "provider": "notion",
+  "version": "2.0",
+  "description": "Viết thêm nội dung vào cuối một trang hoặc một khối Notion. Id của trang cũng chính là id của khối gốc, nên truyền thẳng page_id vào đây. Mỗi phần tử của blocks là một khối, chọn kiểu bằng type: đoạn văn, tiêu đề, gạch đầu dòng, danh sách đánh số, việc cần làm, toggle, trích dẫn hay callout. Chỉ thêm vào cuối, không sửa và không xoá nội dung đang có.",
+  "input_schema": {
+    "version": "2.0",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["block_id", "blocks"],
+      "properties": {
+        "block_id": {
+          "type": "string",
+          "description": "Id khối hoặc id trang, 32 ký tự hex có hoặc không có dấu gạch nối.",
+          "pattern": "^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$"
+        },
+        "blocks": {
+          "type": "array",
+          "description": "Các khối cần thêm, theo đúng thứ tự.",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/block" }
+        }
+      },
+      "$defs": {
+        "block": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "text"],
+          "properties": {
+            "type": {
+              "description": "Kiểu khối. bulleted_list_item là gạch đầu dòng, numbered_list_item là danh sách đánh số, to_do là ô tích, toggle là khối gập được.",
+              "enum": [
+                "paragraph",
+                "heading_1",
+                "heading_2",
+                "heading_3",
+                "bulleted_list_item",
+                "numbered_list_item",
+                "to_do",
+                "toggle",
+                "quote",
+                "callout"
+              ]
+            },
+            "text": {
+              "type": "string",
+              "description": "Nội dung khối. Xuống dòng trong cùng một khối thì dùng \n.",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "checked": {
+              "type": "boolean",
+              "description": "Chỉ có ý nghĩa với to_do. Bỏ trống thì ô chưa tích."
+            }
+          }
+        }
+      }
+    }
+  },
+  "output_schema": {
+    "version": "1.0",
+    "json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["block_ids"],
+      "properties": {
+        "block_ids": {
+          "type": "array",
+          "description": "Id của từng khối vừa được thêm, theo đúng thứ tự đã gửi.",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "required_scopes": [],
+  "side_effect": "write",
+  "retry": {
+    "max_attempts": 3,
+    "initial_backoff_seconds": 1,
+    "max_backoff_seconds": 30,
+    "multiplier": 2
+  },
+  "timeout": { "attempt_seconds": 20, "total_seconds": 60 },
+  "rate_limits": { "tool": { "limit": 30, "window_seconds": 60 } },
+  "idempotency": {
+    "strategy": "dedup_record",
+    "required": true,
+    "ttl_seconds": 604800
+  },
+  "permissions": [],
+  "approval": { "required": false },
+  "request": { "method": "PATCH", "path": "/blocks/{block_id}/children", "body": "json" },
+  "input_mapping": {
+    "children": {
+      "for_each": "blocks",
+      "template": {
+        "object": "block",
+        "type": "{{item.type}}",
+        "{{item.type}}": {
+          "rich_text": [{ "text": { "content": "{{item.text}}" } }],
+          "checked": "{{item.checked}}"
+        }
+      }
+    }
+  },
+  "output_mapping": {
+    "block_ids": { "path": ["results", "*", "id"] }
+  },
+  "enabled": true
+}

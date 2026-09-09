@@ -30,6 +30,7 @@ from app.domains.integration.domain.tools import (
     FieldMapping,
     IdempotencyPolicy,
     IdempotencyStrategy,
+    ItemSelector,
     PayloadSchema,
     ProviderReference,
     ProviderRequest,
@@ -40,6 +41,7 @@ from app.domains.integration.domain.tools import (
     TimeoutPolicy,
     ToolSpec,
     parse_version,
+    path_placeholders,
 )
 
 TOOL_META_SCHEMA = "tool.schema.json"
@@ -97,6 +99,17 @@ def _path(raw: Sequence[Any]) -> tuple[str, ...]:
     return tuple(str(part) for part in raw)
 
 
+def _selector(raw: Sequence[Any] | Mapping[str, Any]) -> ItemSelector:
+    """Một đường hay một danh sách đường — chuẩn hoá về cùng một hình.
+
+    Meta-schema phân biệt hai dạng bằng kiểu của giá trị: mảng chuỗi là một
+    đường, object có `any_of` là nhiều đường.
+    """
+    if isinstance(raw, Mapping):
+        return ItemSelector(paths=tuple(_path(path) for path in raw["any_of"]))
+    return ItemSelector(paths=(_path(raw),))
+
+
 # ─── Tool ────────────────────────────────────────────────────────────────────
 
 
@@ -108,7 +121,7 @@ def parse_tool(document: Mapping[str, Any], *, where: str = "<tool>") -> ToolSpe
         name: FieldMapping(
             path=_path(entry["path"]),
             items=(
-                {field: _path(item_path) for field, item_path in entry["items"].items()}
+                {field: _selector(raw) for field, raw in entry["items"].items()}
                 if "items" in entry
                 else None
             ),
@@ -158,8 +171,10 @@ def parse_tool(document: Mapping[str, Any], *, where: str = "<tool>") -> ToolSpe
             method=document["request"]["method"],
             path=str(document["request"]["path"]),
             body=document["request"]["body"],
+            path_params=path_placeholders(str(document["request"]["path"])),
         ),
         output_mapping=mapping,
+        input_mapping=document.get("input_mapping"),
         rate_limits=_rate_limit_profile(document.get("rate_limits")),
         permissions=frozenset(str(role) for role in document.get("permissions", ())),
         provider_reference=(
@@ -201,11 +216,16 @@ def parse_connector(document: Mapping[str, Any], *, where: str = "<connector>") 
             str(code): ErrorCategory(category)
             for code, category in document["error_mapping"].items()
         },
+        static_headers={
+            str(name).lower(): str(value)
+            for name, value in document.get("static_headers", {}).items()
+        },
         response_envelope=(
             ResponseEnvelope(
                 success_field=str(envelope["success_field"]),
                 error_field=str(envelope["error_field"]),
                 detail_field=envelope.get("detail_field"),
+                failure_value=envelope.get("failure_value", False),
             )
             if envelope
             else None
