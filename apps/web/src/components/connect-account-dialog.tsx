@@ -126,21 +126,35 @@ export function ConnectAccountDialog({
           </>
         )}
 
-        <div className="flex flex-col gap-2">
-          <span className="text-[11px] font-semibold tracking-wider text-ink-4 uppercase">
-            {provider.label} will be asked for
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {provider.default_scopes.map((scope) => (
-              <span
-                key={scope}
-                className="rounded border border-line bg-surface px-2 py-0.5 font-mono text-[11.5px] text-ink-2"
-              >
-                {scope}
-              </span>
-            ))}
+        {/* Không phải provider nào cũng dùng scope. Notion cấp quyền theo từng
+            trang bạn chọn chia sẻ ở màn hình chấp thuận, và danh sách đó chỉ
+            tồn tại bên phía họ — một hàng chip rỗng dưới tiêu đề "sẽ xin những
+            quyền này" nói sai về điều sắp xảy ra, nên chỗ đó nhường cho `notes`
+            của provider. */}
+        {provider.default_scopes.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            <span className="text-[11px] font-semibold tracking-wider text-ink-4 uppercase">
+              {provider.label} will be asked for
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {provider.default_scopes.map((scope) => (
+                <span
+                  key={scope}
+                  className="rounded border border-line bg-surface px-2 py-0.5 font-mono text-[11.5px] text-ink-2"
+                >
+                  {scope}
+                </span>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : provider.notes ? (
+          <div className="flex flex-col gap-2">
+            <span className="text-[11px] font-semibold tracking-wider text-ink-4 uppercase">
+              What {provider.label} grants
+            </span>
+            <p className="text-[13px] leading-relaxed text-ink-3">{provider.notes}</p>
+          </div>
+        ) : null}
 
         {!locked ? (
           <p className="text-[13px] text-ink-4">

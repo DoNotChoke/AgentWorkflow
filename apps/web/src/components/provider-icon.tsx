@@ -56,9 +56,25 @@ function Google({ size }: { size: number }) {
   );
 }
 
+function Notion({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden>
+      <path
+        d="M9.6 8.3 30.9 6.7c2.6-.2 3.3-.1 4.9 1.1l6.8 4.8c1.1.8 1.5 1 1.5 1.9v26c0 1.6-.6 2.5-2.6 2.7l-24.7 1.5c-1.6.1-2.3-.1-3.1-1.1l-5-6.5c-.9-1.2-1.3-2-1.3-3.1V10.9c0-1.3.6-2.4 2.2-2.6z"
+        fill="#fff"
+      />
+      <path
+        d="M30.9 6.7 9.6 8.3C8 8.5 7.4 9.6 7.4 10.9v22.2c0 1.1.4 1.9 1.3 3.1l5 6.5c.8 1 1.5 1.2 3.1 1.1l24.7-1.5c2-.2 2.6-1.1 2.6-2.7v-26c0-.8-.3-1.1-1.3-1.8l-7-4.9c-1.6-1.2-2.3-1.3-4.9-1.1zM17.6 12.5c-1.9.1-2.4.2-3.4-.7l-2.6-2c-.3-.3-.1-.6.6-.7l20.5-1.5c1.6-.1 2.5.5 3.1 1l3.1 2.2c.1.1.5.6 0 .6l-21.2 1.3zm-2.3 25.6V15.8c0-1 .3-1.4 1.2-1.5l24.3-1.4c.8-.1 1.2.4 1.2 1.4v22.2c0 1-.2 1.8-1.5 1.9l-23.3 1.4c-1.3.1-1.9-.3-1.9-1.7zm23-21.1c.1.7 0 1.3-.7 1.4l-1.1.2v16.5c-1 .5-1.9.8-2.6.8-1.2 0-1.5-.4-2.4-1.5l-7.3-11.5v11.1l2.3.5s0 1.4-1.9 1.4l-5.2.3c-.2-.3 0-1.1.5-1.2l1.4-.4V19.7l-1.9-.2c-.2-.7.2-1.7 1.3-1.8l5.6-.4 7.7 11.8V18.6l-2-.2c-.2-.9.5-1.5 1.3-1.6l5-.3z"
+        fill="#0F0F0F"
+      />
+    </svg>
+  );
+}
+
 export function ProviderIcon({ provider, size = 19 }: { provider: string; size?: number }) {
   if (provider === "slack") return <Slack size={size} />;
   if (provider === "google") return <Google size={size} />;
+  if (provider === "notion") return <Notion size={size} />;
   return (
     <span
       className="font-semibold text-ink-3 uppercase"
