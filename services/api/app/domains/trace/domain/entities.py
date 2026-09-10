@@ -68,18 +68,59 @@ class StepStatus(StrEnum):
     REPLAYED = "replayed"
 
 
+def canonical_bytes(payload: Mapping[str, Any]) -> bytes:
+    """Byte chuẩn của một payload — thứ được băm, và thứ được ghi ra.
+
+    Một hàm duy nhất vì hai việc đó phải khớp nhau: băm một chuỗi rồi ghi ra
+    một chuỗi khác thì vân tay không còn tìm lại được nội dung.
+    """
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return raw.encode("utf-8")
+
+
 @dataclass(frozen=True, slots=True)
 class PayloadRef:
-    """Vân tay của một payload lớn — không phải payload."""
+    """Vân tay của một payload — không phải payload."""
 
     sha256: str
     byte_size: int
 
     @classmethod
     def of(cls, payload: Mapping[str, Any]) -> PayloadRef:
-        raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-        encoded = raw.encode("utf-8")
+        return cls.of_bytes(canonical_bytes(payload))
+
+    @classmethod
+    def of_bytes(cls, encoded: bytes) -> PayloadRef:
+        """Cho người gọi đã có sẵn byte chuẩn trong tay, khỏi serialize hai lần."""
         return cls(sha256=hashlib.sha256(encoded).hexdigest(), byte_size=len(encoded))
+
+
+class PayloadLocation(StrEnum):
+    """Payload của một bước nằm ở đâu.
+
+    ABSENT — chỉ còn vân tay. Bước ghi trước khi có payload store, hoặc payload
+             vượt trần, hoặc một lần ghi lưu trữ thất bại.
+    INLINE — nằm ngay trong hàng `trace_steps`, đủ nhỏ để không cần đi xa.
+    OBJECT — nằm trong object storage, tra theo `ref.sha256` (§4.7, §9.1).
+    """
+
+    ABSENT = "absent"
+    INLINE = "inline"
+    OBJECT = "object"
+
+
+@dataclass(frozen=True, slots=True)
+class StoredPayload:
+    """Vân tay của một payload, kèm chỗ tìm lại nội dung của nó."""
+
+    ref: PayloadRef
+    location: PayloadLocation = PayloadLocation.ABSENT
+    #: Chỉ có giá trị khi `location` là INLINE.
+    inline: Mapping[str, Any] | None = None
+
+    @classmethod
+    def absent(cls, ref: PayloadRef) -> StoredPayload:
+        return cls(ref=ref, location=PayloadLocation.ABSENT)
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,8 +177,8 @@ class TraceStep:
     #: `None` ở gốc cây.
     parent_step_id: str | None = None
 
-    input_ref: PayloadRef | None = None
-    output_ref: PayloadRef | None = None
+    input_payload: StoredPayload | None = None
+    output_payload: StoredPayload | None = None
     attributes: Mapping[str, Any] = field(default_factory=dict)
 
     error_category: str | None = None

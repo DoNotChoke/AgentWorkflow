@@ -17,7 +17,7 @@ from typing import Any
 
 import httpx
 import pytest
-from conftest import infra_unavailable
+from conftest import InMemoryPayloadStore, infra_unavailable
 
 os.environ.setdefault("AW_JWT_SECRET", "test-secret-khong-dung-that-nhung-du-dai-32")
 os.environ.setdefault("AW_KMS_LOCAL_MASTER_KEY", "test-master-key-khong-dung-that")
@@ -484,7 +484,10 @@ async def _seed_trace(tenant_id: str, workspace_id: str) -> str:
     from datetime import UTC, datetime
 
     async with session_scope() as session:
-        service = TraceService(traces=SqlAlchemyExecutionTraceRepository(session))
+        service = TraceService(
+            traces=SqlAlchemyExecutionTraceRepository(session),
+            payloads=InMemoryPayloadStore(),
+        )
         trace = await service.start(
             tenant_id=tenant_id,
             workspace_id=workspace_id,

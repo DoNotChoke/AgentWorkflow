@@ -25,6 +25,7 @@ from app.core.db import dispose_engine, get_session, init_engine
 from app.core.errors import AppError, AuthenticationError
 from app.core.http_auth import require_user_id, user_principal
 from app.core.logging import configure_logging, get_logger
+from app.core.objectstore import close_object_store, init_object_store
 from app.core.observability import configure_tracing, instrument_clients, instrument_fastapi
 from app.core.redis import close_redis, enforce_rate_limit, global_key, init_redis
 from app.domains.agent.application.admin_service import AgentAdminService
@@ -675,10 +676,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     configure_tracing(settings, component="agent")
     init_engine(settings)
     init_redis(settings)
+    init_object_store(settings)
     instrument_clients()
 
     log.info("agent_runtime_starting", default_model=settings.anthropic_default_model)
     yield
+    await close_object_store()
     await close_redis()
     await dispose_engine()
     log.info("agent_runtime_stopped")

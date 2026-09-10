@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from app.core.logging import get_logger
 from app.domains.integration.domain.invocation import ToolInvocationRecord, ToolUsage
 
@@ -17,7 +20,13 @@ class LoggingToolInvocationSink:
 
     __slots__ = ()
 
-    async def record(self, invocation: ToolInvocationRecord) -> None:
+    async def record(
+        self,
+        invocation: ToolInvocationRecord,
+        *,
+        input_payload: Mapping[str, Any],  # noqa: ARG002 — chỉ log vân tay
+        output_payload: Mapping[str, Any],  # noqa: ARG002
+    ) -> None:
         log.info(
             "tool_invoked",
             invocation_id=invocation.invocation_id,

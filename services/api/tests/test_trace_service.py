@@ -10,11 +10,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from conftest import InMemoryPayloadStore
 
 from app.core.errors import AuthorizationError, ValidationError
 from app.domains.trace.application.service import TraceService
 from app.domains.trace.domain.entities import (
     ExecutionTrace,
+    PayloadRef,
     StepKind,
     StepStatus,
     TraceSource,
@@ -78,8 +80,13 @@ def repo() -> FakeExecutionTraceRepository:
 
 
 @pytest.fixture
-def service(repo: FakeExecutionTraceRepository) -> TraceService:
-    return TraceService(traces=repo)
+def payloads() -> InMemoryPayloadStore:
+    return InMemoryPayloadStore()
+
+
+@pytest.fixture
+def service(repo: FakeExecutionTraceRepository, payloads: InMemoryPayloadStore) -> TraceService:
+    return TraceService(traces=repo, payloads=payloads)
 
 
 # ─── start ───────────────────────────────────────────────────────────────────
@@ -339,20 +346,18 @@ async def test_record_tool_call_ghi_thanh_buoc_tool_call(
         status="succeeded",
         started_at=NOW,
         completed_at=NOW + timedelta(milliseconds=500),
-        input_sha256="a" * 64,
-        input_byte_size=42,
-        output_sha256="b" * 64,
-        output_byte_size=17,
+        input_payload={"channel": "C123", "text": "xin chào"},
+        output_payload={"ts": "1700000000.000100"},
         attributes={"tool_id": "slack.post_message"},
     )
 
     assert step is not None
     assert step.kind is StepKind.TOOL_CALL
     assert step.status is StepStatus.SUCCEEDED
-    assert step.input_ref is not None
-    assert step.input_ref.sha256 == "a" * 64
-    assert step.output_ref is not None
-    assert step.output_ref.byte_size == 17
+    assert step.input_payload is not None
+    assert step.input_payload.inline == {"channel": "C123", "text": "xin chào"}
+    assert step.output_payload is not None
+    assert step.output_payload.ref.sha256 == PayloadRef.of({"ts": "1700000000.000100"}).sha256
 
 
 async def test_record_tool_call_replayed_giu_dung_status(
@@ -379,7 +384,7 @@ async def test_record_tool_call_replayed_giu_dung_status(
     assert step.status is StepStatus.REPLAYED
 
 
-async def test_record_tool_call_khong_co_payload_ref_thi_de_trong(
+async def test_record_tool_call_khong_co_payload_thi_de_trong(
     service: TraceService,
 ) -> None:
     trace = await service.start(
@@ -401,8 +406,8 @@ async def test_record_tool_call_khong_co_payload_ref_thi_de_trong(
     )
 
     assert step is not None
-    assert step.input_ref is None
-    assert step.output_ref is None
+    assert step.input_payload is None
+    assert step.output_payload is None
     assert step.error_category == "ProviderUnavailable"
 
 

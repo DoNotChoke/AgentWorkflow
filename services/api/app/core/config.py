@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     s3_bucket_attachments: str = "aw-attachments"
     s3_bucket_artifacts: str = "aw-artifacts"
 
+    # ─── Payload của Execution Trace ──────────────────────────────────
+    #: Dưới ngưỡng này thì payload nằm luôn trong hàng `trace_steps`; trên thì
+    #: ra object storage (§4.7).
+    trace_payload_inline_max_bytes: int = 16384
+    #: Trên trần này thì không lưu, chỉ giữ vân tay.
+    trace_payload_max_bytes: int = 1048576
+
     # ─── Temporal ──────────────────────────────────────────────
     temporal_host: str = "localhost:7233"
     temporal_namespace: str = "default"

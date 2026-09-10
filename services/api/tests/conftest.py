@@ -7,7 +7,8 @@ người chạy — nếu không, test sẽ đỗ hay trượt tuỳ theo cấu 
 from __future__ import annotations
 
 import os
-from typing import NoReturn
+from collections.abc import Mapping
+from typing import Any, NoReturn
 
 import pytest
 
@@ -24,6 +25,7 @@ from app.domains.integration.domain.tools import (
     TimeoutPolicy,
     ToolSpec,
 )
+from app.domains.trace.domain.entities import PayloadLocation, PayloadRef, StoredPayload
 
 os.environ.setdefault("AW_ENVIRONMENT", "local")
 os.environ.setdefault("AW_DEBUG", "false")
@@ -123,3 +125,26 @@ def make_connector(
         tool_ids=tool_ids,
         error_mapping={"boom": ErrorCategory.PROVIDER_UNAVAILABLE},
     )
+
+
+class InMemoryPayloadStore:
+    """`PayloadStore` giả: cất tất cả inline, và nhớ đã cất những gì.
+
+    Ngưỡng inline và object storage là chuyện của `ObjectPayloadStore` thật,
+    kiểm riêng ở `test_trace_payload_store.py`. Ở đây cái cần kiểm là
+    `TraceService` có gọi cất đúng payload nào không.
+    """
+
+    def __init__(self) -> None:
+        self.puts: list[tuple[str, Mapping[str, Any]]] = []
+
+    async def put(self, *, tenant_id: str, payload: Mapping[str, Any]) -> StoredPayload:
+        self.puts.append((tenant_id, payload))
+        return StoredPayload(
+            ref=PayloadRef.of(payload),
+            location=PayloadLocation.INLINE,
+            inline=payload,
+        )
+
+    async def get(self, *, tenant_id: str, stored: StoredPayload) -> Mapping[str, Any] | None:
+        return stored.inline

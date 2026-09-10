@@ -441,7 +441,9 @@ class IntegrationGateway:
                 otel_span_id=span_id,
                 execution_trace_id=command.caller.execution_trace_id,
                 parent_step_id=command.caller.parent_step_id,
-            )
+            ),
+            input_payload=command.input,
+            output_payload=output,
         )
 
         await self._usage.record(

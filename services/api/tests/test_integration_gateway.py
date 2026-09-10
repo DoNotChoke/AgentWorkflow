@@ -199,12 +199,30 @@ def _record(claim: IdempotencyClaim, **overrides: Any) -> IdempotencyRecord:
     return IdempotencyRecord(**{**base, **overrides})
 
 
+class FakeTraceSink:
+    """Đúng hình `ToolInvocationSink`: payload đi cạnh bản ghi, không trong nó."""
+
+    def __init__(self) -> None:
+        self.records: list[Any] = []
+        self.payloads: list[tuple[Mapping[str, Any], Mapping[str, Any]]] = []
+
+    async def record(
+        self,
+        invocation: Any,
+        *,
+        input_payload: Mapping[str, Any],
+        output_payload: Mapping[str, Any],
+    ) -> None:
+        self.records.append(invocation)
+        self.payloads.append((input_payload, output_payload))
+
+
 class FakeSink:
     def __init__(self) -> None:
         self.records: list[Any] = []
 
-    async def record(self, item: Any) -> None:
-        self.records.append(item)
+    async def record(self, usage: Any) -> None:
+        self.records.append(usage)
 
 
 def build_gateway(
@@ -221,7 +239,7 @@ def build_gateway(
     rate_limiter = FakeRateLimiter(journal, rate_limit_error)
     breaker = FakeBreaker(journal, breaker_error)
     idempotency = FakeIdempotency(journal, existing)
-    trace = FakeSink()
+    trace = FakeTraceSink()
     usage = FakeSink()
 
     async def instant(_seconds: float) -> None:
@@ -676,6 +694,21 @@ async def test_trace_chi_mang_van_tay_khong_mang_payload() -> None:
     assert len(record.input_ref.sha256) == 64
     assert record.input_ref.byte_size > 0
     assert "xin chào" not in str(record)
+
+
+async def test_payload_den_duoc_sink_qua_duong_rieng() -> None:
+    """Bản ghi giữ hàng rào §33; payload vẫn phải tới nơi cất được nó (§9.1).
+
+    Hai đường tách biệt: sink chỉ log thì bỏ qua tham số payload, sink ghi
+    trace thì cất nó — mà không sink nào phải bới trong bản ghi.
+    """
+    gateway, parts = build_gateway()
+
+    await gateway.invoke(post())
+
+    sent_input, sent_output = parts["trace"].payloads[0]
+    assert sent_input["text"] == "xin chào"
+    assert sent_output == {"channels": []}
 
 
 async def test_usage_phat_ra_cung_luc() -> None:

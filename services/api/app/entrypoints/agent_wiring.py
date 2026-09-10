@@ -38,13 +38,18 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.db import session_scope
 from app.domains.trace.application.service import TraceService
+from app.domains.trace.infrastructure.payload_store import build_payload_store
 from app.domains.trace.infrastructure.repositories import SqlAlchemyExecutionTraceRepository
 
 
 def _build_trace_service(session: AsyncSession) -> TraceService:
-    return TraceService(traces=SqlAlchemyExecutionTraceRepository(session))
+    return TraceService(
+        traces=SqlAlchemyExecutionTraceRepository(session),
+        payloads=build_payload_store(get_settings()),
+    )
 
 
 class AgentTraceSink:

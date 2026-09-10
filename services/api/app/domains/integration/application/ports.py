@@ -145,7 +145,14 @@ class IdempotencyStore(Protocol):
 class ToolInvocationSink(Protocol):
     """Nơi Execution Trace sẽ được ghi"""
 
-    async def record(self, invocation: ToolInvocationRecord) -> None: ...
+    async def record(
+        self,
+        invocation: ToolInvocationRecord,
+        *,
+        input_payload: Mapping[str, Any],
+        output_payload: Mapping[str, Any],
+    ) -> None:
+        """Payload đi cạnh bản ghi, không nằm trong nó."""
 
 
 class UsageRecorder(Protocol):

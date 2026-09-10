@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from conftest import infra_unavailable
+from conftest import InMemoryPayloadStore, infra_unavailable
 from sqlalchemy import text
 
 from app.core.config import get_settings
@@ -62,9 +62,10 @@ async def test_start_mo_duoc_trace_that() -> None:
     assert trace_id.startswith("trc_")
 
     async with session_scope() as session:
-        detail = await TraceService(traces=SqlAlchemyExecutionTraceRepository(session)).get(
-            tenant_id=TENANT, trace_id=trace_id
-        )
+        detail = await TraceService(
+            traces=SqlAlchemyExecutionTraceRepository(session),
+            payloads=InMemoryPayloadStore(),
+        ).get(tenant_id=TENANT, trace_id=trace_id)
     assert detail.trace.status.value == "running"
     assert detail.steps == []
     assert sink is not None
@@ -89,9 +90,10 @@ async def test_sink_ghi_duoc_buoc_that() -> None:
     )
 
     async with session_scope() as session:
-        detail = await TraceService(traces=SqlAlchemyExecutionTraceRepository(session)).get(
-            tenant_id=TENANT, trace_id=trace_id
-        )
+        detail = await TraceService(
+            traces=SqlAlchemyExecutionTraceRepository(session),
+            payloads=InMemoryPayloadStore(),
+        ).get(tenant_id=TENANT, trace_id=trace_id)
 
     assert len(detail.steps) == 1
     assert detail.steps[0].kind.value == "model_call"
@@ -122,9 +124,10 @@ async def test_mot_luot_day_du_model_call_tool_call_final_response() -> None:
     await complete_agent_trace(tenant_id=TENANT, trace_id=trace_id, status="succeeded")
 
     async with session_scope() as session:
-        detail = await TraceService(traces=SqlAlchemyExecutionTraceRepository(session)).get(
-            tenant_id=TENANT, trace_id=trace_id
-        )
+        detail = await TraceService(
+            traces=SqlAlchemyExecutionTraceRepository(session),
+            payloads=InMemoryPayloadStore(),
+        ).get(tenant_id=TENANT, trace_id=trace_id)
 
     assert [step.kind.value for step in detail.steps] == [
         "model_call",
@@ -148,9 +151,10 @@ async def test_complete_voi_loi_ghi_lai_error_category() -> None:
     )
 
     async with session_scope() as session:
-        detail = await TraceService(traces=SqlAlchemyExecutionTraceRepository(session)).get(
-            tenant_id=TENANT, trace_id=trace_id
-        )
+        detail = await TraceService(
+            traces=SqlAlchemyExecutionTraceRepository(session),
+            payloads=InMemoryPayloadStore(),
+        ).get(tenant_id=TENANT, trace_id=trace_id)
     assert detail.trace.status.value == "failed"
     assert detail.trace.error_category == "ProviderUnavailable"
 
@@ -182,8 +186,9 @@ async def test_step_da_ghi_van_con_sau_khi_complete_that_bai() -> None:
     await complete_agent_trace(tenant_id=TENANT, trace_id="trc_khong_ton_tai", status="failed")
 
     async with session_scope() as session:
-        detail = await TraceService(traces=SqlAlchemyExecutionTraceRepository(session)).get(
-            tenant_id=TENANT, trace_id=trace_id
-        )
+        detail = await TraceService(
+            traces=SqlAlchemyExecutionTraceRepository(session),
+            payloads=InMemoryPayloadStore(),
+        ).get(tenant_id=TENANT, trace_id=trace_id)
     assert len(detail.steps) == 1
     assert detail.trace.status.value == "running"

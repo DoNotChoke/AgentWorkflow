@@ -10,12 +10,12 @@ from typing import Any
 from app.core.errors import AuthorizationError
 from app.core.ids import ResourceKind, new_id
 from app.core.logging import get_logger
-from app.domains.trace.application.ports import ExecutionTraceRepository
+from app.domains.trace.application.ports import ExecutionTraceRepository, PayloadStore
 from app.domains.trace.domain.entities import (
     ExecutionTrace,
-    PayloadRef,
     StepKind,
     StepStatus,
+    StoredPayload,
     TraceSource,
     TraceStatus,
     TraceStep,
@@ -43,10 +43,11 @@ class TraceDetail:
 
 
 class TraceService:
-    __slots__ = ("_traces",)
+    __slots__ = ("_payloads", "_traces")
 
-    def __init__(self, *, traces: ExecutionTraceRepository) -> None:
+    def __init__(self, *, traces: ExecutionTraceRepository, payloads: PayloadStore) -> None:
         self._traces = traces
+        self._payloads = payloads
 
     # ─── Ghi ─────────────────────────────────────────────────────────────────
 
@@ -117,14 +118,14 @@ class TraceService:
         started_at: datetime,
         completed_at: datetime,
         parent_step_id: str | None = None,
-        input_ref: PayloadRef | None = None,
-        output_ref: PayloadRef | None = None,
+        input_payload: Mapping[str, Any] | None = None,
+        output_payload: Mapping[str, Any] | None = None,
         attributes: Mapping[str, Any] | None = None,
         error_category: str | None = None,
         otel_trace_id: str | None = None,
         otel_span_id: str | None = None,
     ) -> TraceStep:
-        """Ghi một bước vào `trace`."""
+        """Ghi một bước vào `trace`. Payload được cất trước, bước ghi sau."""
         ensure_not_terminal(trace)
         attrs = dict(attributes or {})
         ensure_attributes_safe(attrs)
@@ -137,8 +138,8 @@ class TraceService:
             started_at=started_at,
             completed_at=completed_at,
             parent_step_id=parent_step_id,
-            input_ref=input_ref,
-            output_ref=output_ref,
+            input_payload=await self._store(trace.tenant_id, input_payload),
+            output_payload=await self._store(trace.tenant_id, output_payload),
             attributes=attrs,
             error_category=error_category,
             otel_trace_id=otel_trace_id,
@@ -146,6 +147,13 @@ class TraceService:
         )
         await self._traces.add_step(step, tenant_id=trace.tenant_id)
         return step
+
+    async def _store(
+        self, tenant_id: str, payload: Mapping[str, Any] | None
+    ) -> StoredPayload | None:
+        if payload is None:
+            return None
+        return await self._payloads.put(tenant_id=tenant_id, payload=payload)
 
     async def append_step_by_id(
         self,
@@ -157,8 +165,8 @@ class TraceService:
         started_at: datetime,
         completed_at: datetime,
         parent_step_id: str | None = None,
-        input_ref: PayloadRef | None = None,
-        output_ref: PayloadRef | None = None,
+        input_payload: Mapping[str, Any] | None = None,
+        output_payload: Mapping[str, Any] | None = None,
         attributes: Mapping[str, Any] | None = None,
         error_category: str | None = None,
         otel_trace_id: str | None = None,
@@ -186,8 +194,8 @@ class TraceService:
             started_at=started_at,
             completed_at=completed_at,
             parent_step_id=parent_step_id,
-            input_ref=input_ref,
-            output_ref=output_ref,
+            input_payload=input_payload,
+            output_payload=output_payload,
             attributes=attributes,
             error_category=error_category,
             otel_trace_id=otel_trace_id,
@@ -203,10 +211,8 @@ class TraceService:
         started_at: datetime,
         completed_at: datetime,
         parent_step_id: str | None = None,
-        input_sha256: str | None = None,
-        input_byte_size: int | None = None,
-        output_sha256: str | None = None,
-        output_byte_size: int | None = None,
+        input_payload: Mapping[str, Any] | None = None,
+        output_payload: Mapping[str, Any] | None = None,
         attributes: Mapping[str, Any] | None = None,
         error_category: str | None = None,
         otel_trace_id: str | None = None,
@@ -219,17 +225,6 @@ class TraceService:
         đây cũng là hình dạng `status` của `ToolInvocationRecord` bên
         Integration.
         """
-        input_ref = (
-            PayloadRef(sha256=input_sha256, byte_size=input_byte_size)
-            if input_sha256 is not None and input_byte_size is not None
-            else None
-        )
-        output_ref = (
-            PayloadRef(sha256=output_sha256, byte_size=output_byte_size)
-            if output_sha256 is not None and output_byte_size is not None
-            else None
-        )
-
         return await self.append_step_by_id(
             tenant_id=tenant_id,
             trace_id=trace_id,
@@ -238,8 +233,8 @@ class TraceService:
             started_at=started_at,
             completed_at=completed_at,
             parent_step_id=parent_step_id,
-            input_ref=input_ref,
-            output_ref=output_ref,
+            input_payload=input_payload,
+            output_payload=output_payload,
             attributes=attributes,
             error_category=error_category,
             otel_trace_id=otel_trace_id,

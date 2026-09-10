@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.trace.domain.entities import (
     ExecutionTrace,
+    PayloadLocation,
     PayloadRef,
     StepKind,
     StepStatus,
+    StoredPayload,
     TraceSource,
     TraceStatus,
     TraceStep,
@@ -39,10 +43,20 @@ def _to_trace(row: ExecutionTraceModel) -> ExecutionTrace:
     )
 
 
-def _payload_ref(sha256: str | None, byte_size: int | None) -> PayloadRef | None:
+def _stored_payload(
+    sha256: str | None,
+    byte_size: int | None,
+    location: str | None,
+    inline: dict[str, Any] | None,
+) -> StoredPayload | None:
+    """Hàng ghi trước migration 0011 không có `location` — đọc thành ABSENT."""
     if sha256 is None or byte_size is None:
         return None
-    return PayloadRef(sha256=sha256, byte_size=byte_size)
+    return StoredPayload(
+        ref=PayloadRef(sha256=sha256, byte_size=byte_size),
+        location=PayloadLocation(location) if location else PayloadLocation.ABSENT,
+        inline=inline,
+    )
 
 
 def _to_step(row: TraceStepModel) -> TraceStep:
@@ -54,13 +68,35 @@ def _to_step(row: TraceStepModel) -> TraceStep:
         started_at=row.started_at,
         completed_at=row.completed_at,
         parent_step_id=row.parent_step_id,
-        input_ref=_payload_ref(row.input_ref_sha256, row.input_ref_byte_size),
-        output_ref=_payload_ref(row.output_ref_sha256, row.output_ref_byte_size),
+        input_payload=_stored_payload(
+            row.input_ref_sha256, row.input_ref_byte_size, row.input_location, row.input_inline
+        ),
+        output_payload=_stored_payload(
+            row.output_ref_sha256, row.output_ref_byte_size, row.output_location, row.output_inline
+        ),
         attributes=dict(row.attributes),
         error_category=row.error_category,
         otel_trace_id=row.otel_trace_id,
         otel_span_id=row.otel_span_id,
     )
+
+
+def _sha256(payload: StoredPayload | None) -> str | None:
+    return payload.ref.sha256 if payload else None
+
+
+def _byte_size(payload: StoredPayload | None) -> int | None:
+    return payload.ref.byte_size if payload else None
+
+
+def _location(payload: StoredPayload | None) -> str | None:
+    return str(payload.location) if payload else None
+
+
+def _inline(payload: StoredPayload | None) -> dict[str, Any] | None:
+    if payload is None or payload.inline is None:
+        return None
+    return dict(payload.inline)
 
 
 class SqlAlchemyExecutionTraceRepository:
@@ -99,10 +135,14 @@ class SqlAlchemyExecutionTraceRepository:
                 parent_step_id=step.parent_step_id,
                 started_at=step.started_at,
                 completed_at=step.completed_at,
-                input_ref_sha256=step.input_ref.sha256 if step.input_ref else None,
-                input_ref_byte_size=step.input_ref.byte_size if step.input_ref else None,
-                output_ref_sha256=step.output_ref.sha256 if step.output_ref else None,
-                output_ref_byte_size=step.output_ref.byte_size if step.output_ref else None,
+                input_ref_sha256=_sha256(step.input_payload),
+                input_ref_byte_size=_byte_size(step.input_payload),
+                input_location=_location(step.input_payload),
+                input_inline=_inline(step.input_payload),
+                output_ref_sha256=_sha256(step.output_payload),
+                output_ref_byte_size=_byte_size(step.output_payload),
+                output_location=_location(step.output_payload),
+                output_inline=_inline(step.output_payload),
                 attributes=dict(step.attributes),
                 error_category=step.error_category,
                 otel_trace_id=step.otel_trace_id,

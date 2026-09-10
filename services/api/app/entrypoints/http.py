@@ -16,6 +16,7 @@ from app.core.config import get_settings
 from app.core.db import dispose_engine, get_engine, init_engine
 from app.core.errors import AppError
 from app.core.logging import configure_logging, get_logger
+from app.core.objectstore import close_object_store, init_object_store
 from app.core.observability import (
     configure_tracing,
     instrument_clients,
@@ -64,11 +65,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     engine = init_engine(settings)
     init_redis(settings)
+    init_object_store(settings)
     instrument_sqlalchemy(engine)
     instrument_clients()
 
     log.info("api_starting", environment=settings.environment)
     yield
+    await close_object_store()
     await close_redis()
     await dispose_engine()
     log.info("api_stopped")

@@ -70,11 +70,17 @@ class TraceStepModel(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    #: `PayloadRef` trải phẳng — vân tay, không phải nội dung (§9.1).
+    #: `StoredPayload` trải phẳng. `*_location` nhận `absent | inline | object`
+    #: và là thứ quyết định đọc ở đâu — không suy ra từ việc `*_inline` có null
+    #: hay không, vì "không có payload" khác "payload nằm chỗ khác".
     input_ref_sha256: Mapped[str | None] = mapped_column(String(64))
     input_ref_byte_size: Mapped[int | None] = mapped_column(Integer)
+    input_location: Mapped[str | None] = mapped_column(String(8))
+    input_inline: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     output_ref_sha256: Mapped[str | None] = mapped_column(String(64))
     output_ref_byte_size: Mapped[int | None] = mapped_column(Integer)
+    output_location: Mapped[str | None] = mapped_column(String(8))
+    output_inline: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
     attributes: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")

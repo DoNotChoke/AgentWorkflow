@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from collections.abc import Mapping
+from typing import Any, Protocol
 
-from app.domains.trace.domain.entities import ExecutionTrace, TraceStep
+from app.domains.trace.domain.entities import ExecutionTrace, StoredPayload, TraceStep
 
 
 class ExecutionTraceRepository(Protocol):
@@ -28,6 +29,20 @@ class ExecutionTraceRepository(Protocol):
         self, *, tenant_id: str, conversation_id: str
     ) -> list[ExecutionTrace]:
         """Mọi trace của một cuộc hội thoại, mới nhất trước."""
+
+
+class PayloadStore(Protocol):
+    """Cất và đọc lại payload của một bước trace (§4.7, §9.1)."""
+
+    async def put(self, *, tenant_id: str, payload: Mapping[str, Any]) -> StoredPayload:
+        """Cất payload và cho biết nó nằm ở đâu.
+
+        Không bao giờ ném lỗi lưu trữ: hỏng thì trả về `location=ABSENT`. Ghi
+        trace là quan sát, không được làm hỏng thao tác đang được quan sát.
+        """
+
+    async def get(self, *, tenant_id: str, stored: StoredPayload) -> Mapping[str, Any] | None:
+        """Nội dung đã cất, hoặc `None` nếu không còn ở đó."""
 
 
 class InvocationContext(Protocol):

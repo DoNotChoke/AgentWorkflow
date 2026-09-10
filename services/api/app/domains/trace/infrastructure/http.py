@@ -13,11 +13,13 @@ from fastapi import APIRouter, Depends, Header, Path, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings, get_settings
 from app.core.context import RequestContext, current_context, set_context
 from app.core.db import get_session
 from app.core.http_auth import require_user_id, user_principal
 from app.domains.trace.application.ports import TenantGuard
 from app.domains.trace.application.service import TraceDetail, TraceService
+from app.domains.trace.infrastructure.payload_store import build_payload_store
 from app.domains.trace.infrastructure.repositories import SqlAlchemyExecutionTraceRepository
 
 router = APIRouter(tags=["trace"])
@@ -78,8 +80,14 @@ async def resolve_context(
 CurrentContext = Annotated[Any, Depends(resolve_context)]
 
 
-def get_trace_service(session: Annotated[AsyncSession, Depends(get_session)]) -> TraceService:
-    return TraceService(traces=SqlAlchemyExecutionTraceRepository(session))
+def get_trace_service(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> TraceService:
+    return TraceService(
+        traces=SqlAlchemyExecutionTraceRepository(session),
+        payloads=build_payload_store(settings),
+    )
 
 
 # ─── Schema ra ───────────────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ chúng — đọc `user.email` không cần biết `User` là gì.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -298,14 +298,20 @@ class IntegrationTraceSink:
     def __init__(self, fallback: Any) -> None:
         self._fallback = fallback
 
-    async def record(self, invocation: object) -> None:
+    async def record(
+        self,
+        invocation: object,
+        *,
+        input_payload: Mapping[str, Any],
+        output_payload: Mapping[str, Any],
+    ) -> None:
         trace_id = invocation.execution_trace_id  # type: ignore[attr-defined]
         if trace_id is None:
-            await self._fallback.record(invocation)
+            await self._fallback.record(
+                invocation, input_payload=input_payload, output_payload=output_payload
+            )
             return
 
-        input_ref = invocation.input_ref  # type: ignore[attr-defined]
-        output_ref = invocation.output_ref  # type: ignore[attr-defined]
         idempotency_key = invocation.idempotency_key  # type: ignore[attr-defined]
 
         attributes: dict[str, Any] = {
@@ -318,14 +324,19 @@ class IntegrationTraceSink:
         if idempotency_key:
             attributes["idempotency_key"] = idempotency_key
 
+        from app.core.config import get_settings
         from app.core.db import session_scope
         from app.domains.trace.application.service import TraceService
+        from app.domains.trace.infrastructure.payload_store import build_payload_store
         from app.domains.trace.infrastructure.repositories import (
             SqlAlchemyExecutionTraceRepository,
         )
 
         async with session_scope() as session:
-            traces = TraceService(traces=SqlAlchemyExecutionTraceRepository(session))
+            traces = TraceService(
+                traces=SqlAlchemyExecutionTraceRepository(session),
+                payloads=build_payload_store(get_settings()),
+            )
             await traces.record_tool_call(
                 tenant_id=invocation.tenant_id,  # type: ignore[attr-defined]
                 trace_id=trace_id,
@@ -333,10 +344,8 @@ class IntegrationTraceSink:
                 started_at=invocation.started_at,  # type: ignore[attr-defined]
                 completed_at=invocation.completed_at,  # type: ignore[attr-defined]
                 parent_step_id=invocation.parent_step_id,  # type: ignore[attr-defined]
-                input_sha256=input_ref.sha256,
-                input_byte_size=input_ref.byte_size,
-                output_sha256=output_ref.sha256,
-                output_byte_size=output_ref.byte_size,
+                input_payload=input_payload,
+                output_payload=output_payload,
                 attributes=attributes,
                 error_category=invocation.error_category,  # type: ignore[attr-defined]
                 otel_trace_id=invocation.otel_trace_id,  # type: ignore[attr-defined]
