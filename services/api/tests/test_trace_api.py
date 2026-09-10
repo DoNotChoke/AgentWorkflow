@@ -127,6 +127,8 @@ async def _seed_trace(
             completed_at=at + timedelta(milliseconds=900),
             parent_step_id=model_step.id,
             attributes={"tool_id": "slack.post_message"},
+            input_payload={"channel": "C123", "text": "xin chào"},
+            output_payload={"ts": "1700000000.000100"},
         )
         await service.append_step(
             trace,
@@ -228,3 +230,88 @@ def test_liet_ke_hoi_thoai_chua_co_trace_tra_ve_rong(client: TestClient) -> None
     body = an.get("/v1/conversations/cnv_chua_ai_noi_gi/traces").json()
 
     assert body == []
+
+
+# ─── GET /v1/traces/{trace_id}/steps/{step_id}/payload/{side} ────────────────
+
+NOW = datetime(2026, 9, 3, 12, 0, tzinfo=UTC)
+
+
+def _steps(nguoi: Nguoi, trace_id: str) -> dict[str, dict[str, Any]]:
+    body = nguoi.get(f"/v1/traces/{trace_id}").json()
+    return {step["kind"]: step for step in body["steps"]}
+
+
+def test_cay_trace_noi_payload_nam_o_dau_ma_khong_mang_noi_dung(client: TestClient) -> None:
+    """Một query dựng được cả cây; nội dung để dành cho lúc người dùng mở."""
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    trace_id = seed_trace(client, org, workspace, "cnv_payload", "usr_an", NOW)
+
+    steps = _steps(an, trace_id)
+
+    assert steps["tool_call"]["input_payload"]["location"] == "inline"
+    assert steps["tool_call"]["input_payload"]["byte_size"] > 0
+    assert "payload" not in steps["tool_call"]
+    assert steps["model_call"]["input_payload"] is None
+
+
+def test_doc_payload_cua_mot_buoc(client: TestClient) -> None:
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    trace_id = seed_trace(client, org, workspace, "cnv_payload_doc", "usr_an", NOW)
+    step_id = _steps(an, trace_id)["tool_call"]["id"]
+
+    body = an.get(f"/v1/traces/{trace_id}/steps/{step_id}/payload/input").json()
+
+    assert body["availability"] == "available"
+    assert body["payload"] == {"channel": "C123", "text": "xin chào"}
+    assert len(body["sha256"]) == 64
+
+
+def test_buoc_khong_co_payload_phia_do_noi_ro_la_khong_luu(client: TestClient) -> None:
+    """`not_stored` khác `gone`, và cả hai đều khác 'không tìm thấy'."""
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    trace_id = seed_trace(client, org, workspace, "cnv_payload_thieu", "usr_an", NOW)
+    step_id = _steps(an, trace_id)["model_call"]["id"]
+
+    body = an.get(f"/v1/traces/{trace_id}/steps/{step_id}/payload/output").json()
+
+    assert body["availability"] == "not_stored"
+    assert body["payload"] is None
+    assert body["sha256"] is None
+
+
+def test_step_khong_ton_tai_bi_tu_choi(client: TestClient) -> None:
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    trace_id = seed_trace(client, org, workspace, "cnv_payload_404", "usr_an", NOW)
+
+    response = an.get(f"/v1/traces/{trace_id}/steps/stp_khong_ton_tai/payload/input")
+
+    assert response.status_code == 403
+
+
+def test_payload_cua_to_chuc_khac_bi_tu_choi(client: TestClient) -> None:
+    """Cùng cách `GET /v1/traces/{id}` từ chối: id có thật hay không đều một câu."""
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    trace_id = seed_trace(client, org, workspace, "cnv_payload_rieng", "usr_an", NOW)
+    step_id = _steps(an, trace_id)["tool_call"]["id"]
+
+    binh = Nguoi(client, "Binh")
+    response = binh.get(f"/v1/traces/{trace_id}/steps/{step_id}/payload/input")
+
+    assert response.status_code == 403
+
+
+def test_phia_payload_khong_hop_le_bi_tu_choi(client: TestClient) -> None:
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    trace_id = seed_trace(client, org, workspace, "cnv_payload_side", "usr_an", NOW)
+    step_id = _steps(an, trace_id)["tool_call"]["id"]
+
+    response = an.get(f"/v1/traces/{trace_id}/steps/{step_id}/payload/o-giua")
+
+    assert response.status_code == 422

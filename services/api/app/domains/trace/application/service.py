@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 from app.core.errors import AuthorizationError
@@ -13,6 +14,8 @@ from app.core.logging import get_logger
 from app.domains.trace.application.ports import ExecutionTraceRepository, PayloadStore
 from app.domains.trace.domain.entities import (
     ExecutionTrace,
+    PayloadLocation,
+    PayloadRef,
     StepKind,
     StepStatus,
     StoredPayload,
@@ -40,6 +43,40 @@ class TraceDetail:
 
     trace: ExecutionTrace
     steps: list[TraceStep]
+
+
+class PayloadSide(StrEnum):
+    INPUT = "input"
+    OUTPUT = "output"
+
+
+class PayloadAvailability(StrEnum):
+    """Vì sao có hoặc không có nội dung để trả về.
+
+    AVAILABLE  — đọc được, nằm trong `payload`.
+    NOT_STORED — chưa từng cất: bước không có phía này, payload vượt trần, hay
+                 một lần ghi lưu trữ thất bại.
+    GONE       — đã cất rồi nhưng không còn ở đó (lifecycle rule của bucket).
+    """
+
+    AVAILABLE = "available"
+    NOT_STORED = "not_stored"
+    GONE = "gone"
+
+
+@dataclass(frozen=True, slots=True)
+class PayloadView:
+    """Một phía payload của một bước, kèm lý do khi không có nội dung.
+
+    "Đã hết hạn lưu trữ" và "không tìm thấy" là hai câu khác nhau với người
+    đang đọc lại một lượt Agent hỏng, nên chúng không được gộp thành một 404.
+    """
+
+    step_id: str
+    side: PayloadSide
+    availability: PayloadAvailability
+    ref: PayloadRef | None = None
+    payload: Mapping[str, Any] | None = None
 
 
 class TraceService:
@@ -324,6 +361,44 @@ class TraceService:
             raise AuthorizationError(_NOT_FOUND)
         steps = await self._traces.list_steps(tenant_id=tenant_id, trace_id=trace_id)
         return TraceDetail(trace=trace, steps=steps)
+
+    async def get_payload(
+        self, *, tenant_id: str, trace_id: str, step_id: str, side: PayloadSide
+    ) -> PayloadView:
+        """Đọc một phía payload của một bước.
+
+        Bước không tồn tại — hoặc thuộc tenant khác — ném `AuthorizationError`
+        y như `get`: trả lời khác đi là để lộ rằng id đó có thật.
+        """
+        step = await self._traces.get_step(tenant_id=tenant_id, trace_id=trace_id, step_id=step_id)
+        if step is None:
+            raise AuthorizationError(_NOT_FOUND)
+
+        stored = step.input_payload if side is PayloadSide.INPUT else step.output_payload
+        if stored is None:
+            return PayloadView(
+                step_id=step_id, side=side, availability=PayloadAvailability.NOT_STORED
+            )
+
+        payload = await self._payloads.get(tenant_id=tenant_id, stored=stored)
+        if payload is not None:
+            return PayloadView(
+                step_id=step_id,
+                side=side,
+                availability=PayloadAvailability.AVAILABLE,
+                ref=stored.ref,
+                payload=payload,
+            )
+
+        # Có vân tay mà không có nội dung: hoặc chưa từng cất, hoặc đã cất rồi
+        # mất. `location` là thứ phân biệt hai chuyện đó.
+        gone = stored.location is PayloadLocation.OBJECT
+        return PayloadView(
+            step_id=step_id,
+            side=side,
+            availability=PayloadAvailability.GONE if gone else PayloadAvailability.NOT_STORED,
+            ref=stored.ref,
+        )
 
     async def list_for_conversation(
         self, *, tenant_id: str, conversation_id: str

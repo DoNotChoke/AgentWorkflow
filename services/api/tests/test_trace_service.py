@@ -7,18 +7,26 @@ sẽ bắt được ở cả hai phía — cùng cách `test_identity_service.py
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from conftest import InMemoryPayloadStore
 
 from app.core.errors import AuthorizationError, ValidationError
-from app.domains.trace.application.service import TraceService
+from app.domains.trace.application.service import (
+    PayloadAvailability,
+    PayloadSide,
+    TraceService,
+)
 from app.domains.trace.domain.entities import (
     ExecutionTrace,
+    PayloadLocation,
     PayloadRef,
     StepKind,
     StepStatus,
+    StoredPayload,
     TraceSource,
     TraceStatus,
     TraceStep,
@@ -62,6 +70,12 @@ class FakeExecutionTraceRepository:
         if trace is None or trace.tenant_id != tenant_id:
             return []
         return list(self.steps.get(trace_id, []))
+
+    async def get_step(self, *, tenant_id: str, trace_id: str, step_id: str) -> TraceStep | None:
+        for step in await self.list_steps(tenant_id=tenant_id, trace_id=trace_id):
+            if step.id == step_id:
+                return step
+        return None
 
     async def list_traces_for_conversation(
         self, *, tenant_id: str, conversation_id: str
@@ -672,3 +686,97 @@ async def test_list_for_conversation_khong_lan_sang_tenant_khac(service: TraceSe
     traces = await service.list_for_conversation(tenant_id=ORG_B, conversation_id="cnv_1")
 
     assert traces == []
+
+
+# ─── get_payload ─────────────────────────────────────────────────────────────
+
+
+class ForgetfulPayloadStore:
+    """Cất ra object storage, rồi quên — hình dạng của một lifecycle rule đã dọn."""
+
+    async def put(self, *, tenant_id: str, payload: Mapping[str, Any]) -> StoredPayload:
+        return StoredPayload(ref=PayloadRef.of(payload), location=PayloadLocation.OBJECT)
+
+    async def get(self, *, tenant_id: str, stored: StoredPayload) -> Mapping[str, Any] | None:
+        return None
+
+
+async def _mot_buoc_co_payload(service: TraceService) -> tuple[str, str]:
+    trace = await service.start(
+        tenant_id=ORG_A,
+        workspace_id=WORKSPACE,
+        source=TraceSource.AGENT,
+        subject=TraceSubject(agent_id="agt_1", conversation_id="cnv_1"),
+        initiated_by="usr_1",
+        at=NOW,
+    )
+    step = await service.append_step(
+        trace,
+        kind=StepKind.TOOL_CALL,
+        status=StepStatus.SUCCEEDED,
+        started_at=NOW,
+        completed_at=NOW + timedelta(milliseconds=500),
+        input_payload={"channel": "C123"},
+    )
+    return trace.id, step.id
+
+
+async def test_get_payload_tra_ve_noi_dung_da_cat(service: TraceService) -> None:
+    trace_id, step_id = await _mot_buoc_co_payload(service)
+
+    view = await service.get_payload(
+        tenant_id=ORG_A, trace_id=trace_id, step_id=step_id, side=PayloadSide.INPUT
+    )
+
+    assert view.availability is PayloadAvailability.AVAILABLE
+    assert view.payload == {"channel": "C123"}
+    assert view.ref is not None
+
+
+async def test_get_payload_phia_khong_co_gi_la_not_stored(service: TraceService) -> None:
+    trace_id, step_id = await _mot_buoc_co_payload(service)
+
+    view = await service.get_payload(
+        tenant_id=ORG_A, trace_id=trace_id, step_id=step_id, side=PayloadSide.OUTPUT
+    )
+
+    assert view.availability is PayloadAvailability.NOT_STORED
+    assert view.ref is None
+
+
+async def test_get_payload_da_cat_roi_mat_la_gone(repo: FakeExecutionTraceRepository) -> None:
+    """`gone` khác `not_stored`: một cái từng có, một cái chưa bao giờ.
+
+    Người đang đọc lại một lượt Agent hỏng cần đọc ra hai câu khác nhau.
+    """
+    service = TraceService(traces=repo, payloads=ForgetfulPayloadStore())
+    trace_id, step_id = await _mot_buoc_co_payload(service)
+
+    view = await service.get_payload(
+        tenant_id=ORG_A, trace_id=trace_id, step_id=step_id, side=PayloadSide.INPUT
+    )
+
+    assert view.availability is PayloadAvailability.GONE
+    assert view.payload is None
+    assert view.ref is not None
+
+
+async def test_get_payload_cua_step_khong_ton_tai_bi_tu_choi(service: TraceService) -> None:
+    trace_id, _ = await _mot_buoc_co_payload(service)
+
+    with pytest.raises(AuthorizationError):
+        await service.get_payload(
+            tenant_id=ORG_A,
+            trace_id=trace_id,
+            step_id="stp_khong_ton_tai",
+            side=PayloadSide.INPUT,
+        )
+
+
+async def test_get_payload_khong_lan_sang_tenant_khac(service: TraceService) -> None:
+    trace_id, step_id = await _mot_buoc_co_payload(service)
+
+    with pytest.raises(AuthorizationError):
+        await service.get_payload(
+            tenant_id=ORG_B, trace_id=trace_id, step_id=step_id, side=PayloadSide.INPUT
+        )

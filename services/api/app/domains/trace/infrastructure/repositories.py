@@ -177,6 +177,16 @@ class SqlAlchemyExecutionTraceRepository:
         )
         return [_to_step(row) for row in rows]
 
+    async def get_step(self, *, tenant_id: str, trace_id: str, step_id: str) -> TraceStep | None:
+        row = await self._session.scalar(
+            select(TraceStepModel).where(
+                TraceStepModel.id == step_id,
+                TraceStepModel.trace_id == trace_id,
+                TraceStepModel.tenant_id == tenant_id,
+            )
+        )
+        return None if row is None else _to_step(row)
+
     async def list_traces_for_conversation(
         self, *, tenant_id: str, conversation_id: str
     ) -> list[ExecutionTrace]:

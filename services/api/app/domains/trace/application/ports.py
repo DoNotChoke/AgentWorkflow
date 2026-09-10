@@ -25,6 +25,9 @@ class ExecutionTraceRepository(Protocol):
     async def list_steps(self, *, tenant_id: str, trace_id: str) -> list[TraceStep]:
         """Các bước của một trace, theo thứ tự bắt đầu."""
 
+    async def get_step(self, *, tenant_id: str, trace_id: str, step_id: str) -> TraceStep | None:
+        """Một bước, hoặc `None` nếu nó không thuộc trace và tenant đó."""
+
     async def list_traces_for_conversation(
         self, *, tenant_id: str, conversation_id: str
     ) -> list[ExecutionTrace]:

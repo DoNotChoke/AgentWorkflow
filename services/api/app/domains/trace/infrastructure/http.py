@@ -18,7 +18,12 @@ from app.core.context import RequestContext, current_context, set_context
 from app.core.db import get_session
 from app.core.http_auth import require_user_id, user_principal
 from app.domains.trace.application.ports import TenantGuard
-from app.domains.trace.application.service import TraceDetail, TraceService
+from app.domains.trace.application.service import (
+    PayloadSide,
+    PayloadView,
+    TraceDetail,
+    TraceService,
+)
 from app.domains.trace.infrastructure.payload_store import build_payload_store
 from app.domains.trace.infrastructure.repositories import SqlAlchemyExecutionTraceRepository
 
@@ -93,6 +98,18 @@ def get_trace_service(
 # ─── Schema ra ───────────────────────────────────────────────────────────────
 
 
+class StoredPayloadResponse(BaseModel):
+    """Payload có ở đó không, và to bằng nào — không phải nội dung.
+
+    Cây trace dựng bằng đúng một query; nội dung chỉ được đọc khi người dùng
+    mở một bước cụ thể, qua endpoint riêng bên dưới.
+    """
+
+    sha256: str
+    byte_size: int
+    location: str
+
+
 class TraceStepResponse(BaseModel):
     id: str
     kind: str
@@ -103,6 +120,17 @@ class TraceStepResponse(BaseModel):
     duration_ms: float
     attributes: dict[str, Any]
     error_category: str | None
+    input_payload: StoredPayloadResponse | None
+    output_payload: StoredPayloadResponse | None
+
+
+class TracePayloadResponse(BaseModel):
+    step_id: str
+    side: str
+    availability: str
+    sha256: str | None
+    byte_size: int | None
+    payload: dict[str, Any] | None
 
 
 class TraceSubjectResponse(BaseModel):
@@ -127,6 +155,27 @@ class TraceSummaryResponse(BaseModel):
 
 class TraceResponse(TraceSummaryResponse):
     steps: list[TraceStepResponse]
+
+
+def _stored(payload: Any) -> StoredPayloadResponse | None:
+    if payload is None:
+        return None
+    return StoredPayloadResponse(
+        sha256=payload.ref.sha256,
+        byte_size=payload.ref.byte_size,
+        location=str(payload.location),
+    )
+
+
+def _payload(view: PayloadView) -> TracePayloadResponse:
+    return TracePayloadResponse(
+        step_id=view.step_id,
+        side=str(view.side),
+        availability=str(view.availability),
+        sha256=view.ref.sha256 if view.ref else None,
+        byte_size=view.ref.byte_size if view.ref else None,
+        payload=dict(view.payload) if view.payload is not None else None,
+    )
 
 
 def _subject(trace: Any) -> TraceSubjectResponse:
@@ -168,6 +217,8 @@ def _detail(detail: TraceDetail) -> TraceResponse:
                 duration_ms=step.duration_ms,
                 attributes=dict(step.attributes),
                 error_category=step.error_category,
+                input_payload=_stored(step.input_payload),
+                output_payload=_stored(step.output_payload),
             )
             for step in detail.steps
         ],
@@ -185,6 +236,26 @@ async def get_trace(
 ) -> TraceResponse:
     detail = await service.get(tenant_id=context.organization_id, trace_id=trace_id)
     return _detail(detail)
+
+
+@router.get("/v1/traces/{trace_id}/steps/{step_id}/payload/{side}")
+async def get_step_payload(
+    context: CurrentContext,
+    service: Annotated[TraceService, Depends(get_trace_service)],
+    trace_id: Annotated[str, Path(max_length=64)],
+    step_id: Annotated[str, Path(max_length=64)],
+    side: PayloadSide,
+) -> TracePayloadResponse:
+    """Nội dung một phía payload của một bước.
+
+    Không dùng presigned URL: payload mang dữ liệu người dùng, và §19 đòi kiểm
+    tenant ở mọi đường vào trace. Đường này đi qua đúng `TenantGuard` như hai
+    endpoint còn lại.
+    """
+    view = await service.get_payload(
+        tenant_id=context.organization_id, trace_id=trace_id, step_id=step_id, side=side
+    )
+    return _payload(view)
 
 
 @router.get("/v1/conversations/{conversation_id}/traces")
