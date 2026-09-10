@@ -1,22 +1,8 @@
-"""Object storage tương thích S3 (§4.7)
+"""Object storage tương thích S3
 
 Nơi cất những thứ quá lớn cho PostgreSQL: payload trace thô, phản hồi provider
 cỡ lớn, tệp đính kèm, artifact sinh ra từ workflow. PostgreSQL giữ tham chiếu
 và metadata, không giữ chính khối dữ liệu.
-
-Module này cố ý **không biết** payload là gì. Nó nhận bucket, khoá, bytes —
-việc đặt khoá theo tenant và diễn giải nội dung thuộc về domain sở hữu dữ liệu
-đó (§18, §19).
-
-``boto3`` là client **đồng bộ**. Gọi thẳng trong một coroutine sẽ chặn event
-loop của cả tiến trình cho tới khi S3 trả lời, nên mọi lời gọi mạng ở đây đi
-qua ``asyncio.to_thread``. Client cấp thấp của boto3 là thread-safe, nên một
-instance dùng chung cho mọi thread là đúng cách dùng, không phải một chỗ tiết
-kiệm.
-
-Mã hoá at-rest là việc của bucket (SSE), không phải của tầng ứng dụng: contract
-4 cấm phần lớn domain — trong đó có ``trace``, người dùng đầu tiên của module
-này — import ``app.core.crypto``.
 """
 
 from __future__ import annotations
@@ -52,12 +38,7 @@ _KEY: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,511}$")
 
 
 class ObjectStoreError(AppError):
-    """Object storage không hoàn thành được thao tác.
-
-    Tồn tại để người gọi bắt được **một** loại lỗi mà không phải import
-    botocore — nếu không, mọi domain muốn xử lý lỗi lưu trữ đều kéo theo một
-    dependency hạ tầng vào chỗ không cần nó.
-    """
+    """Object storage không hoàn thành được thao tác."""
 
     category = ErrorCategory.INTERNAL
 
@@ -79,9 +60,6 @@ def init_object_store(settings: Settings) -> None:
             aws_secret_access_key=settings.s3_secret_access_key.get_secret_value(),
             config=Config(
                 signature_version="s3v4",
-                # Bucket nằm trong đường dẫn, không phải trong tên miền con.
-                # MinIO và phần lớn bản cài đặt tự quản chỉ hiểu kiểu này; kiểu
-                # virtual-host đòi wildcard DNS mà máy phát triển không có.
                 s3={"addressing_style": "path"},
                 connect_timeout=_CONNECT_TIMEOUT_SECONDS,
                 read_timeout=_READ_TIMEOUT_SECONDS,
@@ -109,15 +87,7 @@ async def close_object_store() -> None:
 
 
 def ensure_key_safe(key: str) -> None:
-    """Chặn khoá đi ra ngoài tiền tố mà người gọi định ghi vào.
-
-    S3 không có thư mục, nên ``..`` ở đây không phải path traversal theo nghĩa
-    của một hệ thống tệp. Thứ nó thật sự phá là **tiền tố**: khoá được ghép từ
-    ``tenant_id`` cộng phần đuôi, và một phần đuôi mở đầu bằng ``/`` hay mang
-    ``..`` sẽ trỏ sang tiền tố của tenant khác sau khi bị chuẩn hoá ở đâu đó
-    trên đường đi — proxy, CDN, hay một client S3 khác. Tiền tố tenant là ranh
-    giới §19 ở tầng lưu trữ; nó phải giữ được ngay cả khi người gọi sai.
-    """
+    """Chặn khoá đi ra ngoài tiền tố mà người gọi định ghi vào."""
     if not _KEY.match(key) or ".." in key or "//" in key:
         raise ValidationError(f"Khoá object storage không hợp lệ: {key!r}")
 
