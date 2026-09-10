@@ -177,6 +177,14 @@ nó nằm ở `entrypoints/wiring.py`, không phải ở Integration Plane như 
 mô tả. Contract 6 cấm Agent Runtime với tới đó, kể cả gián tiếp — nên từ Phase 3,
 Agent **buộc** phải gọi Gateway qua HTTP thay vì gọi trong tiến trình.
 
+**Execution Trace giữ nội dung, không chỉ vân tay.** Mỗi bước — một lần gọi
+tool, một lần hỏi model — lưu cái đã gửi đi và cái nhận về. Payload nhỏ nằm
+ngay trong `trace.trace_steps`, payload lớn ra MinIO theo khoá là chính mã
+băm của nó, payload quá lớn chỉ còn vân tay. Lượt chat vỡ giữa chừng không để
+lại tin nhắn nào trong `messages` — trace là nơi duy nhất còn giữ nó. Quyết
+định ở [ADR-0006](docs/adr/0006-payload-cua-execution-trace.md), kế hoạch ở
+[`docs/plans/`](docs/plans/wp-a-trace-payload-store.md).
+
 Lộ trình các phase tiếp theo: xem `docs/adr/0001-*.md` và kế hoạch triển khai.
 
 | Phase | Nội dung |

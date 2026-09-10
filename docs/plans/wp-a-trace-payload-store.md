@@ -1,6 +1,6 @@
 # WP-A — Payload store cho Execution Trace
 
-- **Trạng thái:** đang thực hiện (commit 1/6)
+- **Trạng thái:** hoàn tất — quyết định chốt ở [ADR-0006](../adr/0006-payload-cua-execution-trace.md)
 - **Ngày lập:** 2026-09-09
 - **Liên quan:** `AgentWorkflow_SYSTEM_DESIGN.md` §4.7, §9, §9.1, §10.1, §10.2, §18, §19;
   ADR-0002, ADR-0003
@@ -8,6 +8,8 @@
 Kế hoạch cho hạng mục chặn Phase 5. Đây là tài liệu **kế hoạch**, không phải ADR:
 nó mô tả việc sẽ làm và thứ tự làm. Những quyết định trong đây mà đắt để đảo
 ngược sẽ được nâng thành ADR-0006 ở commit cuối (xem §5).
+
+Q6 và Q7 được viết thêm trong lúc hiện thực, không phải lúc lập kế hoạch.
 
 ---
 
@@ -81,15 +83,16 @@ trace_steps (PostgreSQL)          object storage (MinIO/S3)
 
 ---
 
-## 3. Sáu quyết định
+## 3. Bảy quyết định
 
 ### Q1 — Domain `trace` sở hữu payload store, không phải `integration`
 
 §18 xếp *"tool invocation trace metadata"* vào domain Trace. Contract 1 cấm
 `integration` import `trace`, nhưng **không cần phá**: payload đi theo đúng con
 đường bản ghi đang đi — qua Protocol `ToolInvocationSink`, sang
-`entrypoints/wiring.py`, xuống `TraceService`. Chỉ là thêm hai trường vào một
-dataclass vốn đã đi con đường đó.
+`entrypoints/wiring.py`, xuống `TraceService`. Chỉ là thêm hai tham số vào một
+lời gọi vốn đã đi con đường đó (xem Q7 về việc vì sao là tham số chứ không phải
+trường của bản ghi).
 
 Hệ quả: `integration` không biết object storage tồn tại, đúng như nó không biết
 PostgreSQL tồn tại.
@@ -118,8 +121,14 @@ tay". Hàng ghi trước migration và payload vượt trần đều là `absent
 
 ### Q3 — Ngưỡng inline: nhỏ nằm trong Postgres, lớn mới ra object storage
 
-Đề xuất **16 KiB**. Dưới ngưỡng vào cột JSONB ngay trong `trace_steps`; trên
-ngưỡng mới đẩy S3.
+**16 KiB** — chốt ngày 2026-09-10, và **chưa đo**. Dưới ngưỡng vào cột JSONB
+ngay trong `trace_steps`; trên ngưỡng mới đẩy S3.
+
+Chưa có đủ lượt gọi tool thật để đọc phân bố kích thước, nên con số này là ước
+lượng chứ không phải kết luận. ADR-0006 phải ghi đúng như vậy, kèm điều kiện
+xem xét lại: đọc `input_ref_byte_size`/`output_ref_byte_size` sau vài trăm lượt
+Agent thật. Sai số ở đây không đắt — nó chỉ đổi tỉ lệ payload nằm inline so với
+nằm ngoài, không đổi cấu trúc dữ liệu.
 
 Lý do không đẩy hết ra S3 cho gọn: một trace của lượt Agent có khoảng mười bước,
 mỗi bước hai payload — màn hình xem trace và compiler đều phải bắn hai mươi GET
@@ -131,7 +140,8 @@ không rò ra ngoài.
 
 ### Q4 — Trần cứng 1 MiB
 
-Trên trần thì **không lưu**, chỉ giữ vân tay và `location=absent`. Ghi 50 MB một
+Cùng tình trạng Q3: chốt mà chưa đo. Trên trần thì **không lưu**, chỉ giữ vân
+tay và `location=absent`. Ghi 50 MB một
 lần vì một provider trả về cả database là cách nhanh nhất để biến bucket trace
 thành hoá đơn.
 
@@ -156,7 +166,25 @@ nghiêm nhất của repo — cái giá sai cho thứ mà cấu hình bucket gi�
 
 Cùng triết lý `append_step_by_id` đã chọn: *ghi trace là quan sát*. S3 timeout
 không được biến một tin nhắn Slack **đã gửi** thành một lời gọi tool báo lỗi.
-Log lại và hạ về `location=absent`.
+Log lại và hạ về `location=absent`. Tính cả trường hợp tiến trình quên
+`init_object_store()` — nó ném `RuntimeError`, và một lỗi khởi động cũng không
+được phép làm hỏng lời gọi tool đã chạy xong.
+
+**Thứ tự ghi: object storage trước, hàng DB sau.** Ghi hàng với
+`location=object` rồi mới đẩy S3 thì một lần S3 hỏng để lại một hàng trỏ vào hư
+không, vĩnh viễn. Ngược lại — S3 xong mà DB rollback — chỉ để lại một object
+không ai trỏ tới, vô hại: khoá là băm của nội dung nên lần ghi sau của cùng
+payload dùng lại đúng object đó, và dọn rác là việc của lifecycle rule.
+
+### Q7 — Payload đi **cạnh** bản ghi, không nằm **trong** bản ghi
+
+Phát sinh khi hiện thực. Đưa `input`/`output` vào `ToolInvocationRecord` làm đỏ
+một test có chủ đích: `test_trace_chi_mang_van_tay_khong_mang_payload` canh §33
+— bản ghi là thứ có thể bị log nguyên cả object, nên nó chỉ được mang vân tay.
+
+Vì vậy `ToolInvocationSink.record` nhận thêm hai tham số
+`input_payload`/`output_payload`. Sink chỉ log bỏ qua chúng; sink ghi trace cất
+chúng. Không sink nào phải bới trong bản ghi, và hàng rào §33 giữ nguyên.
 
 ---
 
@@ -214,31 +242,60 @@ Log lại và hạ về `location=absent`.
 
 `docker-compose.yml` **không cần sửa** — `minio-init` đã tạo `aw-traces` sẵn.
 
-### A2 — payload cho `model_call` (tách riêng, nên làm)
+### A2 — payload cho `model_call`
 
-`AgentRuntime._complete` hiện chỉ ghi model, `stop_reason` và số token. Thứ
-§10.1 cần để "loại bỏ model chatter" là cái **thật sự gửi đi**: system prompt,
-danh sách tool được mời, và phản hồi thô — không cái nào nằm trong bảng
-`messages` của domain `agent`.
+Mỗi bước `model_call` giữ hai payload: `input_payload` là cái **đã gửi** cho
+model (`model`, `system`, `tools`, `turns`), `output_payload` là cái **nhận về**
+(`text`, `stop_reason`, `tool_calls`, `usage`). Nhánh lỗi giữ `input_payload`.
 
-Chạm ba file: `agent/application/ports.py` (`ExecutionTraceSink.append_step`
-nhận payload), `agent/application/service.py`, `entrypoints/agent_wiring.py`.
-Tách khỏi A1 vì A1 đủ đứng một mình, còn cái này nên chốt sau khi nhìn dữ liệu
-thật.
+Lý do mạnh nhất: `admin.record_turn` chỉ chạy khi lượt thành công, nên một lượt
+vỡ giữa chừng không để lại tin nhắn nào trong bảng `messages`. Trace là nơi duy
+nhất còn giữ nó.
+
+**`tools` chỉ mang `name` + `version`.** Đo trên catalog hiện có: 12 tool là
+10.735 byte, lặp y hệt ở mọi vòng. Schema tra ngược được từ catalog đã commit,
+nên chép nó vào trace là trả tiền lưu cho thứ đã nằm trong git.
+`ModelToolSpec` vì vậy mang thêm `version`, bắt buộc.
+
+**`max_tokens` không được ghi.** `AgentRuntime` không truyền nó — giá trị dùng là
+mặc định của `ModelClient`, tầng Runtime không nhìn thấy. Ghi một con số đoán là
+ghi sai.
+
+**Hai chỗ lặp được chấp nhận, đã đo:**
+
+- Vòng sau chứa trọn vòng trước, vì prompt chỉ được nối thêm
+  (`test_vong_sau_chua_tron_vong_truoc` canh điều đó). Không ghi đè, không xoá
+  vòng cũ: mỗi vòng là một sự kiện riêng, và lượt vỡ ở vòng N cần các vòng
+  trước còn nguyên.
+- Output của tool lưu hai lần: dạng object ở bước `tool_call`, dạng chuỗi JSON
+  trong `tool_results` của prompt vòng sau. Hai dạng khác nhau nên vân tay không
+  khử trùng lặp được. Nếu đo được rằng chỗ này chiếm phần lớn bucket, lời giải
+  là thay `tool_results.content` bằng con trỏ tới payload của bước `tool_call` —
+  đổi nội dung ghi, không đổi lược đồ.
+
+**Hàng rào §2.4.** Prompt giờ nằm lại trên đĩa, nên nếu token lọt vào prompt thì
+nó nằm lại trong trace.
+`test_prompt_luu_xuong_khong_mang_token_cua_nguoi_dung` chạy một lượt với
+`authorization` đặc biệt rồi soi mọi payload đã ghi.
 
 ---
 
 ## 5. Thứ tự commit
 
 1. `feat(api): an S3 object store for the core` — `core/objectstore.py` + test.
-   Chưa ai dùng, xanh độc lập.
+   Chưa ai dùng, xanh độc lập. ✅
 2. `feat(api): trace steps keep their payloads, not just fingerprints` — domain
-   + port + store + migration + repository + service + fake. Lõi của WP-A.
-3. `feat(api): tool payloads travel to the trace` — integration + wiring. Từ đây
-   payload thật bắt đầu được ghi.
-4. `feat(api): read a trace step's payload` — endpoint đọc.
-5. (A2) `feat(api): model calls keep what was sent and what came back`.
-6. `docs: ADR-0006` + cập nhật README.
+   + port + store + migration + repository + service, **và** phía Integration
+   cùng `wiring`. Lõi của WP-A.
+3. `feat(api): read a trace step's payload` — `get_payload` + endpoint, và cây
+   trace nói payload nằm ở đâu mà không mang nội dung.
+4. (A2) `feat(api): model calls keep what was sent and what came back`.
+5. `docs: ADR-0006` + cập nhật README.
+
+Kế hoạch ban đầu tách commit 2 và 3 (trace trước, integration sau). Q7 xoá ranh
+giới đó: đổi chữ ký `ToolInvocationSink` là điều kiện để payload tới được
+`TraceService`, nên tách ra chỉ tạo một commit giữa chừng có chữ ký đổi hai lần
+— churn không mua thêm gì.
 
 Mỗi commit phải xanh độc lập — kiểm bằng cách stash phần còn lại rồi chạy full
 suite, đúng cách đã làm với commit Notion.
