@@ -193,7 +193,10 @@ async def test_tool_call_cua_assistant_va_ket_qua_cua_tool_dich_dung_vai_tro() -
         ],
         tools=[
             ModelToolSpec(
-                name="slack.post_message", description="Gửi tin", input_schema={"type": "object"}
+                name="slack.post_message",
+                description="Gửi tin",
+                input_schema={"type": "object"},
+                version="1.0",
             )
         ],
     )

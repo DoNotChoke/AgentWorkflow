@@ -49,6 +49,7 @@ class IntegrationClient:
                 name=to_model_name(tool["tool_id"]),
                 description=tool["description"],
                 input_schema=tool["input_schema"],
+                version=tool["version"],
             )
             for tool in body
             if tool["tool_id"] in allowed_tool_ids

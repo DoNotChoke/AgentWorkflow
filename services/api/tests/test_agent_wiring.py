@@ -192,3 +192,35 @@ async def test_step_da_ghi_van_con_sau_khi_complete_that_bai() -> None:
         ).get(tenant_id=TENANT, trace_id=trace_id)
     assert len(detail.steps) == 1
     assert detail.trace.status.value == "running"
+
+
+async def test_sink_cat_payload_cua_buoc_model_call() -> None:
+    trace_id, sink = await start_agent_trace(
+        tenant_id=TENANT,
+        workspace_id="ws_1",
+        agent_id=f"agt_{uuid.uuid4().hex}",
+        conversation_id=f"cnv_{uuid.uuid4().hex}",
+        initiated_by="usr_1",
+    )
+    at = datetime.now(UTC)
+
+    await sink.append_step(
+        kind="model_call",
+        status="succeeded",
+        started_at=at,
+        completed_at=at,
+        input_payload={"system": "Bạn là trợ lý."},
+        output_payload={"text": "chào"},
+    )
+
+    async with session_scope() as session:
+        detail = await TraceService(
+            traces=SqlAlchemyExecutionTraceRepository(session),
+            payloads=InMemoryPayloadStore(),
+        ).get(tenant_id=TENANT, trace_id=trace_id)
+
+    step = detail.steps[0]
+    assert step.input_payload is not None
+    assert step.input_payload.inline == {"system": "Bạn là trợ lý."}
+    assert step.output_payload is not None
+    assert str(step.output_payload.location) == "inline"

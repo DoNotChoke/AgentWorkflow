@@ -290,11 +290,12 @@ class TraceService:
         parent_step_id: str | None = None,
         attributes: Mapping[str, Any] | None = None,
         error_category: str | None = None,
+        input_payload: Mapping[str, Any] | None = None,
+        output_payload: Mapping[str, Any] | None = None,
     ) -> TraceStep | None:
         """Ghi một bước bất kỳ từ dữ liệu nguyên thuỷ — cửa dành cho
         `entrypoints/agent_wiring.py`, tương tự `record_tool_call` dành cho
-        Integration nhưng không cố định `kind` và không mang `PayloadRef`
-        (bước của Agent không có payload tool để đính vân tay).
+        Integration nhưng không cố định `kind`.
 
         `kind`/`status` nhận đúng giá trị của `StepKind`/`StepStatus` dưới
         dạng chuỗi (`"model_call"`, `"tool_call"`, `"final_response"`, ...).
@@ -307,6 +308,8 @@ class TraceService:
             started_at=started_at,
             completed_at=completed_at,
             parent_step_id=parent_step_id,
+            input_payload=input_payload,
+            output_payload=output_payload,
             attributes=attributes,
             error_category=error_category,
         )

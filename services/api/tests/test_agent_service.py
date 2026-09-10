@@ -9,6 +9,7 @@ Mọi collaborator (`ModelClient`, `ToolCatalog`, `ToolExecutor`,
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -76,7 +77,10 @@ def make_conversation(**overrides: object) -> Conversation:
 
 
 TOOL_SPEC = ModelToolSpec(
-    name="slack__post_message", description="Gửi tin nhắn", input_schema={"type": "object"}
+    name="slack__post_message",
+    description="Gửi tin nhắn",
+    input_schema={"type": "object"},
+    version="1.0",
 )
 
 
@@ -225,6 +229,9 @@ class FakeConnectionSelectionStore:
 class FakeTraceSink:
     def __init__(self) -> None:
         self.steps: list[dict[str, Any]] = []
+        #: Cùng thứ tự với `steps`. Tách riêng để các so khớp `steps` cũ không
+        #: phải mang theo cả prompt.
+        self.payloads: list[dict[str, Any]] = []
 
     async def append_step(
         self,
@@ -235,7 +242,10 @@ class FakeTraceSink:
         completed_at: datetime,
         attributes: Mapping[str, Any] | None = None,
         error_category: str | None = None,
+        input_payload: Mapping[str, Any] | None = None,
+        output_payload: Mapping[str, Any] | None = None,
     ) -> None:
+        self.payloads.append({"input": input_payload, "output": output_payload})
         self.steps.append(
             {
                 "kind": kind,
@@ -720,3 +730,92 @@ async def test_loi_model_duoc_ghi_vao_trace_roi_nem_lai() -> None:
             "error_category": "ProviderUnavailable",
         }
     ]
+
+
+# ─── Payload của bước model_call ─────────────────────────────────────────────
+
+
+async def test_model_call_luu_prompt_da_gui_va_quyet_dinh_cua_model() -> None:
+    call = ModelToolCall(call_id="call_1", name="slack__post_message", input={"text": "hi"})
+    models = ScriptedModelClient([_tool_use(call), _end_turn("xong")])
+    trace = FakeTraceSink()
+    runtime = make_runtime(models=models, trace=trace)
+
+    await run(runtime, make_agent(), make_conversation(), user_message="gửi giúp mình")
+
+    request = trace.payloads[0]["input"]
+    assert request["model"] == "claude-sonnet-5"
+    assert request["system"] == "Bạn là trợ lý hữu ích."
+    assert request["turns"][-1]["text"] == "gửi giúp mình"
+
+    decision = trace.payloads[0]["output"]
+    assert decision["stop_reason"] == "tool_use"
+    assert decision["tool_calls"] == [
+        {"call_id": "call_1", "name": "slack__post_message", "input": {"text": "hi"}}
+    ]
+
+
+async def test_vong_sau_chua_tron_vong_truoc() -> None:
+    """Prompt chỉ được nối thêm, không sửa phần đã gửi — điều ADR-0006 dựa vào."""
+    call = ModelToolCall(call_id="call_1", name="slack__post_message", input={})
+    models = ScriptedModelClient([_tool_use(call), _end_turn("xong")])
+    trace = FakeTraceSink()
+    runtime = make_runtime(models=models, trace=trace)
+
+    await run(runtime, make_agent(), make_conversation())
+
+    first = trace.payloads[0]["input"]["turns"]
+    second = trace.payloads[2]["input"]["turns"]
+    assert second[: len(first)] == first
+    assert [turn["role"] for turn in second[len(first) :]] == ["assistant", "user"]
+    assert second[-1]["tool_results"][0]["call_id"] == "call_1"
+
+
+async def test_tool_trong_prompt_chi_mang_ten_va_version() -> None:
+    """Schema tra ngược được từ catalog đã commit, nên không chép vào mọi vòng."""
+    models = ScriptedModelClient([_end_turn("ok")])
+    trace = FakeTraceSink()
+    runtime = make_runtime(models=models, trace=trace)
+
+    await run(runtime, make_agent(), make_conversation())
+
+    assert trace.payloads[0]["input"]["tools"] == [
+        {"name": "slack__post_message", "version": "1.0"}
+    ]
+
+
+async def test_model_loi_van_luu_prompt_da_gui() -> None:
+    """Lượt hỏng không được lưu vào `messages` — trace là nơi duy nhất còn nó."""
+    models = ScriptedModelClient([ProviderUnavailableError("Anthropic đang gặp sự cố.")])
+    trace = FakeTraceSink()
+    runtime = make_runtime(models=models, trace=trace)
+
+    with pytest.raises(ProviderUnavailableError):
+        await run(runtime, make_agent(), make_conversation(), user_message="còn đó không")
+
+    assert trace.payloads[0]["input"]["turns"][-1]["text"] == "còn đó không"
+    assert trace.payloads[0]["output"] is None
+
+
+async def test_prompt_luu_xuong_khong_mang_token_cua_nguoi_dung() -> None:
+    """§2.4, giờ có thêm hệ quả: prompt nằm lại trong trace sau lượt chat."""
+    secret = "Bearer bi-mat-khong-duoc-luu-xuong-dia"
+    call = ModelToolCall(call_id="call_1", name="slack__post_message", input={})
+    models = ScriptedModelClient([_tool_use(call), _end_turn("xong")])
+    trace = FakeTraceSink()
+    runtime = make_runtime(models=models, trace=trace)
+    conversation = make_conversation()
+
+    await runtime.run_turn(
+        agent=make_agent(),
+        conversation=conversation,
+        history=(),
+        user_message="gửi giúp mình",
+        acting_user_id=conversation.user_id,
+        authorization=secret,
+        organization_id="org_1",
+        workspace_id="ws_1",
+    )
+
+    stored = json.dumps(trace.payloads, ensure_ascii=False)
+    assert "bi-mat-khong-duoc-luu" not in stored

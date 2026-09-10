@@ -121,6 +121,7 @@ async def test_loc_theo_whitelist_va_doi_ten_hop_le_cho_model(
             name="slack__post_message",
             description="Gửi tin nhắn",
             input_schema={"type": "object"},
+            version="1.0",
         ),
     )
 

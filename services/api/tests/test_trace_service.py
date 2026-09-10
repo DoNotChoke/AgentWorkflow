@@ -507,6 +507,35 @@ async def test_record_step_giu_lai_attributes_va_error_category(
     assert step.error_category == "ProviderUnavailable"
 
 
+async def test_record_step_cat_payload_cua_buoc_model_call(
+    service: TraceService, payloads: InMemoryPayloadStore
+) -> None:
+    trace = await service.start(
+        tenant_id=ORG_A,
+        workspace_id=WORKSPACE,
+        source=TraceSource.AGENT,
+        subject=TraceSubject(agent_id="agt_1", conversation_id="cnv_1"),
+        initiated_by="usr_1",
+        at=NOW,
+    )
+
+    step = await service.record_step(
+        tenant_id=ORG_A,
+        trace_id=trace.id,
+        kind="model_call",
+        status="succeeded",
+        started_at=NOW,
+        completed_at=NOW,
+        input_payload={"system": "Bạn là trợ lý."},
+        output_payload={"text": "chào"},
+    )
+
+    assert step is not None
+    assert step.input_payload is not None
+    assert step.input_payload.inline == {"system": "Bạn là trợ lý."}
+    assert payloads.puts == [(ORG_A, {"system": "Bạn là trợ lý."}), (ORG_A, {"text": "chào"})]
+
+
 async def test_record_step_tra_none_khi_khong_co_trace(service: TraceService) -> None:
     step = await service.record_step(
         tenant_id=ORG_A,

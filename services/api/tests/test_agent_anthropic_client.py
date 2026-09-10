@@ -197,6 +197,7 @@ async def test_gui_dung_system_va_lich_su() -> None:
                 name="slack.post_message",
                 description="Gửi tin nhắn",
                 input_schema={"type": "object"},
+                version="1.0",
             )
         ],
         max_tokens=2048,

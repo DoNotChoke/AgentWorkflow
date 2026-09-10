@@ -63,7 +63,10 @@ WS_HEADER = "x-workspace-id"
 
 TOOL_ID = "slack.post_message"
 TOOL_SPEC = ModelToolSpec(
-    name=to_model_name(TOOL_ID), description="Gửi tin nhắn Slack", input_schema={"type": "object"}
+    name=to_model_name(TOOL_ID),
+    description="Gửi tin nhắn Slack",
+    input_schema={"type": "object"},
+    version="1.0",
 )
 
 

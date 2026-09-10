@@ -75,6 +75,8 @@ class AgentTraceSink:
         completed_at: datetime,
         attributes: Mapping[str, Any] | None = None,
         error_category: str | None = None,
+        input_payload: Mapping[str, Any] | None = None,
+        output_payload: Mapping[str, Any] | None = None,
     ) -> None:
         async with session_scope() as session:
             await _build_trace_service(session).record_step(
@@ -86,6 +88,8 @@ class AgentTraceSink:
                 completed_at=completed_at,
                 attributes=attributes,
                 error_category=error_category,
+                input_payload=input_payload,
+                output_payload=output_payload,
             )
 
 

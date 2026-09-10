@@ -21,6 +21,8 @@ class ModelToolSpec:
     name: str
     description: str
     input_schema: Mapping[str, Any]
+    #: Version trong catalog — đủ để tra ngược đúng schema đã gửi cho model.
+    version: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +193,8 @@ class ExecutionTraceSink(Protocol):
         completed_at: datetime,
         attributes: Mapping[str, Any] | None = None,
         error_category: str | None = None,
+        input_payload: Mapping[str, Any] | None = None,
+        output_payload: Mapping[str, Any] | None = None,
     ) -> None: ...
 
 

@@ -62,11 +62,14 @@ class _NullTraceSink:
         completed_at: datetime,
         attributes: Mapping[str, Any] | None = None,
         error_category: str | None = None,
+        input_payload: Mapping[str, Any] | None = None,
+        output_payload: Mapping[str, Any] | None = None,
     ) -> None:
         # Tham số phải khớp tên với Protocol (gọi bằng keyword) nên không đổi
         # thành `_kind` được — `del` là cách không chạm ARG002 mà không đổi
         # chữ ký.
         del kind, status, started_at, completed_at, attributes, error_category
+        del input_payload, output_payload
 
 
 class _NullEventSink:
@@ -170,6 +173,51 @@ def _to_model_turns(messages: Sequence[Message]) -> list[ModelTurn]:
 
     flush()
     return turns
+
+
+def _request_payload(
+    *, agent: Agent, turns: Sequence[ModelTurn], tools: Sequence[ModelToolSpec]
+) -> dict[str, Any]:
+    """Thứ đã gửi cho model, ở dạng lưu được vào trace.
+
+    Tool chỉ giữ tên và version: schema nằm trong catalog đã commit, tra ngược
+    được, còn chép nó vào mọi vòng là lặp lại ~10 KB mỗi lần.
+    """
+    return {
+        "model": agent.model,
+        "system": agent.system_prompt,
+        "tools": [{"name": tool.name, "version": tool.version} for tool in tools],
+        "turns": [_turn_payload(turn) for turn in turns],
+    }
+
+
+def _turn_payload(turn: ModelTurn) -> dict[str, Any]:
+    return {
+        "role": turn.role,
+        "text": turn.text,
+        "tool_calls": [_call_payload(call) for call in turn.tool_calls],
+        "tool_results": [
+            {"call_id": result.call_id, "content": result.content, "is_error": result.is_error}
+            for result in turn.tool_results
+        ],
+    }
+
+
+def _call_payload(call: ModelToolCall) -> dict[str, Any]:
+    return {"call_id": call.call_id, "name": call.name, "input": dict(call.input)}
+
+
+def _response_payload(response: ModelResponse) -> dict[str, Any]:
+    return {
+        "model": response.model,
+        "text": response.text,
+        "stop_reason": str(response.stop_reason),
+        "tool_calls": [_call_payload(call) for call in response.tool_calls],
+        "usage": {
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+        },
+    }
 
 
 def _idempotency_key(*, turn_id: str, tool_id: str, tool_input: Mapping[str, Any]) -> str:
@@ -318,6 +366,7 @@ class AgentRuntime:
     async def _complete(
         self, *, agent: Agent, turns: list[ModelTurn], tools: Sequence[ModelToolSpec]
     ) -> ModelResponse:
+        request = _request_payload(agent=agent, turns=turns, tools=tools)
         started = datetime.now(UTC)
         try:
             response = await self._models.complete(
@@ -331,6 +380,7 @@ class AgentRuntime:
                 completed_at=datetime.now(UTC),
                 attributes={"model": agent.model},
                 error_category=exc.category.value,
+                input_payload=request,
             )
             raise
 
@@ -346,6 +396,8 @@ class AgentRuntime:
                 "input_tokens": response.usage.input_tokens,
                 "output_tokens": response.usage.output_tokens,
             },
+            input_payload=request,
+            output_payload=_response_payload(response),
         )
         return response
 
