@@ -171,6 +171,7 @@ class FakeToolExecutor:
                 "tool_input": dict(tool_input),
                 "connection_id": connection_id,
                 "idempotency_key": idempotency_key,
+                "caller": caller,
             }
         )
         result = self._results.get(
@@ -232,6 +233,8 @@ class FakeTraceSink:
         #: Cùng thứ tự với `steps`. Tách riêng để các so khớp `steps` cũ không
         #: phải mang theo cả prompt.
         self.payloads: list[dict[str, Any]] = []
+        #: Cùng thứ tự với `steps`, cùng lý do tách riêng như `payloads`.
+        self.step_ids: list[str | None] = []
 
     async def append_step(
         self,
@@ -244,8 +247,10 @@ class FakeTraceSink:
         error_category: str | None = None,
         input_payload: Mapping[str, Any] | None = None,
         output_payload: Mapping[str, Any] | None = None,
+        step_id: str | None = None,
     ) -> None:
         self.payloads.append({"input": input_payload, "output": output_payload})
+        self.step_ids.append(step_id)
         self.steps.append(
             {
                 "kind": kind,
@@ -711,6 +716,57 @@ async def test_tool_replayed_duoc_ghi_dung_trang_thai_vao_trace() -> None:
 
     tool_step = next(step for step in trace.steps if step["kind"] == "tool_call")
     assert tool_step["status"] == "replayed"
+
+
+async def test_buoc_tool_call_la_cha_cua_buoc_gateway_ghi() -> None:
+    call = ModelToolCall(call_id="call_1", name="slack__post_message", input={})
+    models = ScriptedModelClient([_tool_use(call), _end_turn("xong")])
+    executor = FakeToolExecutor()
+    trace = FakeTraceSink()
+    runtime = make_runtime(models=models, executor=executor, trace=trace)
+    caller = ToolCallContext(agent_id="agt_1", execution_trace_id="trc_1")
+
+    await run(runtime, make_agent(), make_conversation(), caller=caller)
+
+    step_id = trace.step_ids[1]
+    assert step_id is not None
+    assert step_id.startswith("stp_")
+    assert executor.calls[0]["caller"] == ToolCallContext(
+        agent_id="agt_1", execution_trace_id="trc_1", parent_step_id=step_id
+    )
+
+
+async def test_moi_tool_call_mot_step_id_rieng() -> None:
+    first = ModelToolCall(call_id="call_1", name="slack__post_message", input={"text": "a"})
+    second = ModelToolCall(call_id="call_2", name="slack__post_message", input={"text": "b"})
+    models = ScriptedModelClient([_tool_use(first, second), _end_turn("xong")])
+    executor = FakeToolExecutor()
+    trace = FakeTraceSink()
+    runtime = make_runtime(models=models, executor=executor, trace=trace)
+
+    await run(runtime, make_agent(), make_conversation())
+
+    tool_step_ids = [
+        step_id
+        for step, step_id in zip(trace.steps, trace.step_ids, strict=True)
+        if step["kind"] == "tool_call"
+    ]
+    assert tool_step_ids == [c["caller"].parent_step_id for c in executor.calls]
+    assert len(set(tool_step_ids)) == 2
+
+
+async def test_tool_that_bai_van_ghi_dung_step_id_da_gui_cho_gateway() -> None:
+    call = ModelToolCall(call_id="call_1", name="slack__post_message", input={})
+    models = ScriptedModelClient([_tool_use(call), _end_turn("ok")])
+    executor = FakeToolExecutor()
+    executor.set_result("slack__post_message", ProviderUnavailableError("Slack đang bận."))
+    trace = FakeTraceSink()
+    runtime = make_runtime(models=models, executor=executor, trace=trace)
+
+    await run(runtime, make_agent(), make_conversation())
+
+    assert trace.steps[1]["status"] == "failed"
+    assert trace.step_ids[1] == executor.calls[0]["caller"].parent_step_id
 
 
 async def test_loi_model_duoc_ghi_vao_trace_roi_nem_lai() -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -64,12 +64,13 @@ class _NullTraceSink:
         error_category: str | None = None,
         input_payload: Mapping[str, Any] | None = None,
         output_payload: Mapping[str, Any] | None = None,
+        step_id: str | None = None,
     ) -> None:
         # Tham số phải khớp tên với Protocol (gọi bằng keyword) nên không đổi
         # thành `_kind` được — `del` là cách không chạm ARG002 mà không đổi
         # chữ ký.
         del kind, status, started_at, completed_at, attributes, error_category
-        del input_payload, output_payload
+        del input_payload, output_payload, step_id
 
 
 class _NullEventSink:
@@ -418,6 +419,8 @@ class AgentRuntime:
         thay vì làm vỡ cả lượt hội thoại."""
         tool_id = from_model_name(call.name)
         started = datetime.now(UTC)
+        # Phát id trước để bước Gateway ghi được trỏ về bước này làm cha.
+        step_id = new_id(ResourceKind.TRACE_STEP)
 
         try:
             if not agent.allows_tool(tool_id):
@@ -458,7 +461,7 @@ class AgentRuntime:
                 idempotency_key=_idempotency_key(
                     turn_id=turn_id, tool_id=tool_id, tool_input=call.input
                 ),
-                caller=caller,
+                caller=replace(caller or ToolCallContext(), parent_step_id=step_id),
             )
         except AppError as exc:
             completed = datetime.now(UTC)
@@ -469,6 +472,7 @@ class AgentRuntime:
                 completed_at=completed,
                 attributes={"tool_id": tool_id},
                 error_category=exc.category.value,
+                step_id=step_id,
             )
             message = _make_message(
                 conversation_id,
@@ -490,6 +494,7 @@ class AgentRuntime:
             started_at=started,
             completed_at=completed,
             attributes={"tool_id": tool_id, "invocation_id": result.invocation_id},
+            step_id=step_id,
         )
 
         message = _make_message(

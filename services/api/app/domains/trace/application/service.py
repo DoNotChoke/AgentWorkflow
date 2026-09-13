@@ -161,14 +161,18 @@ class TraceService:
         error_category: str | None = None,
         otel_trace_id: str | None = None,
         otel_span_id: str | None = None,
+        step_id: str | None = None,
     ) -> TraceStep:
-        """Ghi một bước vào `trace`. Payload được cất trước, bước ghi sau."""
+        """Ghi một bước vào `trace`. Payload được cất trước, bước ghi sau.
+
+        `step_id` cho người gọi đã phát id trước để bước con trỏ tới nó.
+        """
         ensure_not_terminal(trace)
         attrs = dict(attributes or {})
         ensure_attributes_safe(attrs)
 
         step = TraceStep(
-            id=new_id(ResourceKind.TRACE_STEP),
+            id=step_id or new_id(ResourceKind.TRACE_STEP),
             trace_id=trace.id,
             kind=kind,
             status=status,
@@ -208,6 +212,7 @@ class TraceService:
         error_category: str | None = None,
         otel_trace_id: str | None = None,
         otel_span_id: str | None = None,
+        step_id: str | None = None,
     ) -> TraceStep | None:
         """Biến thể của `append_step` cho người gọi chỉ cầm `trace_id`, không
         giữ `ExecutionTrace` trong tay.
@@ -237,6 +242,7 @@ class TraceService:
             error_category=error_category,
             otel_trace_id=otel_trace_id,
             otel_span_id=otel_span_id,
+            step_id=step_id,
         )
 
     async def record_tool_call(
@@ -292,6 +298,7 @@ class TraceService:
         error_category: str | None = None,
         input_payload: Mapping[str, Any] | None = None,
         output_payload: Mapping[str, Any] | None = None,
+        step_id: str | None = None,
     ) -> TraceStep | None:
         """Ghi một bước bất kỳ từ dữ liệu nguyên thuỷ — cửa dành cho
         `entrypoints/agent_wiring.py`, tương tự `record_tool_call` dành cho
@@ -312,6 +319,7 @@ class TraceService:
             output_payload=output_payload,
             attributes=attributes,
             error_category=error_category,
+            step_id=step_id,
         )
 
     async def complete(

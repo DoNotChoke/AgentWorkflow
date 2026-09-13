@@ -536,6 +536,41 @@ async def test_record_step_cat_payload_cua_buoc_model_call(
     assert payloads.puts == [(ORG_A, {"system": "Bạn là trợ lý."}), (ORG_A, {"text": "chào"})]
 
 
+async def test_record_step_dung_step_id_nguoi_goi_phat_truoc(service: TraceService) -> None:
+    trace = await service.start(
+        tenant_id=ORG_A,
+        workspace_id=WORKSPACE,
+        source=TraceSource.AGENT,
+        subject=TraceSubject(agent_id="agt_1", conversation_id="cnv_1"),
+        initiated_by="usr_1",
+        at=NOW,
+    )
+
+    given = await service.record_step(
+        tenant_id=ORG_A,
+        trace_id=trace.id,
+        kind="tool_call",
+        status="succeeded",
+        started_at=NOW,
+        completed_at=NOW,
+        step_id="stp_phat_truoc",
+    )
+    generated = await service.record_step(
+        tenant_id=ORG_A,
+        trace_id=trace.id,
+        kind="final_response",
+        status="succeeded",
+        started_at=NOW,
+        completed_at=NOW,
+    )
+
+    assert given is not None
+    assert given.id == "stp_phat_truoc"
+    assert generated is not None
+    assert generated.id.startswith("stp_")
+    assert generated.id != given.id
+
+
 async def test_record_step_tra_none_khi_khong_co_trace(service: TraceService) -> None:
     step = await service.record_step(
         tenant_id=ORG_A,

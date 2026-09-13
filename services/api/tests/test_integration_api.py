@@ -537,6 +537,34 @@ def test_goi_tool_thanh_cong_ghi_duoc_buoc_tool_call_vao_trace(
     assert step["attributes"]["tool_id"] == "slack.post_message"
     assert step["attributes"]["provider"] == "slack"
     assert step["attributes"]["connection_id"] == connection
+    assert step["attributes"]["invocation_id"] == reply.json()["invocation_id"]
+
+
+def test_buoc_gateway_ghi_nam_duoi_buoc_cha_nguoi_goi_khai(
+    client: TestClient, slack: FakeSlack
+) -> None:
+    """Agent Runtime khai `parent_step_id` là bước `tool_call` của chính nó.
+    Bước cha chỉ được ghi sau khi HTTP trả về, nên lúc này nó chưa tồn tại —
+    con vẫn phải ghi được."""
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    connection = seed(client, _user_id(an), org, workspace, "workspace")
+    trace_id = seed_trace(client, org, workspace)
+
+    slack.next(json={"ok": True, "channel": "C123", "ts": "1712345678.000100"})
+    reply = an.post(
+        f"{TOOLS}/slack.post_message/invoke",
+        json={
+            "connection_id": connection,
+            "input": {"channel": "C123", "text": "xin chào"},
+            "idempotency_key": f"idm_{uuid.uuid4().hex}",
+            "caller": {"execution_trace_id": trace_id, "parent_step_id": "stp_cua_agent"},
+        },
+    )
+    assert reply.status_code == 200, reply.text
+
+    step = an.get(f"/v1/traces/{trace_id}").json()["steps"][0]
+    assert step["parent_step_id"] == "stp_cua_agent"
 
 
 def test_goi_tool_that_bai_cung_ghi_duoc_buoc_that_bai_vao_trace(

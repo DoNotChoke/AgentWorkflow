@@ -164,8 +164,8 @@ class ExecutionTrace:
 class TraceStep:
     """Một bước trong trace. Cây, không phải danh sách phẳng.
 
-    `parent_step_id` nối một `TOOL_CALL` vào đúng `MODEL_CALL` đã quyết định
-    gọi nó — đây là thứ cho phép UI dựng lại "vì sao Agent làm việc này".
+    `parent_step_id` nối một bước vào bước bao nó: `TOOL_CALL` do Gateway ghi
+    nằm dưới `TOOL_CALL` của Agent đã gửi lời gọi đó.
     """
 
     id: str

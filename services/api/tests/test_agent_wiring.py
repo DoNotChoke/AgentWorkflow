@@ -100,6 +100,30 @@ async def test_sink_ghi_duoc_buoc_that() -> None:
     assert detail.steps[0].attributes == {"model": "claude-sonnet-5"}
 
 
+async def test_sink_ghi_dung_step_id_da_phat_truoc() -> None:
+    trace_id, sink = await start_agent_trace(
+        tenant_id=TENANT,
+        workspace_id="ws_1",
+        agent_id=f"agt_{uuid.uuid4().hex}",
+        conversation_id=f"cnv_{uuid.uuid4().hex}",
+        initiated_by="usr_1",
+    )
+    at = datetime.now(UTC)
+    step_id = f"stp_{uuid.uuid4().hex}"
+
+    await sink.append_step(
+        kind="tool_call", status="succeeded", started_at=at, completed_at=at, step_id=step_id
+    )
+
+    async with session_scope() as session:
+        detail = await TraceService(
+            traces=SqlAlchemyExecutionTraceRepository(session),
+            payloads=InMemoryPayloadStore(),
+        ).get(tenant_id=TENANT, trace_id=trace_id)
+
+    assert [step.id for step in detail.steps] == [step_id]
+
+
 async def test_mot_luot_day_du_model_call_tool_call_final_response() -> None:
     trace_id, sink = await start_agent_trace(
         tenant_id=TENANT,

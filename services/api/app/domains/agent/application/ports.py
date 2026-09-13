@@ -195,6 +195,7 @@ class ExecutionTraceSink(Protocol):
         error_category: str | None = None,
         input_payload: Mapping[str, Any] | None = None,
         output_payload: Mapping[str, Any] | None = None,
+        step_id: str | None = None,
     ) -> None: ...
 
 

@@ -315,6 +315,7 @@ class IntegrationTraceSink:
         idempotency_key = invocation.idempotency_key  # type: ignore[attr-defined]
 
         attributes: dict[str, Any] = {
+            "invocation_id": invocation.invocation_id,  # type: ignore[attr-defined]
             "tool_id": invocation.tool_id,  # type: ignore[attr-defined]
             "tool_version": invocation.tool_version,  # type: ignore[attr-defined]
             "provider": invocation.provider,  # type: ignore[attr-defined]
