@@ -18,7 +18,9 @@ from app.core.errors import (
     ApprovalRejectedError,
     AuthorizationError,
     ConnectionExpiredError,
+    Delivery,
     ErrorCategory,
+    OutcomeUnknownError,
     PlatformTimeoutError,
     ProviderPermanentError,
     ProviderUnavailableError,
@@ -538,19 +540,131 @@ async def test_tool_write_khong_co_khoa_thi_khong_thu_lai() -> None:
         tool=loose,
     )
 
-    with pytest.raises(PlatformTimeoutError):
+    with pytest.raises(OutcomeUnknownError):
         await gateway.invoke(command(WRITE_TOOL, payload={"channel": "C123", "text": "hi"}))
 
     assert parts["connector"].calls == 1
 
 
-async def test_tool_write_co_khoa_thi_thu_lai_duoc() -> None:
-    """Chiều ngược lại: có khoá thì bản sao bị sổ chặn, nên retry an toàn."""
-    gateway, parts = build_gateway(outcomes=[PlatformTimeoutError("qua han"), _ok()])
+async def test_tool_ghi_het_han_cho_phan_hoi_thi_khong_gui_lai_du_co_khoa() -> None:
+    """Sổ idempotency chặn người gọi lặp lại `invoke`, không chặn Gateway tự gọi
+    provider lần hai. Slack có thể đã đăng tin trước khi phản hồi bị lỡ."""
+    gateway, parts = build_gateway(
+        outcomes=[PlatformTimeoutError("qua han", delivery=Delivery.UNKNOWN), _ok()]
+    )
+
+    with pytest.raises(OutcomeUnknownError) as caught:
+        await gateway.invoke(post())
+
+    assert parts["connector"].calls == 1
+    assert caught.value.details["cause_category"] == "Timeout"
+    assert caught.value.retryable is False
+
+
+async def test_tool_ghi_5xx_thi_khong_gui_lai() -> None:
+    gateway, parts = build_gateway(
+        outcomes=[ProviderUnavailableError("502", delivery=Delivery.UNKNOWN), _ok()]
+    )
+
+    with pytest.raises(OutcomeUnknownError):
+        await gateway.invoke(post())
+
+    assert parts["connector"].calls == 1
+
+
+async def test_tool_ghi_chua_noi_duoc_toi_provider_thi_thu_lai() -> None:
+    gateway, parts = build_gateway(
+        outcomes=[PlatformTimeoutError("khong noi duoc", delivery=Delivery.NOT_SENT), _ok()]
+    )
 
     await gateway.invoke(post())
 
     assert parts["connector"].calls == 2
+
+
+async def test_tool_ghi_bi_provider_tiet_luu_thi_thu_lai() -> None:
+    gateway, parts = build_gateway(
+        outcomes=[RateLimitedError("cham lai", delivery=Delivery.NOT_SENT), _ok()]
+    )
+
+    await gateway.invoke(post())
+
+    assert parts["connector"].calls == 2
+
+
+async def test_tool_ghi_chua_gui_roi_khong_ro_thi_dung_o_lan_hai() -> None:
+    gateway, parts = build_gateway(
+        outcomes=[
+            ProviderUnavailableError("tu choi ket noi", delivery=Delivery.NOT_SENT),
+            PlatformTimeoutError("qua han", delivery=Delivery.UNKNOWN),
+            _ok(),
+        ]
+    )
+
+    with pytest.raises(OutcomeUnknownError) as caught:
+        await gateway.invoke(post())
+
+    assert parts["connector"].calls == 2
+    assert caught.value.details["attempts"] == "2"
+
+
+async def test_connector_khong_khai_delivery_thi_coi_la_khong_ro() -> None:
+    """Mặc định an toàn cho connector về sau: không nói gì thì không gửi lại."""
+    gateway, parts = build_gateway(outcomes=[ProviderUnavailableError("503"), _ok()])
+
+    with pytest.raises(OutcomeUnknownError):
+        await gateway.invoke(post())
+
+    assert parts["connector"].calls == 1
+
+
+async def test_tool_ghi_loi_luc_lay_credential_van_thu_lai_duoc() -> None:
+    """Chưa có gì rời khỏi hệ thống, ví dụ không lấy được lock làm mới token."""
+    gateway, parts = build_gateway()
+    parts["credentials"].error = PlatformTimeoutError("lock ban")
+
+    with pytest.raises(RetryExhaustedError):
+        await gateway.invoke(post())
+
+    assert parts["connector"].calls == 0
+    assert parts["journal"].count("credential") == 3
+
+
+async def test_tool_doc_khong_ro_van_thu_lai() -> None:
+    gateway, parts = build_gateway(
+        outcomes=[
+            PlatformTimeoutError("qua han", delivery=Delivery.UNKNOWN),
+            ProviderUnavailableError("502", delivery=Delivery.UNKNOWN),
+            _ok(),
+        ]
+    )
+
+    await gateway.invoke(command())
+
+    assert parts["connector"].calls == 3
+
+
+async def test_tool_ghi_loi_vinh_vien_giu_nguyen_hinh() -> None:
+    """Chỉ lỗi tạm thời mới mang nghĩa "có thể đã làm". Provider từ chối hẳn
+    thì nói đúng như vậy."""
+    gateway, _parts = build_gateway(
+        outcomes=[ProviderPermanentError("sai tham so", delivery=Delivery.UNKNOWN)]
+    )
+
+    with pytest.raises(ProviderPermanentError):
+        await gateway.invoke(post())
+
+
+async def test_khong_ro_ket_qua_duoc_chot_vao_so_va_trace() -> None:
+    gateway, parts = build_gateway(
+        outcomes=[PlatformTimeoutError("qua han", delivery=Delivery.UNKNOWN)]
+    )
+
+    with pytest.raises(OutcomeUnknownError):
+        await gateway.invoke(post())
+
+    assert parts["idempotency"].failed[0]["category"] is ErrorCategory.OUTCOME_UNKNOWN
+    assert parts["trace"].records[0].error_category == "OutcomeUnknown"
 
 
 async def test_het_luot_thi_boc_thanh_retry_exhausted() -> None:

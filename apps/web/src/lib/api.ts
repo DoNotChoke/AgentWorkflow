@@ -23,6 +23,7 @@ export type ErrorCategory =
   | "WorkflowExecutionError"
   | "MissingConnection"
   | "ConnectionChoiceRequired"
+  | "OutcomeUnknown"
   | "InternalError";
 
 type ErrorBody = {

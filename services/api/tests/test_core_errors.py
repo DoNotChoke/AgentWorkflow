@@ -11,7 +11,9 @@ from __future__ import annotations
 from app.core.errors import (
     AppError,
     AuthorizationError,
+    Delivery,
     ErrorCategory,
+    OutcomeUnknownError,
     ProviderPermanentError,
     ProviderUnavailableError,
     RateLimitedError,
@@ -28,6 +30,19 @@ def test_loi_vinh_vien_thi_khong_retry() -> None:
     assert not ProviderPermanentError("endpoint bi go bo").retryable
     assert not ValidationError("input sai").retryable
     assert not AuthorizationError("khong du quyen").retryable
+
+
+def test_khong_ro_ket_qua_thi_khong_retry() -> None:
+    """Retry một thao tác ghi có thể đã xảy ra là tạo bản sao — kể cả khi Temporal
+    là bên retry."""
+    error = OutcomeUnknownError("khong ro da gui chua")
+    assert not error.retryable
+    assert error.http_status == 502
+
+
+def test_delivery_mac_dinh_la_khong_gan_voi_loi_goi_ra_ngoai() -> None:
+    assert ValidationError("x").delivery is None
+    assert ProviderUnavailableError("x", delivery=Delivery.NOT_SENT).delivery is Delivery.NOT_SENT
 
 
 def test_moi_category_deu_co_ma_http() -> None:

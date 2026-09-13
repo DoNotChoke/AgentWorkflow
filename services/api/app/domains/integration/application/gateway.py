@@ -10,7 +10,14 @@ from typing import Any
 import jsonschema
 
 from app.core.context import current_context
-from app.core.errors import AppError, ErrorCategory, InternalError, RetryExhaustedError
+from app.core.errors import (
+    AppError,
+    Delivery,
+    ErrorCategory,
+    InternalError,
+    OutcomeUnknownError,
+    RetryExhaustedError,
+)
 from app.core.ids import ResourceKind, new_id
 from app.core.logging import get_logger
 from app.core.observability import current_otel_ids
@@ -121,9 +128,7 @@ class IntegrationGateway:
                     )
                     await self._report_if_unusable(command, error)
 
-                    if attempt >= tool.retry.max_attempts or not may_retry(
-                        tool, error, idempotent=key is not None
-                    ):
+                    if attempt >= tool.retry.max_attempts or not may_retry(tool, error):
                         raise
 
                     await self._pause(wait_for(tool, attempt + 1, error))
@@ -143,7 +148,7 @@ class IntegrationGateway:
             raise InternalError("Vòng thử lại kết thúc mà không có kết quả.")
 
         except AppError as error:
-            final = self._exhausted(tool, error, attempts, last_error)
+            final = self._final_error(tool, error, attempts, last_error)
             await self._failed(tool, connector, command, key, final, attempts, started, clock)
             raise final from (None if final is error else error)
 
@@ -227,25 +232,40 @@ class IntegrationGateway:
     ) -> None:
         """Hai cổng chạy mỗi lượt thử, vì mỗi lượt là một lời gọi thật.
         Từ chối ở đây không phải một lời gọi hỏng, mà là một quyết định không gọi."""
-        await self._breaker.check(
-            connector=connector,
-            tenant_id=command.tenant_id,
-            connection_id=command.connection_id,
-        )
-        await self._rate_limiter.acquire(target=_target(command), tool=tool, connector=connector)
+        try:
+            await self._breaker.check(
+                connector=connector,
+                tenant_id=command.tenant_id,
+                connection_id=command.connection_id,
+            )
+            await self._rate_limiter.acquire(
+                target=_target(command), tool=tool, connector=connector
+            )
+        except AppError as error:
+            _assume_delivery(error, Delivery.NOT_SENT)
+            raise
 
     async def _call(self, tool: ToolSpec, connector: ConnectorSpec, command: ToolInvocation) -> Any:
-        credential = await self._credentials.resolve(
-            connection_id=command.connection_id,
-            tenant_id=command.tenant_id,
-            workspace_id=command.workspace_id,
-            acting_user_id=command.acting_user_id,
-            required_scopes=tool.required_scopes,
-        )
+        try:
+            credential = await self._credentials.resolve(
+                connection_id=command.connection_id,
+                tenant_id=command.tenant_id,
+                workspace_id=command.workspace_id,
+                acting_user_id=command.acting_user_id,
+                required_scopes=tool.required_scopes,
+            )
+        except AppError as error:
+            _assume_delivery(error, Delivery.NOT_SENT)
+            raise
 
-        return await self._connector.call(
-            tool=tool, connector=connector, credential=credential, payload=command.input
-        )
+        try:
+            return await self._connector.call(
+                tool=tool, connector=connector, credential=credential, payload=command.input
+            )
+        except AppError as error:
+            # Connector không nói gì thì coi như không rõ: mặc định không gửi lại.
+            _assume_delivery(error, Delivery.UNKNOWN)
+            raise
 
     async def _report_if_unusable(self, command: ToolInvocation, error: AppError) -> None:
         """Provider vừa nói token này chết. Báo ngược cho domain `connection`.
@@ -261,19 +281,33 @@ class IntegrationGateway:
             reason=str(error.details.get("provider_code", "provider_rejected_token")),
         )
 
-    def _exhausted(
+    def _final_error(
         self,
         tool: ToolSpec,
         error: AppError,
         attempts: int,
         last: AppError | None,
     ) -> AppError:
-        """Hết lượt thử thì bọc lại thành `RetryExhaustedError`.
+        """Lỗi trả cho người gọi khi vòng thử dừng.
 
-        `RETRY_EXHAUSTED` **không** nằm trong `RETRYABLE`, nên Temporal ở Phase
-        4 sẽ không chồng thêm một vòng retry nữa lên trên vòng đã cạn.
+        Tool ghi dừng ở một lỗi có thể đến sau khi provider đã làm → `OutcomeUnknown`.
+        Hết lượt thử → `RetryExhausted`. Cả hai **không** nằm trong `RETRYABLE`, nên
+        Temporal ở Phase 4 không chồng thêm một vòng retry nữa.
         """
-        if attempts <= 1 or not may_retry(tool, error, idempotent=True):
+        if tool.side_effect.mutates and error.retryable and error.delivery is Delivery.UNKNOWN:
+            return OutcomeUnknownError(
+                f"Không rõ {tool.tool_id} đã được thực hiện hay chưa ({error.message}). "
+                "Đừng gọi lại ngay: hãy kiểm tra kết quả trước.",
+                details={
+                    "tool_id": tool.tool_id,
+                    "attempts": str(attempts),
+                    "cause_category": error.category.value,
+                },
+                delivery=Delivery.UNKNOWN,
+                cause=error,
+            )
+
+        if attempts <= 1 or not may_retry(tool, error):
             return error
 
         # `RateLimited` giữ nguyên hình. Nó mang `Retry-After` — một chỉ dẫn
@@ -493,6 +527,12 @@ class IntegrationGateway:
         import asyncio
 
         await asyncio.sleep(seconds)
+
+
+def _assume_delivery(error: AppError, delivery: Delivery) -> None:
+    """Điền `delivery` theo chỗ lỗi xảy ra, nếu nơi ném chưa tự khai."""
+    if error.delivery is None:
+        error.delivery = delivery
 
 
 def _target(command: ToolInvocation) -> RateLimitTarget:

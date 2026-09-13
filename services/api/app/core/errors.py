@@ -22,7 +22,17 @@ class ErrorCategory(StrEnum):
     WORKFLOW_EXECUTION = "WorkflowExecutionError"
     MISSING_CONNECTION = "MissingConnection"
     CONNECTION_CHOICE_REQUIRED = "ConnectionChoiceRequired"
+    OUTCOME_UNKNOWN = "OutcomeUnknown"
     INTERNAL = "InternalError"
+
+
+class Delivery(StrEnum):
+    """Yêu cầu đã tới được bên kia chưa, tại lúc lỗi xảy ra."""
+
+    #: Chắc chắn chưa: bên kia không thể đã làm gì.
+    NOT_SENT = "not_sent"
+    #: Có thể đã tới: bên kia có thể đã làm xong.
+    UNKNOWN = "unknown"
 
 
 #: Lỗi nào đáng retry. Temporal Activity retry policy đọc bảng này.
@@ -50,6 +60,7 @@ _HTTP_STATUS: dict[ErrorCategory, int] = {
     ErrorCategory.WORKFLOW_EXECUTION: 500,
     ErrorCategory.MISSING_CONNECTION: 409,
     ErrorCategory.CONNECTION_CHOICE_REQUIRED: 409,
+    ErrorCategory.OUTCOME_UNKNOWN: 502,
     ErrorCategory.INTERNAL: 500,
 }
 
@@ -66,6 +77,7 @@ class AppError(Exception):
         category: ErrorCategory | None = None,
         details: dict[str, Any] | None = None,
         retry_after_seconds: float | None = None,
+        delivery: Delivery | None = None,
         cause: Exception | None = None,
     ) -> None:
         super().__init__(message)
@@ -74,6 +86,8 @@ class AppError(Exception):
             self.category = category
         self.details = details or {}
         self.retry_after_seconds = retry_after_seconds
+        #: `None` khi lỗi không gắn với một lời gọi ra bên ngoài.
+        self.delivery = delivery
         self.__cause__ = cause
 
     @property
@@ -170,6 +184,13 @@ class ConnectionChoiceRequiredError(AppError):
     được chốt cho cuộc hội thoại đang hành động — xem ADR-0004."""
 
     category = ErrorCategory.CONNECTION_CHOICE_REQUIRED
+
+
+class OutcomeUnknownError(AppError):
+    """Một thao tác ghi có thể đã được bên kia thực hiện, nhưng không xác nhận
+    được. Không retry: gửi lại có thể tạo bản sao."""
+
+    category = ErrorCategory.OUTCOME_UNKNOWN
 
 
 class InternalError(AppError):

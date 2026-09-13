@@ -17,6 +17,7 @@ from app.core.errors import (
     ErrorCategory,
     InternalError,
     MissingScopeError,
+    OutcomeUnknownError,
     PlatformTimeoutError,
     ProviderPermanentError,
     ProviderUnavailableError,
@@ -41,6 +42,7 @@ _EXCEPTIONS: Final[dict[str, type[AppError]]] = {
     ErrorCategory.APPROVAL_REJECTED.value: ApprovalRejectedError,
     ErrorCategory.WORKFLOW_DEFINITION.value: WorkflowDefinitionError,
     ErrorCategory.WORKFLOW_EXECUTION.value: WorkflowExecutionError,
+    ErrorCategory.OUTCOME_UNKNOWN.value: OutcomeUnknownError,
     ErrorCategory.INTERNAL.value: InternalError,
 }
 

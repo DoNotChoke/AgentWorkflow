@@ -19,8 +19,10 @@ import httpx
 import pytest
 
 from app.core.errors import (
+    AppError,
     AuthorizationError,
     ConnectionExpiredError,
+    Delivery,
     MissingScopeError,
     PlatformTimeoutError,
     ProviderPermanentError,
@@ -342,6 +344,113 @@ async def test_khong_noi_duoc_mang_thanh_provider_khong_san_sang(
 
     with pytest.raises(ProviderUnavailableError):
         await call("slack.list_channels", transport)
+
+
+# ─── Yêu cầu đã tới provider chưa ────────────────────────────────────────────
+
+
+def raising(box: dict[str, Any], error: Exception) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise error
+
+    box["handler"] = handler
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        httpx.ConnectTimeout("qua han"),
+        httpx.PoolTimeout("het connection"),
+        httpx.ConnectError("tu choi"),
+    ],
+)
+async def test_loi_truoc_khi_ket_noi_la_chac_chan_chua_gui(
+    transport: dict[str, Any], error: Exception
+) -> None:
+    raising(transport, error)
+
+    with pytest.raises((PlatformTimeoutError, ProviderUnavailableError)) as caught:
+        await call("slack.post_message", transport, {"channel": "C123", "text": "hi"})
+
+    assert caught.value.delivery is Delivery.NOT_SENT
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (httpx.ReadTimeout("cho phan hoi qua lau"), PlatformTimeoutError),
+        (httpx.WriteTimeout("gui cham"), PlatformTimeoutError),
+        (httpx.RemoteProtocolError("server ngat giua chung"), ProviderUnavailableError),
+        (httpx.ReadError("mat ket noi khi doc"), ProviderUnavailableError),
+    ],
+)
+async def test_loi_sau_khi_da_gui_la_khong_ro(
+    transport: dict[str, Any], error: Exception, expected: type[AppError]
+) -> None:
+    """Slack có thể đã đăng tin trước khi phản hồi bị lỡ."""
+    raising(transport, error)
+
+    with pytest.raises(expected) as caught:
+        await call("slack.post_message", transport, {"channel": "C123", "text": "hi"})
+
+    assert caught.value.delivery is Delivery.UNKNOWN
+
+
+async def test_5xx_la_khong_ro(transport: dict[str, Any]) -> None:
+    replying(transport, status=502, json={})
+
+    with pytest.raises(ProviderUnavailableError) as caught:
+        await call("slack.post_message", transport, {"channel": "C123", "text": "hi"})
+
+    assert caught.value.delivery is Delivery.UNKNOWN
+
+
+async def test_429_la_chua_gui(transport: dict[str, Any]) -> None:
+    replying(transport, status=429, json={})
+
+    with pytest.raises(RateLimitedError) as caught:
+        await call("slack.post_message", transport, {"channel": "C123", "text": "hi"})
+
+    assert caught.value.delivery is Delivery.NOT_SENT
+
+
+async def test_ok_false_ratelimited_la_chua_gui(transport: dict[str, Any]) -> None:
+    replying(transport, json={"ok": False, "error": "ratelimited"})
+
+    with pytest.raises(RateLimitedError) as caught:
+        await call("slack.post_message", transport, {"channel": "C123", "text": "hi"})
+
+    assert caught.value.delivery is Delivery.NOT_SENT
+
+
+@pytest.mark.parametrize("code", ["internal_error", "fatal_error", "request_timeout"])
+async def test_ok_false_loi_tam_thoi_cua_provider_la_khong_ro(
+    transport: dict[str, Any], code: str
+) -> None:
+    replying(transport, json={"ok": False, "error": code})
+
+    with pytest.raises(ProviderUnavailableError) as caught:
+        await call("slack.post_message", transport, {"channel": "C123", "text": "hi"})
+
+    assert caught.value.delivery is Delivery.UNKNOWN
+
+
+async def test_200_khong_phai_json_la_khong_ro(transport: dict[str, Any]) -> None:
+    transport["handler"] = lambda _r: httpx.Response(200, text="<html>ok</html>")
+
+    with pytest.raises(ProviderUnavailableError) as caught:
+        await call("slack.post_message", transport, {"channel": "C123", "text": "hi"})
+
+    assert caught.value.delivery is Delivery.UNKNOWN
+
+
+async def test_loi_vinh_vien_khong_mang_delivery(transport: dict[str, Any]) -> None:
+    replying(transport, json={"ok": False, "error": "channel_not_found"})
+
+    with pytest.raises(ValidationError) as caught:
+        await call("slack.post_message", transport, {"channel": "C123", "text": "hi"})
+
+    assert caught.value.delivery is None
 
 
 # ─── Token không rò ra ───────────────────────────────────────────────────────

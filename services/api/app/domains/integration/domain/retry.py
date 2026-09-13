@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
-from app.core.errors import AppError
+from app.core.errors import AppError, Delivery
 from app.domains.integration.domain.tools import ToolSpec
 
 
-def may_retry(tool: ToolSpec, error: BaseException, *, idempotent: bool) -> bool:
-    """Lời gọi vừa hỏng có được thử lại không."""
+def may_retry(tool: ToolSpec, error: BaseException) -> bool:
+    """Lời gọi vừa hỏng có được thử lại không.
+
+    Tool ghi chỉ được gửi lại khi yêu cầu chắc chắn chưa tới provider. Khoá
+    idempotency không che được chỗ này: sổ chặn người gọi lặp lại `invoke`,
+    không chặn Gateway tự gọi provider lần hai.
+    """
     if not isinstance(error, AppError) or not error.retryable:
         return False
-    return not (tool.side_effect.mutates and not idempotent)
+    if not tool.side_effect.mutates:
+        return True
+    return error.delivery is Delivery.NOT_SENT
 
 
 def wait_for(tool: ToolSpec, attempt: int, error: BaseException) -> float:

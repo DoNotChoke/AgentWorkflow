@@ -16,6 +16,7 @@ import pytest
 from app.core.errors import (
     AuthorizationError,
     InternalError,
+    OutcomeUnknownError,
     PlatformTimeoutError,
     ProviderUnavailableError,
     RateLimitedError,
@@ -275,6 +276,34 @@ async def test_loi_cua_chinh_app_duoc_map_dung_category(
 
     assert exc_info.value.retry_after_seconds == 5.0
     assert exc_info.value.message == "Đã chạm hạn mức gọi Slack."
+
+
+async def test_khong_ro_ket_qua_duoc_map_dung_va_khong_retry(
+    client: IntegrationClient, control_plane: FakeControlPlane
+) -> None:
+    control_plane.next(
+        status=502,
+        json={
+            "error": {
+                "category": "OutcomeUnknown",
+                "message": "Không rõ slack.post_message đã được thực hiện hay chưa.",
+                "details": {"tool_id": "slack.post_message", "cause_category": "Timeout"},
+            }
+        },
+    )
+
+    with pytest.raises(OutcomeUnknownError) as exc_info:
+        await client.invoke(
+            name="slack__post_message",
+            tool_input={},
+            connection_id="conn_1",
+            authorization="Bearer token",
+            organization_id="org_1",
+            workspace_id="ws_1",
+        )
+
+    assert exc_info.value.retryable is False
+    assert exc_info.value.details["cause_category"] == "Timeout"
 
 
 async def test_loi_authorization_duoc_map_dung(

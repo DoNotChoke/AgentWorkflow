@@ -9,10 +9,12 @@ from typing import Any, Final
 import httpx
 
 from app.core.errors import (
+    RETRYABLE,
     AppError,
     AuthenticationError,
     AuthorizationError,
     ConnectionExpiredError,
+    Delivery,
     ErrorCategory,
     MissingScopeError,
     PlatformTimeoutError,
@@ -43,6 +45,17 @@ _EXCEPTIONS: Final[dict[ErrorCategory, type[AppError]]] = {
     ErrorCategory.PROVIDER_PERMANENT: ProviderPermanentError,
     ErrorCategory.TIMEOUT: PlatformTimeoutError,
 }
+
+#: Lỗi xảy ra trước khi yêu cầu rời khỏi tiến trình. Mọi lỗi transport khác —
+#: `ReadTimeout`, `RemoteProtocolError`… — có thể đến sau khi provider đã nhận.
+_NOT_SENT: Final = (
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+    httpx.ConnectError,
+    httpx.ProxyError,
+    httpx.UnsupportedProtocol,
+    httpx.LocalProtocolError,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,13 +95,17 @@ class HttpConnector:
         try:
             async with httpx.AsyncClient(timeout=tool.timeout.attempt_seconds) as client:
                 response = await client.request(**request)
-        except httpx.TimeoutException as exc:
-            raise PlatformTimeoutError(
-                f"{connector.label} không trả lời trong {tool.timeout.attempt_seconds}s.",
-                cause=exc,
-            ) from exc
         except httpx.HTTPError as exc:
-            raise ProviderUnavailableError(f"Không gọi được {connector.label}.", cause=exc) from exc
+            delivery = Delivery.NOT_SENT if isinstance(exc, _NOT_SENT) else Delivery.UNKNOWN
+            if isinstance(exc, httpx.TimeoutException):
+                raise PlatformTimeoutError(
+                    f"{connector.label} không trả lời trong {tool.timeout.attempt_seconds}s.",
+                    delivery=delivery,
+                    cause=exc,
+                ) from exc
+            raise ProviderUnavailableError(
+                f"Không gọi được {connector.label}.", delivery=delivery, cause=exc
+            ) from exc
 
         return self._interpret(tool, connector, response)
 
@@ -168,13 +185,16 @@ class HttpConnector:
             raise RateLimitedError(
                 f"{connector.label} đang tiết lưu lời gọi.",
                 retry_after_seconds=retry_after,
+                delivery=Delivery.NOT_SENT,
                 details={"tool_id": tool.tool_id},
             )
 
+        # 502/504 thường đến từ tầng đứng trước provider, có thể sau khi nó đã xử lý xong.
         if response.status_code >= 500:
             raise ProviderUnavailableError(
                 f"{connector.label} trả về {response.status_code}.",
                 retry_after_seconds=retry_after,
+                delivery=Delivery.UNKNOWN,
                 details={"tool_id": tool.tool_id},
             )
 
@@ -201,10 +221,14 @@ class HttpConnector:
             parsed = response.json()
         except ValueError as exc:
             raise ProviderUnavailableError(
-                f"{connector.label} trả về thứ không phải JSON.", cause=exc
+                f"{connector.label} trả về thứ không phải JSON.",
+                delivery=Delivery.UNKNOWN,
+                cause=exc,
             ) from exc
         if not isinstance(parsed, dict):
-            raise ProviderUnavailableError(f"{connector.label} trả về JSON không phải object.")
+            raise ProviderUnavailableError(
+                f"{connector.label} trả về JSON không phải object.", delivery=Delivery.UNKNOWN
+            )
         return parsed
 
     def _raise_mapped(
@@ -227,5 +251,16 @@ class HttpConnector:
         raise _EXCEPTIONS[category](
             f"{connector.label} từ chối: {code}.",
             retry_after_seconds=retry_after if category is ErrorCategory.RATE_LIMITED else None,
+            delivery=_delivery_of(category),
             details={"provider_code": code, "tool_id": tool.tool_id},
         )
+
+
+def _delivery_of(category: ErrorCategory) -> Delivery | None:
+    """Tiết lưu nghĩa là provider từ chối trước khi làm. Lỗi tạm thời khác của
+    provider (`internal_error`, `fatal_error`…) có thể đến sau khi đã làm một phần."""
+    if category is ErrorCategory.RATE_LIMITED:
+        return Delivery.NOT_SENT
+    if category in RETRYABLE:
+        return Delivery.UNKNOWN
+    return None
