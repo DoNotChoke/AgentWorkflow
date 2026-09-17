@@ -8,7 +8,12 @@ from typing import Any, Protocol
 
 from app.core.errors import ErrorCategory
 from app.domains.integration.domain.connectors import ConnectorSpec
-from app.domains.integration.domain.idempotency import ClaimResult, IdempotencyClaim
+from app.domains.integration.domain.idempotency import (
+    ClaimResult,
+    IdempotencyClaim,
+    IdempotencyRecord,
+    InvocationStatus,
+)
 from app.domains.integration.domain.invocation import ToolInvocationRecord, ToolUsage
 from app.domains.integration.domain.policy import OrgToolRule, QuotaVerdict
 from app.domains.integration.domain.tools import ToolSpec
@@ -115,31 +120,64 @@ class CircuitBreaker(Protocol):
 
 
 class IdempotencyStore(Protocol):
-    """`claim` giành quyền chạy; `complete`/`fail` chốt kết quả."""
+    """`claim` giành quyền chạy; `complete`/`fail`/`mark_unknown` chốt kết quả.
+
+    Mỗi thao tác tự commit, độc lập với transaction của request. Các lần chốt là
+    compare-and-set theo `claim_token`: trả `False` khi người khác đã đổi hàng.
+    """
 
     async def claim(self, claim: IdempotencyClaim) -> ClaimResult: ...
+
+    async def get(self, *, tenant_id: str, key: str) -> IdempotencyRecord | None: ...
+
+    async def take_over(
+        self,
+        *,
+        tenant_id: str,
+        key: str,
+        expected: InvocationStatus,
+        claim_token: str,
+        lease_expires_at: datetime,
+        at: datetime,
+    ) -> IdempotencyRecord | None: ...
+
+    async def abandon_stale(self, *, tenant_id: str, key: str, at: datetime) -> bool: ...
 
     async def complete(
         self,
         *,
         tenant_id: str,
         key: str,
+        claim_token: str,
         result: Mapping[str, Any],
         provider_reference: str | None,
         attempts: int,
         at: datetime,
-    ) -> None: ...
+    ) -> bool: ...
 
     async def fail(
         self,
         *,
         tenant_id: str,
         key: str,
+        claim_token: str,
         category: ErrorCategory,
         attempts: int,
         at: datetime,
         detail: str = "",
-    ) -> None: ...
+    ) -> bool: ...
+
+    async def mark_unknown(
+        self,
+        *,
+        tenant_id: str,
+        key: str,
+        claim_token: str,
+        category: ErrorCategory,
+        attempts: int,
+        at: datetime,
+        detail: str = "",
+    ) -> bool: ...
 
 
 class ToolInvocationSink(Protocol):

@@ -23,6 +23,7 @@ class ErrorCategory(StrEnum):
     MISSING_CONNECTION = "MissingConnection"
     CONNECTION_CHOICE_REQUIRED = "ConnectionChoiceRequired"
     OUTCOME_UNKNOWN = "OutcomeUnknown"
+    INVOCATION_IN_PROGRESS = "InvocationInProgress"
     INTERNAL = "InternalError"
 
 
@@ -41,6 +42,7 @@ RETRYABLE: frozenset[ErrorCategory] = frozenset(
         ErrorCategory.RATE_LIMITED,
         ErrorCategory.PROVIDER_UNAVAILABLE,
         ErrorCategory.TIMEOUT,
+        ErrorCategory.INVOCATION_IN_PROGRESS,
     }
 )
 
@@ -61,6 +63,7 @@ _HTTP_STATUS: dict[ErrorCategory, int] = {
     ErrorCategory.MISSING_CONNECTION: 409,
     ErrorCategory.CONNECTION_CHOICE_REQUIRED: 409,
     ErrorCategory.OUTCOME_UNKNOWN: 502,
+    ErrorCategory.INVOCATION_IN_PROGRESS: 409,
     ErrorCategory.INTERNAL: 500,
 }
 
@@ -191,6 +194,13 @@ class OutcomeUnknownError(AppError):
     được. Không retry: gửi lại có thể tạo bản sao."""
 
     category = ErrorCategory.OUTCOME_UNKNOWN
+
+
+class InvocationInProgressError(AppError):
+    """Cùng thao tác đang được một lời gọi khác thực hiện. Thử lại sau: khi đó
+    nó đã xong và kết quả được phát lại."""
+
+    category = ErrorCategory.INVOCATION_IN_PROGRESS
 
 
 class InternalError(AppError):

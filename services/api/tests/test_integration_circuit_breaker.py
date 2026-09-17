@@ -248,11 +248,14 @@ async def test_loi_cua_mot_loi_goi_khong_lam_sap_mach(
 
 
 def test_tap_loi_lam_sap_mach_hep_hon_tap_retryable() -> None:
-    """Khác đúng một phần tử, và phần tử đó là `RateLimited`."""
+    """Phần chênh là những lỗi retry được mà không nói gì về sức khoẻ provider:
+    bị tiết lưu, và một lời gọi khác đang chạy cùng thao tác."""
     from app.core.errors import RETRYABLE
 
+    chenh = RETRYABLE - TRIPPING
+
     assert TRIPPING < RETRYABLE
-    assert frozenset({ErrorCategory.RATE_LIMITED}) == RETRYABLE - TRIPPING
+    assert chenh == {ErrorCategory.RATE_LIMITED, ErrorCategory.INVOCATION_IN_PROGRESS}
 
 
 # ─── Cách ly giữa các tenant ─────────────────────────────────────────────────

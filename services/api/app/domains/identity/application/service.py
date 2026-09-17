@@ -91,9 +91,7 @@ class IdentityService:
         except EmailAlreadyRegisteredError as exc:
             raise ValidationError("Email này đã được đăng ký.", cause=exc) from exc
 
-        # Cùng transaction với INSERT user ở trên: nếu cấp tenant hỏng thì user
-        # cũng không tồn tại. Một user không thuộc organization nào thì không
-        # thao tác được gì (§19), nên nửa vời còn tệ hơn thất bại hẳn.
+        # Cùng transaction với INSERT user ở trên: nếu cấp tenant hỏng thì user cũng không tồn tại.
         await self._tenant_provisioner.provision_for_new_user(
             user_id=user.id,
             display_name=user.display_name,

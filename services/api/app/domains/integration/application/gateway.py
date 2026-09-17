@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import math
+import secrets
 import time
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -15,6 +18,7 @@ from app.core.errors import (
     Delivery,
     ErrorCategory,
     InternalError,
+    InvocationInProgressError,
     OutcomeUnknownError,
     RetryExhaustedError,
 )
@@ -34,8 +38,10 @@ from app.domains.integration.application.ports import (
 from app.domains.integration.domain.catalog import ToolRegistry
 from app.domains.integration.domain.connectors import ConnectorSpec
 from app.domains.integration.domain.idempotency import (
+    ClaimDecision,
     IdempotencyClaim,
     IdempotencyRecord,
+    decide_claim,
     ensure_key_present,
     ensure_same_operation,
     fingerprint,
@@ -101,9 +107,10 @@ class IntegrationGateway:
             required=tool.idempotency.required,
         )
 
-        replay = await self._claim(tool, command, key) if key else None
-        if replay is not None:
-            return await self._replayed(tool, connector, command, replay, started, clock)
+        claimed = await self._acquire(tool, command, key) if key else _Claimed()
+        if claimed.replay is not None:
+            return await self._replayed(tool, connector, command, claimed.replay, started, clock)
+        token = claimed.token
 
         attempts = 0
         last_error: AppError | None = None
@@ -131,7 +138,11 @@ class IntegrationGateway:
                     if attempt >= tool.retry.max_attempts or not may_retry(tool, error):
                         raise
 
-                    await self._pause(wait_for(tool, attempt + 1, error))
+                    wait = wait_for(tool, attempt + 1, error)
+                    if _past_deadline(tool, clock, wait):
+                        raise
+
+                    await self._pause(wait)
                     continue
 
                 await self._breaker.record_success(
@@ -139,18 +150,24 @@ class IntegrationGateway:
                     tenant_id=command.tenant_id,
                     connection_id=command.connection_id,
                 )
-                return await self._succeeded(
-                    tool, connector, command, key, response, attempts, started, clock
-                )
-
-            # Vòng lặp chỉ kết thúc bằng `return` hoặc `raise`; tới đây là lỗi
-            # lập trình, không phải trạng thái hợp lệ.
-            raise InternalError("Vòng thử lại kết thúc mà không có kết quả.")
+                break
+            else:
+                # Vòng lặp chỉ kết thúc bằng `break` hoặc `raise`; tới đây là lỗi
+                # lập trình, không phải trạng thái hợp lệ.
+                raise InternalError("Vòng thử lại kết thúc mà không có kết quả.")
 
         except AppError as error:
             final = self._final_error(tool, error, attempts, last_error)
-            await self._failed(tool, connector, command, key, final, attempts, started, clock)
+            await self._failed(
+                tool, connector, command, key, token, final, attempts, started, clock
+            )
             raise final from (None if final is error else error)
+
+        # Ngoài khối bắt lỗi: provider đã làm xong, nên một lỗi khi chốt sổ hay
+        # ghi trace không được biến lời gọi thành "thất bại".
+        return await self._succeeded(
+            tool, connector, command, key, token, response, attempts, started, clock
+        )
 
     # ─── Các chặng ───────────────────────────────────────────────────────────
 
@@ -203,10 +220,8 @@ class IntegrationGateway:
             details={**details, "approval_scope": str(decision.approval_scope)},
         )
 
-    async def _claim(
-        self, tool: ToolSpec, command: ToolInvocation, key: str
-    ) -> IdempotencyRecord | None:
-        """Giành quyền chạy. Trả về bản ghi cũ nếu đã có ai làm xong."""
+    async def _acquire(self, tool: ToolSpec, command: ToolInvocation, key: str) -> _Claimed:
+        """Giành quyền chạy, hoặc biết vì sao không được chạy."""
         now = datetime.now(UTC)
         claim = IdempotencyClaim(
             tenant_id=command.tenant_id,
@@ -218,14 +233,79 @@ class IntegrationGateway:
             request_fingerprint=fingerprint(command.input),
             expires_at=now + timedelta(seconds=tool.idempotency.ttl_seconds),
             at=now,
+            claim_token=secrets.token_urlsafe(24),
+            lease_expires_at=now
+            + timedelta(seconds=tool.timeout.total_seconds + LEASE_MARGIN_SECONDS),
         )
 
         result = await self._idempotency.claim(claim)
         if result.fresh:
+            return _Claimed(token=claim.claim_token)
+
+        record: IdempotencyRecord | None = result.record
+        # Thua một cuộc tranh thì đọc lại và quyết lại, nhưng không quá một lần.
+        for last_round in (False, True):
+            if record is None:
+                break
+            claimed = await self._settle(tool, claim, record, last_round=last_round)
+            if claimed is not None:
+                return claimed
+            record = await self._idempotency.get(tenant_id=claim.tenant_id, key=key)
+
+        raise _in_progress(tool, retry_after_seconds=1)
+
+    async def _settle(
+        self,
+        tool: ToolSpec,
+        claim: IdempotencyClaim,
+        record: IdempotencyRecord,
+        *,
+        last_round: bool,
+    ) -> _Claimed | None:
+        """Áp bảng `decide_claim` lên một hàng đã có. `None` nghĩa là vừa thua
+        tranh và cần đọc lại."""
+        ensure_same_operation(record, request_fingerprint=claim.request_fingerprint)
+        now = datetime.now(UTC)
+        decision = decide_claim(record, mutates=tool.side_effect.mutates, now=now)
+
+        if decision is ClaimDecision.REPLAY:
+            return _Claimed(replay=record)
+
+        if decision is ClaimDecision.IN_PROGRESS:
+            assert record.lease_expires_at is not None  # bảo đảm bởi decide_claim
+            remaining = (record.lease_expires_at - now).total_seconds()
+            raise _in_progress(tool, retry_after_seconds=max(1, math.ceil(remaining)))
+
+        if decision is ClaimDecision.UNKNOWN:
+            raise _unknown_before(tool)
+
+        if decision is ClaimDecision.MARK_UNKNOWN:
+            abandoned = await self._idempotency.abandon_stale(
+                tenant_id=claim.tenant_id, key=claim.key, at=now
+            )
+            if abandoned or last_round:
+                raise _unknown_before(tool)
             return None
 
-        ensure_same_operation(result.record, request_fingerprint=claim.request_fingerprint)
-        return result.record if result.record.replayable else None
+        taken = await self._idempotency.take_over(
+            tenant_id=claim.tenant_id,
+            key=claim.key,
+            expected=record.status,
+            claim_token=claim.claim_token,
+            lease_expires_at=claim.lease_expires_at,
+            at=now,
+        )
+        if taken is not None:
+            log.info(
+                "idempotency_taken_over",
+                tool_id=tool.tool_id,
+                idempotency_key=claim.key,
+                previous_status=str(record.status),
+            )
+            return _Claimed(token=claim.claim_token)
+        if last_round:
+            raise _in_progress(tool, retry_after_seconds=1)
+        return None
 
     async def _gate(
         self, tool: ToolSpec, connector: ConnectorSpec, command: ToolInvocation
@@ -330,6 +410,7 @@ class IntegrationGateway:
         connector: ConnectorSpec,
         command: ToolInvocation,
         key: str | None,
+        token: str | None,
         response: Any,
         attempts: int,
         started: datetime,
@@ -338,15 +419,18 @@ class IntegrationGateway:
         output: Mapping[str, Any] = response.output
         self._check_output(tool, output)
 
-        if key is not None:
-            await self._idempotency.complete(
+        if key is not None and token is not None:
+            settled = await self._idempotency.complete(
                 tenant_id=command.tenant_id,
                 key=key,
+                claim_token=token,
                 result=output,
                 provider_reference=response.provider_reference,
                 attempts=attempts,
                 at=datetime.now(UTC),
             )
+            if not settled:
+                _lease_lost(tool, key, "succeeded")
 
         return await self._finish(
             tool,
@@ -399,20 +483,30 @@ class IntegrationGateway:
         connector: ConnectorSpec,
         command: ToolInvocation,
         key: str | None,
+        token: str | None,
         error: AppError,
         attempts: int,
         started: datetime,
         clock: float,
     ) -> None:
-        if key is not None:
-            await self._idempotency.fail(
+        if key is not None and token is not None:
+            # Chỉ hai trạng thái có nghĩa: không rõ, hoặc chắc chắn không có tác động.
+            settle = (
+                self._idempotency.mark_unknown
+                if error.category is ErrorCategory.OUTCOME_UNKNOWN
+                else self._idempotency.fail
+            )
+            settled = await settle(
                 tenant_id=command.tenant_id,
                 key=key,
+                claim_token=token,
                 category=error.category,
                 attempts=attempts,
                 at=datetime.now(UTC),
                 detail=str(error),
             )
+            if not settled:
+                _lease_lost(tool, key, error.category.value)
 
         await self._finish(
             tool,
@@ -527,6 +621,55 @@ class IntegrationGateway:
         import asyncio
 
         await asyncio.sleep(seconds)
+
+
+#: Lease của một lời gọi = `timeout.total_seconds` của tool cộng khoảng này, để
+#: bù ghi trace và lệch đồng hồ giữa các tiến trình.
+LEASE_MARGIN_SECONDS = 30
+
+
+@dataclass(frozen=True, slots=True)
+class _Claimed:
+    #: Quyền chạy của lời gọi này — mang theo khi chốt sổ.
+    token: str | None = None
+    #: Có sẵn kết quả để phát lại, không gọi provider.
+    replay: IdempotencyRecord | None = None
+
+
+def _past_deadline(tool: ToolSpec, clock: float, wait: float) -> bool:
+    """Lần thử kế tiếp có thể kết thúc sau `timeout.total_seconds` không.
+
+    Lease dựa vào mốc này: Gateway chạy quá nó thì hàng `in_flight` bị coi là bỏ dở
+    trong khi lời gọi vẫn đang sống.
+    """
+    elapsed = time.perf_counter() - clock
+    return elapsed + wait + tool.timeout.attempt_seconds > tool.timeout.total_seconds
+
+
+def _in_progress(tool: ToolSpec, *, retry_after_seconds: float) -> InvocationInProgressError:
+    return InvocationInProgressError(
+        f"{tool.tool_id} với cùng thao tác này đang được thực hiện. Thử lại sau ít giây.",
+        retry_after_seconds=retry_after_seconds,
+        details={"tool_id": tool.tool_id},
+    )
+
+
+def _unknown_before(tool: ToolSpec) -> OutcomeUnknownError:
+    return OutcomeUnknownError(
+        f"Một lần gọi {tool.tool_id} trước đó với cùng thao tác chưa rõ đã được thực hiện "
+        "hay chưa. Đừng gọi lại: hãy kiểm tra kết quả trước.",
+        details={"tool_id": tool.tool_id},
+        delivery=Delivery.UNKNOWN,
+    )
+
+
+def _lease_lost(tool: ToolSpec, key: str, outcome: str) -> None:
+    log.warning(
+        "idempotency_lease_lost",
+        tool_id=tool.tool_id,
+        idempotency_key=key,
+        outcome=outcome,
+    )
 
 
 def _assume_delivery(error: AppError, delivery: Delivery) -> None:

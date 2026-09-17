@@ -341,6 +341,96 @@ def test_cung_khoa_hai_lan_thi_slack_chi_bi_goi_mot_lan(
     assert len(slack.requests) == 1
 
 
+async def _ledger_row(tenant_id: str, key: str) -> dict[str, Any] | None:
+    async with session_scope() as session:
+        row = await session.execute(
+            text(
+                "SELECT status, error_category, attempts"
+                " FROM integration.tool_invocation_idempotency"
+                " WHERE tenant_id = :tenant AND idempotency_key = :key"
+            ),
+            {"tenant": tenant_id, "key": key},
+        )
+        found = row.mappings().one_or_none()
+    return None if found is None else dict(found)
+
+
+def ledger_row(client: TestClient, tenant_id: str, key: str) -> dict[str, Any] | None:
+    assert client.portal is not None
+    return client.portal.call(_ledger_row, tenant_id, key)  # type: ignore[no-any-return]
+
+
+def test_tool_loi_van_de_lai_hang_failed_trong_so(client: TestClient, slack: FakeSlack) -> None:
+    """Request lỗi thì transaction của nó rollback — sổ không được đi theo."""
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    connection = seed(client, _user_id(an), org, workspace, "workspace")
+    key = f"idm_{uuid.uuid4().hex}"
+
+    slack.next(json={"ok": False, "error": "channel_not_found"})
+    reply = an.post(
+        f"{TOOLS}/slack.post_message/invoke",
+        json={
+            "connection_id": connection,
+            "input": {"channel": "C123", "text": "xin chào"},
+            "idempotency_key": key,
+        },
+    )
+
+    assert reply.status_code == 422, reply.text
+    row = ledger_row(client, org, key)
+    assert row is not None
+    assert row["status"] == "failed"
+    assert row["error_category"] == "ValidationError"
+
+
+def test_request_loi_sau_khi_slack_da_dang_tin_khong_xoa_so(
+    client: TestClient, slack: FakeSlack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Slack đã đăng, rồi request hỏng ở bước ghi trace. Lần gọi lại cùng khoá
+    phải phát lại kết quả, không đăng tin thứ hai."""
+    from app.core.errors import InternalError
+
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    connection = seed(client, _user_id(an), org, workspace, "workspace")
+    trace_id = seed_trace(client, org, workspace)
+    key = f"idm_{uuid.uuid4().hex}"
+
+    real = TraceService.record_tool_call
+    broken = {"remaining": 1}
+
+    async def record_once_broken(self: TraceService, **kwargs: Any) -> Any:
+        if broken["remaining"]:
+            broken["remaining"] -= 1
+            raise InternalError("Postgres hết connection.")
+        return await real(self, **kwargs)
+
+    monkeypatch.setattr(TraceService, "record_tool_call", record_once_broken)
+
+    slack.next(json={"ok": True, "channel": "C123", "ts": "1712345678.000100"})
+    body = {
+        "connection_id": connection,
+        "input": {"channel": "C123", "text": "xin chào"},
+        "idempotency_key": key,
+        "caller": {"execution_trace_id": trace_id},
+    }
+
+    first = an.post(f"{TOOLS}/slack.post_message/invoke", json=body)
+    assert first.status_code == 500, first.text
+    assert ledger_row(client, org, key) == {
+        "status": "succeeded",
+        "error_category": None,
+        "attempts": 1,
+    }
+
+    second = an.post(f"{TOOLS}/slack.post_message/invoke", json=body)
+
+    assert second.status_code == 200, second.text
+    assert second.json()["replayed"] is True
+    assert len(slack.requests) == 1
+
+
 def test_tool_write_thieu_khoa_bi_tu_choi(client: TestClient, slack: FakeSlack) -> None:
     an = Nguoi(client, "An")
     org, workspace = _tenant_of(an)

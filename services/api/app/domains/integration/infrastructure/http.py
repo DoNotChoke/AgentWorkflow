@@ -162,7 +162,6 @@ async def resolve_context(
 
 
 def get_gateway(
-    session: Annotated[AsyncSession, Depends(get_session)],
     credentials: Annotated[CredentialProvider, Depends(get_credential_provider)],
     trace: Annotated[ToolInvocationSink, Depends(get_trace_sink)],
 ) -> IntegrationGateway:
@@ -175,7 +174,7 @@ def get_gateway(
         connector=HttpConnector(),
         rate_limiter=RedisRateLimiter(),
         breaker=RedisCircuitBreaker(),
-        idempotency=SqlAlchemyIdempotencyStore(session),
+        idempotency=SqlAlchemyIdempotencyStore(),
         trace=trace,
         usage=LoggingUsageRecorder(),
     )

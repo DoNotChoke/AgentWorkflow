@@ -16,6 +16,7 @@ from app.core.errors import (
     ConnectionExpiredError,
     ErrorCategory,
     InternalError,
+    InvocationInProgressError,
     MissingScopeError,
     OutcomeUnknownError,
     PlatformTimeoutError,
@@ -43,6 +44,7 @@ _EXCEPTIONS: Final[dict[str, type[AppError]]] = {
     ErrorCategory.WORKFLOW_DEFINITION.value: WorkflowDefinitionError,
     ErrorCategory.WORKFLOW_EXECUTION.value: WorkflowExecutionError,
     ErrorCategory.OUTCOME_UNKNOWN.value: OutcomeUnknownError,
+    ErrorCategory.INVOCATION_IN_PROGRESS.value: InvocationInProgressError,
     ErrorCategory.INTERNAL.value: InternalError,
 }
 

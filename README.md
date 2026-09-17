@@ -177,6 +177,22 @@ nó nằm ở `entrypoints/wiring.py`, không phải ở Integration Plane như 
 mô tả. Contract 6 cấm Agent Runtime với tới đó, kể cả gián tiếp — nên từ Phase 3,
 Agent **buộc** phải gọi Gateway qua HTTP thay vì gọi trong tiến trình.
 
+**Phase 3 — hoàn tất.** Agent Runtime, Model Gateway và Execution Trace. Một lượt
+chat là một vòng lặp: hỏi model, gọi tool, hỏi lại model, cho tới khi model thôi
+gọi tool. Mỗi vòng để lại một bước trong trace, và bước của Gateway nằm lồng dưới
+đúng lời gọi tool đã sinh ra nó. Giao diện web có thư viện Agent và màn hình chat
+chạy trên SSE.
+
+Model Gateway đứng trước hai provider — Anthropic và OpenAI — sau một danh mục
+`model → provider`. Agent khai tên model; không chỗ nào trong vòng lặp biết SDK
+nào sẽ được gọi.
+
+Connection được chọn theo **Conversation**, không theo Agent và không theo người
+dùng: [ADR-0004](docs/adr/0004-chon-connection-theo-conversation.md). Agent là tài
+nguyên chung của workspace, còn connection riêng thì chỉ chính chủ nhìn thấy —
+gán cứng connection vào Agent sẽ để người khác thừa kế một thứ backend biết chắc
+họ không có quyền dùng.
+
 **Execution Trace giữ nội dung, không chỉ vân tay.** Mỗi bước — một lần gọi
 tool, một lần hỏi model — lưu cái đã gửi đi và cái nhận về. Payload nhỏ nằm
 ngay trong `trace.trace_steps`, payload lớn ra MinIO theo khoá là chính mã
@@ -185,6 +201,14 @@ lại tin nhắn nào trong `messages` — trace là nơi duy nhất còn giữ 
 định ở [ADR-0006](docs/adr/0006-payload-cua-execution-trace.md), kế hoạch ở
 [`docs/plans/`](docs/plans/wp-a-trace-payload-store.md).
 
+**Tool ghi không bao giờ tự chạy lại khi kết quả không rõ.** Sổ idempotency có
+thêm trạng thái `unknown` — *có thể đã có tác động* — tách hẳn khỏi `failed` —
+*chắc chắn không có*. Mỗi lời gọi giữ một lease, và mọi lần chốt sổ phải mang
+đúng token đã giành được. Hết lease mà hàng vẫn `in_flight` nghĩa là người giữ đã
+chết giữa chừng: tool đọc tiếp quản và chạy lại, tool ghi thì chuyển hàng sang
+`unknown` rồi bảo người gọi đi kiểm tra kết quả, chứ không đăng tin nhắn lần thứ
+hai. Quyết định ở [ADR-0007](docs/adr/0007-so-idempotency-co-lease-va-trang-thai-khong-ro.md).
+
 Lộ trình các phase tiếp theo: xem `docs/adr/0001-*.md` và kế hoạch triển khai.
 
 | Phase | Nội dung |
@@ -192,7 +216,7 @@ Lộ trình các phase tiếp theo: xem `docs/adr/0001-*.md` và kế hoạch tr
 | 0 | Nền móng, hạ tầng, ranh giới ✅ |
 | 1 | Identity, Tenant, Connection, OAuth ✅ |
 | 2 | Integration Plane, connector đầu tiên (Slack) ✅ |
-| 3 | Agent Runtime, Model Gateway, Execution Trace |
+| 3 | Agent Runtime, Model Gateway, Execution Trace ✅ |
 | 4 | Workflow IR, Generic Executor trên Temporal |
 | 5 | Workflow Compiler (trace → IR) |
 | 6 | Workflow Editor, lifecycle draft/publish |

@@ -8,6 +8,7 @@ cả cùng ghi vào một sổ thứ tự chung, vì thứ tự chính là thứ
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -36,6 +37,7 @@ from app.domains.integration.domain.idempotency import (
     IdempotencyClaim,
     IdempotencyRecord,
     InvocationStatus,
+    fingerprint,
 )
 from app.domains.integration.domain.invocation import ToolInvocation
 from app.domains.integration.infrastructure.policy_defaults import (
@@ -163,23 +165,116 @@ class FakeBreaker:
 
 
 class FakeIdempotency:
+    """Sổ trong bộ nhớ, cùng luật compare-and-set với `SqlAlchemyIdempotencyStore`."""
+
     def __init__(self, journal: Journal, existing: IdempotencyRecord | None = None) -> None:
         self.journal = journal
-        self.existing = existing
+        self.rows: dict[str, IdempotencyRecord] = (
+            {} if existing is None else {existing.key: existing}
+        )
         self.completed: list[dict[str, Any]] = []
         self.failed: list[dict[str, Any]] = []
+        self.unknown: list[dict[str, Any]] = []
+        self.abandoned: list[str] = []
+        #: Cho test tranh chấp: lần `take_over` kế tiếp thua, và hàng đổi thành cái này.
+        self.lose_next_take_over_to: IdempotencyRecord | None = None
+        #: Cho test mất lease: ngay trước khi chốt thành công, người khác giành hàng.
+        self.steal_before_complete = False
 
     async def claim(self, claim: IdempotencyClaim) -> ClaimResult:
         self.journal.note("idempotency")
-        if self.existing is None:
-            return ClaimResult(record=_record(claim), fresh=True)
-        return ClaimResult(record=self.existing, fresh=False)
+        if claim.key in self.rows:
+            return ClaimResult(record=self.rows[claim.key], fresh=False)
+        record = _record(
+            claim, claim_token=claim.claim_token, lease_expires_at=claim.lease_expires_at
+        )
+        self.rows[claim.key] = record
+        return ClaimResult(record=record, fresh=True)
 
-    async def complete(self, **kwargs: Any) -> None:
-        self.completed.append(kwargs)
+    async def get(self, *, tenant_id: str, key: str) -> IdempotencyRecord | None:
+        return self.rows.get(key)
 
-    async def fail(self, **kwargs: Any) -> None:
-        self.failed.append(kwargs)
+    async def take_over(
+        self,
+        *,
+        tenant_id: str,
+        key: str,
+        expected: InvocationStatus,
+        claim_token: str,
+        lease_expires_at: datetime,
+        at: datetime,
+    ) -> IdempotencyRecord | None:
+        if self.lose_next_take_over_to is not None:
+            self.rows[key] = self.lose_next_take_over_to
+            self.lose_next_take_over_to = None
+            return None
+        row = self.rows.get(key)
+        if row is None or row.status is not expected:
+            return None
+        taken = dataclasses.replace(
+            row,
+            status=InvocationStatus.IN_FLIGHT,
+            claim_token=claim_token,
+            lease_expires_at=lease_expires_at,
+        )
+        self.rows[key] = taken
+        return taken
+
+    async def abandon_stale(self, *, tenant_id: str, key: str, at: datetime) -> bool:
+        row = self.rows.get(key)
+        if row is None or row.status is not InvocationStatus.IN_FLIGHT or not row.lease_expired(at):
+            return False
+        self.rows[key] = dataclasses.replace(row, status=InvocationStatus.UNKNOWN)
+        self.abandoned.append(key)
+        return True
+
+    async def complete(self, **kwargs: Any) -> bool:
+        if self.steal_before_complete:
+            key = kwargs["key"]
+            self.rows[key] = dataclasses.replace(self.rows[key], claim_token="tok_khac")
+        return self._settle(
+            kwargs, InvocationStatus.SUCCEEDED, self.completed, also=InvocationStatus.UNKNOWN
+        )
+
+    async def fail(self, **kwargs: Any) -> bool:
+        return self._settle(kwargs, InvocationStatus.FAILED, self.failed)
+
+    async def mark_unknown(self, **kwargs: Any) -> bool:
+        return self._settle(kwargs, InvocationStatus.UNKNOWN, self.unknown)
+
+    def _settle(
+        self,
+        kwargs: dict[str, Any],
+        status: InvocationStatus,
+        log: list[dict[str, Any]],
+        *,
+        also: InvocationStatus | None = None,
+    ) -> bool:
+        log.append(kwargs)
+        row = self.rows.get(kwargs["key"])
+        allowed = {InvocationStatus.IN_FLIGHT, also}
+        if row is None or row.claim_token != kwargs["claim_token"] or row.status not in allowed:
+            return False
+        self.rows[kwargs["key"]] = dataclasses.replace(row, status=status)
+        return True
+
+
+def _claim(**overrides: Any) -> IdempotencyClaim:
+    now = datetime.now(UTC)
+    base: dict[str, Any] = {
+        "tenant_id": "org_1",
+        "workspace_id": "ws_1",
+        "connection_id": "conn_1",
+        "tool_id": WRITE_TOOL,
+        "tool_version": "1.0",
+        "key": "idm_1",
+        "request_fingerprint": "",
+        "expires_at": now + timedelta(days=7),
+        "at": now,
+        "claim_token": "tok_nguoi_khac",
+        "lease_expires_at": now + timedelta(seconds=90),
+    }
+    return IdempotencyClaim(**{**base, **overrides})
 
 
 def _record(claim: IdempotencyClaim, **overrides: Any) -> IdempotencyRecord:
@@ -199,6 +294,14 @@ def _record(claim: IdempotencyClaim, **overrides: Any) -> IdempotencyRecord:
         "expires_at": now + timedelta(days=7),
     }
     return IdempotencyRecord(**{**base, **overrides})
+
+
+POST_FINGERPRINT = fingerprint({"channel": "C123", "text": "xin chào"})
+
+
+def _existing(**overrides: Any) -> IdempotencyRecord:
+    """Hàng của một lời gọi `post()` khác, cùng khoá và cùng input."""
+    return _record(_claim(request_fingerprint=POST_FINGERPRINT), **overrides)
 
 
 class FakeTraceSink:
@@ -430,22 +533,7 @@ async def test_tool_write_thieu_khoa_thi_bi_tu_choi() -> None:
 
 
 async def test_ban_ghi_da_xong_thi_phat_lai_khong_goi_provider() -> None:
-    claim = IdempotencyClaim(
-        tenant_id="org_1",
-        workspace_id="ws_1",
-        connection_id="conn_1",
-        tool_id=WRITE_TOOL,
-        tool_version="1.0",
-        key="idm_1",
-        request_fingerprint="",
-        expires_at=datetime.now(UTC),
-        at=datetime.now(UTC),
-    )
-    from app.domains.integration.domain.idempotency import fingerprint
-
-    done = _record(
-        claim,
-        request_fingerprint=fingerprint({"channel": "C123", "text": "xin chào"}),
+    done = _existing(
         status=InvocationStatus.SUCCEEDED,
         result={"channel_id": "C123", "message_ts": "1.2"},
         provider_reference="C123:1.2",
@@ -461,18 +549,10 @@ async def test_ban_ghi_da_xong_thi_phat_lai_khong_goi_provider() -> None:
 
 
 async def test_dung_lai_khoa_cho_input_khac_bi_tu_choi() -> None:
-    claim = IdempotencyClaim(
-        tenant_id="org_1",
-        workspace_id="ws_1",
-        connection_id="conn_1",
-        tool_id=WRITE_TOOL,
-        tool_version="1.0",
-        key="idm_1",
-        request_fingerprint="mot-van-tay-khac",
-        expires_at=datetime.now(UTC),
-        at=datetime.now(UTC),
+    other = _record(
+        _claim(request_fingerprint="mot-van-tay-khac"), status=InvocationStatus.SUCCEEDED
     )
-    gateway, parts = build_gateway(existing=_record(claim, status=InvocationStatus.SUCCEEDED))
+    gateway, parts = build_gateway(existing=other)
 
     with pytest.raises(ValidationError, match="thao tác khác"):
         await gateway.invoke(post())
@@ -497,6 +577,184 @@ async def test_that_bai_cung_duoc_chot_vao_so() -> None:
         await gateway.invoke(post())
 
     assert parts["idempotency"].failed[0]["category"] is ErrorCategory.PROVIDER_PERMANENT
+
+
+async def test_chot_so_mang_dung_token_da_gianh() -> None:
+    gateway, parts = build_gateway()
+
+    await gateway.invoke(post())
+
+    store = parts["idempotency"]
+    assert store.completed[0]["claim_token"] == store.rows["idm_1"].claim_token
+    assert store.rows["idm_1"].status is InvocationStatus.SUCCEEDED
+
+
+async def test_lease_tinh_theo_han_chot_cua_tool() -> None:
+    from app.domains.integration.application.gateway import LEASE_MARGIN_SECONDS
+
+    gateway, parts = build_gateway()
+    before = datetime.now(UTC)
+
+    await gateway.invoke(post())
+
+    lease = parts["idempotency"].rows["idm_1"].lease_expires_at
+    total = REGISTRY.get_tool(WRITE_TOOL).timeout.total_seconds
+    assert lease >= before + timedelta(seconds=total + LEASE_MARGIN_SECONDS)
+
+
+# ─── Khoá đã có người dùng trước ─────────────────────────────────────────────
+
+
+async def test_dang_chay_thi_tu_choi_va_khong_goi_provider() -> None:
+    from app.core.errors import InvocationInProgressError
+
+    running = _existing(lease_expires_at=datetime.now(UTC) + timedelta(seconds=40))
+    gateway, parts = build_gateway(existing=running)
+
+    with pytest.raises(InvocationInProgressError) as caught:
+        await gateway.invoke(post())
+
+    assert parts["connector"].calls == 0
+    assert caught.value.retryable is True
+    assert 1 <= (caught.value.retry_after_seconds or 0) <= 40
+
+
+async def test_in_flight_het_lease_tool_ghi_thi_khong_ro() -> None:
+    """Người giữ đã chết giữa chừng — Slack có thể đã đăng tin."""
+    abandoned = _existing(lease_expires_at=datetime.now(UTC) - timedelta(seconds=1))
+    gateway, parts = build_gateway(existing=abandoned)
+
+    with pytest.raises(OutcomeUnknownError):
+        await gateway.invoke(post())
+
+    assert parts["connector"].calls == 0
+    assert parts["idempotency"].abandoned == ["idm_1"]
+    assert parts["idempotency"].rows["idm_1"].status is InvocationStatus.UNKNOWN
+
+
+async def test_hang_cu_chua_co_lease_thi_coi_nhu_het_han() -> None:
+    legacy = _existing(lease_expires_at=None, claim_token=None)
+    gateway, parts = build_gateway(existing=legacy)
+
+    with pytest.raises(OutcomeUnknownError):
+        await gateway.invoke(post())
+
+    assert parts["connector"].calls == 0
+
+
+async def test_in_flight_het_lease_tool_doc_thi_tiep_quan() -> None:
+    abandoned = _record(
+        _claim(tool_id=READ_TOOL, key="idm_doc", request_fingerprint=fingerprint({})),
+        lease_expires_at=datetime.now(UTC) - timedelta(seconds=1),
+    )
+    gateway, parts = build_gateway(existing=abandoned)
+
+    await gateway.invoke(command(key="idm_doc"))
+
+    assert parts["connector"].calls == 1
+    assert parts["idempotency"].rows["idm_doc"].status is InvocationStatus.SUCCEEDED
+
+
+async def test_da_that_bai_that_su_thi_tiep_quan_va_chay_lai() -> None:
+    """`failed` nghĩa là chắc chắn không có tác động, nên chạy lại là an toàn."""
+    failed = _existing(status=InvocationStatus.FAILED, error_category=ErrorCategory.VALIDATION)
+    gateway, parts = build_gateway(existing=failed)
+
+    await gateway.invoke(post())
+
+    assert parts["connector"].calls == 1
+    store = parts["idempotency"]
+    assert store.rows["idm_1"].status is InvocationStatus.SUCCEEDED
+    assert store.rows["idm_1"].claim_token != "tok_nguoi_khac"
+
+
+async def test_khong_ro_thi_chan_lan_goi_lai_tool_ghi() -> None:
+    unknown = _existing(status=InvocationStatus.UNKNOWN)
+    gateway, parts = build_gateway(existing=unknown)
+
+    with pytest.raises(OutcomeUnknownError):
+        await gateway.invoke(post())
+
+    assert parts["connector"].calls == 0
+    assert "rate_limit" not in parts["journal"]
+
+
+async def test_thua_tranh_tiep_quan_thi_doc_lai_va_quyet_lai() -> None:
+    """Hai lời gọi cùng thấy `failed`; bên kia giành trước và đang chạy."""
+    from app.core.errors import InvocationInProgressError
+
+    failed = _existing(status=InvocationStatus.FAILED)
+    gateway, parts = build_gateway(existing=failed)
+    parts["idempotency"].lose_next_take_over_to = _existing(
+        lease_expires_at=datetime.now(UTC) + timedelta(seconds=60)
+    )
+
+    with pytest.raises(InvocationInProgressError):
+        await gateway.invoke(post())
+
+    assert parts["connector"].calls == 0
+
+
+async def test_thua_tranh_roi_ben_kia_da_xong_thi_phat_lai() -> None:
+    failed = _existing(status=InvocationStatus.FAILED)
+    gateway, parts = build_gateway(existing=failed)
+    parts["idempotency"].lose_next_take_over_to = _existing(
+        status=InvocationStatus.SUCCEEDED, result={"channel_id": "C123", "message_ts": "9.9"}
+    )
+
+    result = await gateway.invoke(post())
+
+    assert result.replayed is True
+    assert parts["connector"].calls == 0
+
+
+async def test_mat_lease_khi_chot_so_van_tra_ket_qua() -> None:
+    """Provider đã làm xong; một hàng bị người khác đổi không được nuốt kết quả đó."""
+    gateway, parts = build_gateway()
+    store = parts["idempotency"]
+    store.steal_before_complete = True
+
+    result = await gateway.invoke(post())
+
+    assert result.replayed is False
+    assert store.rows["idm_1"].status is InvocationStatus.IN_FLIGHT
+
+
+async def test_loi_khi_ghi_trace_sau_thanh_cong_khong_bien_thanh_that_bai() -> None:
+    gateway, parts = build_gateway()
+
+    async def broken(*_args: Any, **_kwargs: Any) -> None:
+        raise ProviderUnavailableError("trace hỏng")
+
+    parts["trace"].record = broken
+
+    with pytest.raises(ProviderUnavailableError, match="trace hỏng"):
+        await gateway.invoke(post())
+
+    store = parts["idempotency"]
+    assert store.rows["idm_1"].status is InvocationStatus.SUCCEEDED
+    assert store.failed == []
+    assert parts["connector"].calls == 1
+
+
+# ─── Hạn chót của một lời gọi ────────────────────────────────────────────────
+
+
+async def test_khong_thu_lai_khi_lan_ke_tiep_vuot_han_chot() -> None:
+    from app.domains.integration.domain.tools import TimeoutPolicy
+
+    tight = dataclasses.replace(
+        REGISTRY.get_tool(READ_TOOL),
+        timeout=TimeoutPolicy(attempt_seconds=15, total_seconds=20),
+    )
+    gateway, parts = build_gateway(
+        outcomes=[RateLimitedError("cham lai", retry_after_seconds=10), _ok()], tool=tight
+    )
+
+    with pytest.raises(RateLimitedError):
+        await gateway.invoke(command())
+
+    assert parts["connector"].calls == 1
 
 
 # ─── Retry (§15, §2.5) ───────────────────────────────────────────────────────
@@ -663,7 +921,9 @@ async def test_khong_ro_ket_qua_duoc_chot_vao_so_va_trace() -> None:
     with pytest.raises(OutcomeUnknownError):
         await gateway.invoke(post())
 
-    assert parts["idempotency"].failed[0]["category"] is ErrorCategory.OUTCOME_UNKNOWN
+    assert parts["idempotency"].unknown[0]["category"] is ErrorCategory.OUTCOME_UNKNOWN
+    assert parts["idempotency"].failed == []
+    assert parts["idempotency"].rows["idm_1"].status is InvocationStatus.UNKNOWN
     assert parts["trace"].records[0].error_category == "OutcomeUnknown"
 
 
@@ -772,22 +1032,7 @@ async def test_trace_phat_ra_ca_khi_that_bai() -> None:
 
 
 async def test_trace_phat_ra_khi_phat_lai() -> None:
-    claim = IdempotencyClaim(
-        tenant_id="org_1",
-        workspace_id="ws_1",
-        connection_id="conn_1",
-        tool_id=WRITE_TOOL,
-        tool_version="1.0",
-        key="idm_1",
-        request_fingerprint="",
-        expires_at=datetime.now(UTC),
-        at=datetime.now(UTC),
-    )
-    from app.domains.integration.domain.idempotency import fingerprint
-
-    done = _record(
-        claim,
-        request_fingerprint=fingerprint({"channel": "C123", "text": "xin chào"}),
+    done = _existing(
         status=InvocationStatus.SUCCEEDED,
         result={"channel_id": "C123", "message_ts": "1.2"},
     )

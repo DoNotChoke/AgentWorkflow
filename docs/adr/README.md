@@ -21,6 +21,7 @@ Những thay đổi thông thường không cần ADR. Việc lạm dụng ADR l
 | [0004](0004-chon-connection-theo-conversation.md) | Chọn connection theo Conversation, không theo Agent hay theo user | Accepted |
 | [0005](0005-tham-so-duong-dan-trong-tai-lieu-tool.md) | Tham số đường dẫn trong tài liệu tool, có kiểm soát | Accepted |
 | [0006](0006-payload-cua-execution-trace.md) | Payload của Execution Trace: khoá theo nội dung, hai tầng lưu, trần cứng | Accepted |
+| [0007](0007-so-idempotency-co-lease-va-trang-thai-khong-ro.md) | Sổ idempotency có lease, và `unknown` là một trạng thái riêng | Accepted |
 
 Mẫu: [`0000-template.md`](0000-template.md).
 

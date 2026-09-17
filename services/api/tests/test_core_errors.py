@@ -13,6 +13,7 @@ from app.core.errors import (
     AuthorizationError,
     Delivery,
     ErrorCategory,
+    InvocationInProgressError,
     OutcomeUnknownError,
     ProviderPermanentError,
     ProviderUnavailableError,
@@ -38,6 +39,13 @@ def test_khong_ro_ket_qua_thi_khong_retry() -> None:
     error = OutcomeUnknownError("khong ro da gui chua")
     assert not error.retryable
     assert error.http_status == 502
+
+
+def test_dang_chay_thi_retry_duoc_sau_it_giay() -> None:
+    """Thử lại sau khi bên kia xong là gặp kết quả đã chốt và được phát lại."""
+    error = InvocationInProgressError("dang chay", retry_after_seconds=5)
+    assert error.retryable
+    assert error.http_status == 409
 
 
 def test_delivery_mac_dinh_la_khong_gan_voi_loi_goi_ra_ngoai() -> None:

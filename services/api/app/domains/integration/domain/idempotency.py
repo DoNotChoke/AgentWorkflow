@@ -15,7 +15,10 @@ from app.core.errors import ErrorCategory, ValidationError
 class InvocationStatus(StrEnum):
     IN_FLIGHT = "in_flight"
     SUCCEEDED = "succeeded"
+    #: Chắc chắn không có tác động: provider từ chối, hoặc yêu cầu chưa từng tới.
     FAILED = "failed"
+    #: Có thể đã có tác động, không xác nhận được.
+    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +34,10 @@ class IdempotencyClaim:
     request_fingerprint: str
     expires_at: datetime
     at: datetime
+    #: Ai đang giữ quyền chạy. Mọi lần chốt kết quả phải mang đúng token này.
+    claim_token: str
+    #: Quá mốc này mà vẫn `in_flight` thì người giữ đã chết.
+    lease_expires_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,11 +57,50 @@ class IdempotencyRecord:
     provider_reference: str | None = None
     result: Mapping[str, object] | None = None
     error_category: ErrorCategory | None = None
+    claim_token: str | None = None
+    #: `None` ở hàng ghi trước khi có lease — coi như đã quá hạn.
+    lease_expires_at: datetime | None = None
 
     @property
     def replayable(self) -> bool:
         """Đã xong và có kết quả để trả lại thay vì gọi provider lần nữa."""
         return self.status is InvocationStatus.SUCCEEDED
+
+    def lease_expired(self, now: datetime) -> bool:
+        return self.lease_expires_at is None or self.lease_expires_at <= now
+
+
+class ClaimDecision(StrEnum):
+    """Làm gì khi khoá đã có người dùng trước."""
+
+    REPLAY = "replay"
+    IN_PROGRESS = "in_progress"
+    TAKE_OVER = "take_over"
+    #: Người giữ đã chết giữa chừng một thao tác ghi — đánh dấu không rõ.
+    MARK_UNKNOWN = "mark_unknown"
+    UNKNOWN = "unknown"
+
+
+def decide_claim(record: IdempotencyRecord, *, mutates: bool, now: datetime) -> ClaimDecision:
+    """Bảng quyết định của sổ idempotency.
+
+    | trạng thái             | tool đọc     | tool ghi     |
+    |------------------------|--------------|--------------|
+    | succeeded              | REPLAY       | REPLAY       |
+    | in_flight, còn lease   | IN_PROGRESS  | IN_PROGRESS  |
+    | in_flight, hết lease   | TAKE_OVER    | MARK_UNKNOWN |
+    | failed                 | TAKE_OVER    | TAKE_OVER    |
+    | unknown                | TAKE_OVER    | UNKNOWN      |
+    """
+    if record.status is InvocationStatus.SUCCEEDED:
+        return ClaimDecision.REPLAY
+    if record.status is InvocationStatus.IN_FLIGHT:
+        if not record.lease_expired(now):
+            return ClaimDecision.IN_PROGRESS
+        return ClaimDecision.MARK_UNKNOWN if mutates else ClaimDecision.TAKE_OVER
+    if record.status is InvocationStatus.UNKNOWN and mutates:
+        return ClaimDecision.UNKNOWN
+    return ClaimDecision.TAKE_OVER
 
 
 @dataclass(frozen=True, slots=True)

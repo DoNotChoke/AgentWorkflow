@@ -24,6 +24,7 @@ export type ErrorCategory =
   | "MissingConnection"
   | "ConnectionChoiceRequired"
   | "OutcomeUnknown"
+  | "InvocationInProgress"
   | "InternalError";
 
 type ErrorBody = {

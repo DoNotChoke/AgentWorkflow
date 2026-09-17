@@ -222,20 +222,7 @@ def _response_payload(response: ModelResponse) -> dict[str, Any]:
 
 
 def _idempotency_key(*, turn_id: str, tool_id: str, tool_input: Mapping[str, Any]) -> str:
-    """Khoá idempotency cho một lời gọi tool bên trong một lượt.
-
-    Tác động ghi ra bên ngoài (ví dụ `slack.post_message`) bắt buộc phải có
-    khoá này — Integration Gateway từ chối thẳng nếu thiếu. Khoá phải *ổn định
-    trong phạm vi một lượt*: nếu model quyết định gọi lại đúng cùng một thao
-    tác sau khi thấy lỗi, hoặc runtime thử lại sau khi mất phản hồi mạng,
-    Gateway thấy trùng khoá và phát lại kết quả cũ thay vì gây side effect lần
-    nữa. `turn_id` đổi theo từng lượt nên "gửi lại tin đó" ở lượt sau vẫn là
-    một lần gửi thật.
-
-    Vân tay input dùng cùng công thức `fingerprint` của domain integration
-    (`sort_keys`, `ensure_ascii=False`) — hai dict cùng nội dung khác thứ tự
-    khoá cho cùng một khoá idempotency.
-    """
+    """Khoá idempotency cho một lời gọi tool bên trong một lượt."""
     canonical = json.dumps(tool_input, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return f"{turn_id}:{tool_id}:{digest}"

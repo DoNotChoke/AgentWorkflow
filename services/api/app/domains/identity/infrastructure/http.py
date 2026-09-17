@@ -1,9 +1,4 @@
-"""Router HTTP của Identity.
-
-Rate limit nằm ở đây chứ không nằm trong ``IdentityService``: nó là mối quan
-tâm của tầng vận chuyển (đếm theo IP, theo địa chỉ gửi lên), không phải quy tắc
-nghiệp vụ. Đặt nó trong service sẽ buộc tầng application phải biết tới Redis.
-"""
+"""Router HTTP của Identity."""
 
 from __future__ import annotations
 
@@ -60,15 +55,7 @@ class UserResponse(BaseModel):
 
 
 class SessionResponse(BaseModel):
-    """Không bao giờ chứa ``password_hash``, và cũng không chứa refresh token.
-
-    Refresh token đi bằng cookie httpOnly (xem ``_set_refresh_cookie``). Trả nó
-    trong body sẽ buộc client trình duyệt cất ở nơi JavaScript đọc được, và khi
-    đó một lỗ XSS là mất phiên (§38).
-
-    ``refresh_token_expires_at`` vẫn được trả về: client cần biết phiên chết
-    lúc nào để chủ động cho đăng nhập lại, mà mốc thời gian thì không bí mật.
-    """
+    """Không bao giờ chứa ``password_hash``, và cũng không chứa refresh token."""
 
     user: UserResponse
     access_token: str
@@ -156,14 +143,7 @@ def get_tenant_provisioner(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TenantProvisioner:
-    """Lấy hiện thực ``TenantProvisioner`` mà entrypoint đã gắn vào app.
-
-    Đi vòng qua ``app.state`` thay vì import thẳng: module này thuộc domain
-    Identity, mà hiện thực nằm ở domain Tenant. Import trực tiếp sẽ phá
-    contract 1 của import-linter (các domain không import chéo nhau).
-
-    Entrypoint là nơi duy nhất biết cả hai domain và gắn dây ở đó.
-    """
+    """Lấy hiện thực ``TenantProvisioner`` mà entrypoint đã gắn vào app."""
     factory = getattr(request.app.state, TENANT_PROVISIONER_FACTORY, None)
     if factory is None:
         raise RuntimeError(
