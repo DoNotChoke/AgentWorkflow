@@ -229,6 +229,20 @@ allow_indirect_imports = true
 #
 # Hệ quả thiết kế: Agent Runtime buộc phải gọi Integration Gateway qua HTTP,
 # không gọi trong tiến trình. Đó là lý do tồn tại của endpoint invoke nội bộ.
+# ── Contract 8: Control Plane không chạy code do người dùng viết (§2.4, §38) ──
+#
+# `core.sandbox` chạy code do LLM sinh ra. ADR-0002 chốt Control Plane là tiến
+# trình DUY NHẤT giải mã được credential provider, nên một lần thoát sandbox ở đó
+# là một lần lộ token của mọi tenant.
+#
+# Sandbox chỉ được nạp ở Agent Runtime và Temporal worker — hai tiến trình đã bị
+# contract 6 và 7 cấm với tới credential. Xem `docs/plans/wp-c-transform-sandbox.md`.
+[[tool.importlinter.contracts]]
+name = "Control Plane không chạy code do người dùng viết"
+type = "forbidden"
+source_modules = ["app.entrypoints.http"]
+forbidden_modules = ["app.core.sandbox"]
+
 [[tool.importlinter.contracts]]
 name = "Agent Runtime không có đường nào tới credential"
 type = "forbidden"
