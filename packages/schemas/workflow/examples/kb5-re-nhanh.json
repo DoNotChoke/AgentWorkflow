@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "connections": {
+    "slack": "conn_slackvidu"
+  },
+  "nodes": [
+    {
+      "id": "t",
+      "type": "trigger",
+      "trigger": "manual",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {}
+      }
+    },
+    {
+      "id": "lich_su",
+      "type": "tool",
+      "tool_id": "slack.get_channel_history",
+      "tool_version": "1.0",
+      "input": {
+        "channel": {
+          "const": "C0VIDU0001"
+        }
+      }
+    },
+    {
+      "id": "du_nhieu",
+      "type": "condition",
+      "left": {
+        "from_node": {
+          "node": "lich_su",
+          "path": [
+            "messages",
+            "5"
+          ]
+        }
+      },
+      "op": "exists"
+    },
+    {
+      "id": "dang",
+      "type": "tool",
+      "tool_id": "slack.post_message",
+      "tool_version": "1.0",
+      "input": {
+        "channel": {
+          "const": "C0VIDU0001"
+        },
+        "text": {
+          "const": "Kênh đã có hơn 5 tin nhắn."
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "t",
+      "to": "lich_su"
+    },
+    {
+      "from": "lich_su",
+      "to": "du_nhieu"
+    },
+    {
+      "from": "du_nhieu",
+      "to": "dang",
+      "branch": "true"
+    }
+  ]
+}

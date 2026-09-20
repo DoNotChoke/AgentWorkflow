@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "connections": {
+    "slack": "conn_slackvidu"
+  },
+  "nodes": [
+    {
+      "id": "t",
+      "type": "trigger",
+      "trigger": "manual",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "noi_dung",
+          "ten_kenh"
+        ],
+        "properties": {
+          "ten_kenh": {
+            "type": "string",
+            "minLength": 1
+          },
+          "noi_dung": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "kenh",
+      "type": "tool",
+      "tool_id": "slack.list_channels",
+      "tool_version": "1.0",
+      "input": {}
+    },
+    {
+      "id": "dang",
+      "type": "tool",
+      "tool_id": "slack.post_message",
+      "tool_version": "1.0",
+      "input": {
+        "channel": {
+          "from_node": {
+            "node": "kenh",
+            "path": [
+              "channels"
+            ],
+            "where": {
+              "name": {
+                "from_input": "ten_kenh"
+              }
+            },
+            "pick": [
+              "id"
+            ]
+          }
+        },
+        "text": {
+          "from_input": "noi_dung"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "t",
+      "to": "kenh"
+    },
+    {
+      "from": "kenh",
+      "to": "dang"
+    }
+  ]
+}

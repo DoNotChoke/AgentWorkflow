@@ -1,0 +1,118 @@
+{
+  "schema_version": "1.0",
+  "connections": {
+    "slack": "conn_slackvidu",
+    "notion": "conn_notionvidu"
+  },
+  "nodes": [
+    {
+      "id": "t",
+      "type": "trigger",
+      "trigger": "manual",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {}
+      }
+    },
+    {
+      "id": "doc",
+      "type": "tool",
+      "tool_id": "slack.get_channel_history",
+      "tool_version": "1.0",
+      "input": {
+        "channel": {
+          "const": "C0VIDU0001"
+        },
+        "limit": {
+          "const": 10
+        }
+      }
+    },
+    {
+      "id": "tom_tat",
+      "type": "llm",
+      "model": "claude-sonnet-5",
+      "instructions": "Tóm tắt các tin nhắn Slack trong `messages` thành một tiêu đề cấp hai và một gạch đầu dòng cho mỗi ý chính. Giữ nguyên ngôn ngữ của tin nhắn.",
+      "input": {
+        "messages": {
+          "from_node": {
+            "node": "doc",
+            "path": [
+              "messages"
+            ]
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "blocks"
+        ],
+        "properties": {
+          "blocks": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "text"
+              ],
+              "properties": {
+                "type": {
+                  "enum": [
+                    "heading_2",
+                    "bulleted_list_item"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "tao",
+      "type": "tool",
+      "tool_id": "notion.create_page",
+      "tool_version": "2.0",
+      "input": {
+        "parent_page_id": {
+          "const": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        },
+        "title": {
+          "const": "Tổng hợp kênh test"
+        },
+        "blocks": {
+          "from_node": {
+            "node": "tom_tat",
+            "path": [
+              "blocks"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "t",
+      "to": "doc"
+    },
+    {
+      "from": "doc",
+      "to": "tom_tat"
+    },
+    {
+      "from": "tom_tat",
+      "to": "tao"
+    }
+  ]
+}

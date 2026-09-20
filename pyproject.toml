@@ -43,6 +43,7 @@ ignore = [
 # đọc, nên nó dài — và bẻ dòng bằng tay thì lần sinh sau xoá mất. Cùng lý do
 # mà migration được miễn E501.
 "services/api/app/domains/integration/domain/generated/*" = ["E501"]
+"services/api/app/domains/workflow/domain/generated/*" = ["E501"]
 # Script sinh code trong packages/ chạy bằng tay ở terminal, nên nó phải in ra
 # được thứ nó vừa làm. `src` có kể packages/ nên ruff soi cả thư mục này.
 "packages/**/*.py" = ["T20"]

@@ -42,13 +42,15 @@ khi được tạo. Vì vậy:
 
 ## Sinh code
 
-```bash
-# Python  (Phase 0 chưa cần — thêm khi IR v1 ổn định ở Phase 4)
-datamodel-codegen --input schemas/workflow --output ../../services/api/app/generated
+Mỗi thư mục có script sinh riêng, chạy tay, có `--check` để CI bắt lệch:
 
-# TypeScript
-npx json-schema-to-typescript -i schemas/workflow -o ../../apps/web/src/generated
+```bash
+python packages/schemas/tool/build_catalog.py        # tool/ → catalog Python
+python packages/schemas/workflow/build_ir_schema.py  # workflow/ → schema IR dạng Python
 ```
+
+Cả hai sinh **dữ liệu**, không sinh kiểu — kiểu viết tay trong domain, lý do ở
+`tool/README.md`. TypeScript cho editor sinh ở Phase 6.
 
 Code sinh ra **phải** được commit, để build không phụ thuộc vào việc chạy đúng
 thứ tự các bước sinh code.
@@ -60,7 +62,11 @@ connector Slack đầu tiên với bốn tool. Xem [`tool/README.md`](tool/READM
 
 `event/` — trống, Phase 7 cùng với §33.
 
-`workflow/` — trống. IR v1 được chốt ở **Phase 4** — đó là lúc có đủ Execution Trace thật để
-biết cần biểu diễn những gì. Chốt IR quá sớm, trước khi có dữ liệu thật từ
-Agent, gần như chắc chắn dẫn tới một contract sai mà lại đã bị đóng băng bởi
-quy tắc bất biến ở trên.
+`workflow/` — **IR v1, Phase 4.** Năm node (`trigger`, `tool`, `condition`,
+`llm`, `loop`), năm dạng binding, và sáu ví dụ viết tay từ trace thật của GĐ 0. Xem [`workflow/README.md`](workflow/README.md).
+
+IR v1 được chốt **sau** khi đọc trace thật, đúng như cảnh báo ở đây trước đó:
+chốt quá sớm là chốt một contract sai mà đã bị quy tắc bất biến đóng băng. Hai node (`llm`, `loop`) và hai dạng binding (`where`,
+`from_item`) có mặt chỉ vì trace thật đòi chúng; `transform` thì ngược lại — sáu
+ví dụ cho thấy không cái nào cần tới nó, nên nó rời v1 và quay lại ở WP-C dưới
+dạng code chạy trong sandbox.
