@@ -556,6 +556,40 @@ async def test_envelope_khong_doc_nham_phan_hoi_thanh_cong_thanh_loi(
     assert result.output["results"] == [{"id": "p1", "object": "page"}]
 
 
+async def test_tim_kiem_tra_ve_tieu_de_cua_ca_trang_lan_database(
+    transport: dict[str, Any],
+) -> None:
+    """Thiếu tiêu đề thì "tìm trang tên AWS" không làm được bằng một lời gọi —
+    Agent phải đoán từ đuôi `url`. Trang để tiêu đề dưới `properties.title`,
+    database để ngay ở gốc."""
+    replying(
+        transport,
+        json={
+            "object": "list",
+            "results": [
+                {
+                    "id": "p1",
+                    "object": "page",
+                    "properties": {
+                        "title": {"title": [{"plain_text": "Ghi chú "}, {"plain_text": "AWS"}]}
+                    },
+                },
+                {"id": "d1", "object": "database", "title": [{"plain_text": "Việc cần làm"}]},
+                {"id": "r1", "object": "page", "properties": {"Tên": {"title": []}}},
+            ],
+            "has_more": False,
+        },
+    )
+
+    result = await call_notion(transport, "notion.search")
+
+    assert result.output["results"] == [
+        {"id": "p1", "object": "page", "title": ["Ghi chú ", "AWS"]},
+        {"id": "d1", "object": "database", "title": ["Việc cần làm"]},
+        {"id": "r1", "object": "page"},
+    ]
+
+
 # ─── Tham số đường dẫn (ADR-0005) ────────────────────────────────────────────
 
 TRANG = "1f0a2b3c4d5e6f708192a3b4c5d6e7f8"

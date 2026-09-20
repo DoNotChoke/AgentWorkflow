@@ -1128,8 +1128,8 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         tool_id="notion.search",
         provider="notion",
-        version="1.0",
-        description="Tìm trang và database trong Notion theo tiêu đề. Chỉ thấy những thứ người dùng đã chia sẻ với integration này — kết quả rỗng thường nghĩa là chưa được chia sẻ, không phải không tồn tại. Bỏ trống `query` để liệt kê mọi thứ đang thấy được. Trả về id và đường dẫn của từng mục; tiêu đề nằm trong phần cuối của `url`.",
+        version="1.1",
+        description="Tìm trang và database trong Notion theo tiêu đề. Chỉ thấy những thứ người dùng đã chia sẻ với integration này — kết quả rỗng thường nghĩa là chưa được chia sẻ, không phải không tồn tại. Bỏ trống `query` để liệt kê mọi thứ đang thấy được. Trả về id, tiêu đề và đường dẫn của từng mục.",
         input_schema=PayloadSchema(
             version="1.0",
             json_schema={
@@ -1155,7 +1155,7 @@ TOOLS: tuple[ToolSpec, ...] = (
             },
         ),
         output_schema=PayloadSchema(
-            version="1.0",
+            version="1.1",
             json_schema={
                 "type": "object",
                 "additionalProperties": False,
@@ -1177,6 +1177,13 @@ TOOLS: tuple[ToolSpec, ...] = (
                                 },
                                 "url": {
                                     "type": "string",
+                                },
+                                "title": {
+                                    "type": "array",
+                                    "description": "Các đoạn của tiêu đề, ghép lại theo thứ tự thì ra tiêu đề đầy đủ. Vắng mặt với dòng của một database: ở đó tiêu đề nằm dưới tên cột do người dùng đặt.",
+                                    "items": {
+                                        "type": "string",
+                                    },
                                 },
                                 "created_time": {
                                     "type": "string",
@@ -1227,6 +1234,22 @@ TOOLS: tuple[ToolSpec, ...] = (
                     ),
                     "url": ItemSelector(
                         paths=(("url",),),
+                    ),
+                    "title": ItemSelector(
+                        paths=(
+                            (
+                                "properties",
+                                "title",
+                                "title",
+                                "*",
+                                "plain_text",
+                            ),
+                            (
+                                "title",
+                                "*",
+                                "plain_text",
+                            ),
+                        ),
                     ),
                     "created_time": ItemSelector(
                         paths=(("created_time",),),
