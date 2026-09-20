@@ -22,6 +22,7 @@ Những thay đổi thông thường không cần ADR. Việc lạm dụng ADR l
 | [0005](0005-tham-so-duong-dan-trong-tai-lieu-tool.md) | Tham số đường dẫn trong tài liệu tool, có kiểm soát | Accepted |
 | [0006](0006-payload-cua-execution-trace.md) | Payload của Execution Trace: khoá theo nội dung, hai tầng lưu, trần cứng | Accepted |
 | [0007](0007-so-idempotency-co-lease-va-trang-thai-khong-ro.md) | Sổ idempotency có lease, và `unknown` là một trạng thái riêng | Accepted |
+| [0008](0008-workflow-compiler-la-hybrid.md) | Workflow Compiler là hybrid: LLM quyết định tổng quát hoá, code tất định dựng IR | Accepted |
 
 Mẫu: [`0000-template.md`](0000-template.md).
 
