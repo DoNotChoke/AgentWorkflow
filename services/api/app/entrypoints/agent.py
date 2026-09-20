@@ -52,6 +52,7 @@ from app.domains.agent.infrastructure.repositories import (
     SqlAlchemyConversationRepository,
     SqlAlchemyMessageRepository,
 )
+from app.domains.agent.infrastructure.transform_tool import TransformTool
 from app.domains.tenant.application.service import TenantService
 from app.domains.tenant.infrastructure.repositories import (
     SqlAlchemyMembershipRepository,
@@ -211,8 +212,13 @@ def get_model_client(settings: Annotated[Settings, Depends(get_settings)]) -> Mo
 
 def get_integration_client(
     settings: Annotated[Settings, Depends(get_settings)],
-) -> IntegrationClient:
-    return IntegrationClient(settings.control_plane_internal_base_url)
+) -> TransformTool:
+    """Client gọi Gateway, bọc thêm tool dựng sẵn `system.transform`.
+
+    Sandbox chỉ được nạp ở tiến trình này và ở worker, không ở Control Plane —
+    contract 8 canh điều đó.
+    """
+    return TransformTool(IntegrationClient(settings.control_plane_internal_base_url))
 
 
 def get_connection_resolver(
@@ -473,7 +479,7 @@ async def _stream_turn(
     conversation: Any,
     history: Sequence[Any],
     models: ModelClient,
-    integration: IntegrationClient,
+    integration: TransformTool,
     connections: ConnectionResolver,
     selections: ConnectionSelectionStore,
     user_message: str,
@@ -571,7 +577,7 @@ async def send_message(
     authorization: Annotated[str, Depends(require_authorization_header)],
     admin: Annotated[AgentAdminService, Depends(get_admin_service)],
     models: Annotated[ModelClient, Depends(get_model_client)],
-    integration: Annotated[IntegrationClient, Depends(get_integration_client)],
+    integration: Annotated[TransformTool, Depends(get_integration_client)],
     connections: Annotated[ConnectionResolver, Depends(get_connection_resolver)],
     selections: Annotated[ConnectionSelectionStore, Depends(get_connection_selection_store)],
 ) -> EventSourceResponse:

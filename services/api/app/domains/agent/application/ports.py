@@ -23,6 +23,8 @@ class ModelToolSpec:
     input_schema: Mapping[str, Any]
     #: Version trong catalog — đủ để tra ngược đúng schema đã gửi cho model.
     version: str
+    #: Tool chạy ngay trong tiến trình Agent Runtime, không qua Integration Gateway.
+    local: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,7 +145,8 @@ class ToolExecutor(Protocol):
         *,
         name: str,
         tool_input: Mapping[str, Any],
-        connection_id: str,
+        #: `None` với tool `local` — nó không gọi provider nào.
+        connection_id: str | None,
         authorization: str,
         organization_id: str | None,
         workspace_id: str | None,

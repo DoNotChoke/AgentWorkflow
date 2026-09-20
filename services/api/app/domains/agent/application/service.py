@@ -284,8 +284,6 @@ class AgentRuntime:
 
         while True:
             turns = _to_model_turns([*history, *turn_messages])
-            # Hết ngân sách thì không mời tool nữa — model không thể trả về
-            # tool_use khi không có tool nào trong tay
             offer_tools = tool_specs if remaining_tool_calls > 0 else ()
 
             response = await self._complete(agent=agent, turns=turns, tools=offer_tools)
@@ -318,6 +316,7 @@ class AgentRuntime:
                 )
             )
 
+            by_name = {tool.name: tool for tool in tool_specs}
             for call in response.tool_calls:
                 tool_id = from_model_name(call.name)
                 await events.emit(
@@ -327,6 +326,7 @@ class AgentRuntime:
                 outcome = await self._execute_tool_call(
                     agent=agent,
                     call=call,
+                    spec=by_name.get(call.name),
                     turn_id=turn_id,
                     conversation_id=conversation.id,
                     authorization=authorization,
@@ -394,6 +394,8 @@ class AgentRuntime:
         *,
         agent: Agent,
         call: ModelToolCall,
+        #: `None` khi model gọi một tên không có trong danh mục đã gửi nó.
+        spec: ModelToolSpec | None,
         turn_id: str,
         conversation_id: str,
         authorization: str,
@@ -409,6 +411,9 @@ class AgentRuntime:
         # Phát id trước để bước Gateway ghi được trỏ về bước này làm cha.
         step_id = new_id(ResourceKind.TRACE_STEP)
 
+        local = spec is not None and spec.local
+        sent = dict(call.input) if local else None
+
         try:
             if not agent.allows_tool(tool_id):
                 raise AuthorizationError(
@@ -421,22 +426,24 @@ class AgentRuntime:
             # (ADR-0004). Chưa có thì resolve rồi lưu lại ngay khi thành công,
             # để lần gọi tool kế tiếp trong cùng conversation không phải hỏi
             # lại nữa.
-            provider = tool_id.split(".", 1)[0]
-            connection_id = await self._selections.get(
-                conversation_id=conversation_id, provider=provider
-            )
-            if connection_id is None:
-                connection_id = await self._connections.resolve(
-                    tool_id=tool_id,
-                    authorization=authorization,
-                    organization_id=organization_id,
-                    workspace_id=workspace_id,
+            connection_id: str | None = None
+            if not local:
+                provider = tool_id.split(".", 1)[0]
+                connection_id = await self._selections.get(
+                    conversation_id=conversation_id, provider=provider
                 )
-                await self._selections.set(
-                    conversation_id=conversation_id,
-                    provider=provider,
-                    connection_id=connection_id,
-                )
+                if connection_id is None:
+                    connection_id = await self._connections.resolve(
+                        tool_id=tool_id,
+                        authorization=authorization,
+                        organization_id=organization_id,
+                        workspace_id=workspace_id,
+                    )
+                    await self._selections.set(
+                        conversation_id=conversation_id,
+                        provider=provider,
+                        connection_id=connection_id,
+                    )
 
             result = await self._executor.invoke(
                 name=call.name,
@@ -460,6 +467,7 @@ class AgentRuntime:
                 attributes={"tool_id": tool_id},
                 error_category=exc.category.value,
                 step_id=step_id,
+                input_payload=sent,
             )
             message = _make_message(
                 conversation_id,
@@ -482,6 +490,8 @@ class AgentRuntime:
             completed_at=completed,
             attributes={"tool_id": tool_id, "invocation_id": result.invocation_id},
             step_id=step_id,
+            input_payload=sent,
+            output_payload=dict(result.output) if local else None,
         )
 
         message = _make_message(

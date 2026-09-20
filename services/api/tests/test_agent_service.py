@@ -158,7 +158,7 @@ class FakeToolExecutor:
         *,
         name: str,
         tool_input: Mapping[str, Any],
-        connection_id: str,
+        connection_id: str | None,
         authorization: str,
         organization_id: str | None,
         workspace_id: str | None,
@@ -875,3 +875,119 @@ async def test_prompt_luu_xuong_khong_mang_token_cua_nguoi_dung() -> None:
 
     stored = json.dumps(trace.payloads, ensure_ascii=False)
     assert "bi-mat-khong-duoc-luu" not in stored
+
+
+# ─── Tool chạy tại chỗ (WP-C, A2) ────────────────────────────────────────────
+
+LOCAL_SPEC = ModelToolSpec(
+    name="system__transform",
+    description="Chạy một đoạn Python ngắn",
+    input_schema={"type": "object"},
+    version="1.0",
+    local=True,
+)
+
+
+async def test_tool_local_khong_phai_phan_giai_connection() -> None:
+    """Nó không gọi provider nào, nên hỏi "dùng connection nào" là vô nghĩa —
+    và `provider` suy ra từ tiền tố `system.` sẽ không bao giờ có kết nối."""
+    call = ModelToolCall(call_id="call_1", name="system__transform", input={"code": "return 1"})
+    models = ScriptedModelClient([_tool_use(call), _end_turn("Xong.")])
+    executor = FakeToolExecutor()
+    executor.set_result(
+        "system__transform",
+        ToolInvocationResult(output={"result": 2}, invocation_id="ti_1", replayed=False),
+    )
+    connections = FakeConnectionResolver()
+    selections = FakeConnectionSelectionStore()
+    runtime = make_runtime(
+        models=models,
+        tools=FakeToolCatalog((TOOL_SPEC, LOCAL_SPEC)),
+        executor=executor,
+        connections=connections,
+        selections=selections,
+    )
+
+    await run(
+        runtime,
+        make_agent(enabled_tool_ids=frozenset({"system.transform"})),
+        make_conversation(),
+    )
+
+    assert connections.calls == []
+    assert selections.set_calls == []
+    assert executor.calls[0]["connection_id"] is None
+
+
+async def test_tool_local_tu_ghi_payload_vi_khong_co_buoc_gateway_ben_duoi() -> None:
+    """GĐ 0, P1: payload của một lời gọi tool thường nằm ở bước Gateway lồng
+    dưới. Tool local không đi qua Gateway, nên bước của Agent phải tự mang —
+    nếu không, compiler nhìn vào trace chỉ thấy một bước rỗng."""
+    tool_input = {"code": "return len(args['m'])", "args": {"m": [1, 2]}}
+    call = ModelToolCall(call_id="call_1", name="system__transform", input=tool_input)
+    models = ScriptedModelClient([_tool_use(call), _end_turn("Có 2.")])
+    executor = FakeToolExecutor()
+    executor.set_result(
+        "system__transform",
+        ToolInvocationResult(output={"result": 2}, invocation_id="ti_1", replayed=False),
+    )
+    trace = FakeTraceSink()
+    runtime = make_runtime(
+        models=models,
+        tools=FakeToolCatalog((LOCAL_SPEC,)),
+        executor=executor,
+        trace=trace,
+    )
+
+    await run(
+        runtime,
+        make_agent(enabled_tool_ids=frozenset({"system.transform"})),
+        make_conversation(),
+    )
+
+    index = [step["kind"] for step in trace.steps].index("tool_call")
+    assert trace.steps[index]["attributes"]["tool_id"] == "system.transform"
+    assert trace.payloads[index] == {"input": tool_input, "output": {"result": 2}}
+
+
+async def test_tool_local_hong_van_giu_lai_doan_code_da_chay() -> None:
+    tool_input = {"code": "return 1 / 0", "args": {}}
+    call = ModelToolCall(call_id="call_1", name="system__transform", input=tool_input)
+    models = ScriptedModelClient([_tool_use(call), _end_turn("Code hỏng.")])
+    executor = FakeToolExecutor()
+    executor.set_result("system__transform", ValidationError("ZeroDivisionError"))
+    trace = FakeTraceSink()
+    runtime = make_runtime(
+        models=models,
+        tools=FakeToolCatalog((LOCAL_SPEC,)),
+        executor=executor,
+        trace=trace,
+    )
+
+    await run(
+        runtime,
+        make_agent(enabled_tool_ids=frozenset({"system.transform"})),
+        make_conversation(),
+    )
+
+    index = [step["kind"] for step in trace.steps].index("tool_call")
+    assert trace.steps[index]["status"] == "failed"
+    assert trace.payloads[index]["input"] == tool_input
+
+
+async def test_tool_thuong_van_khong_mang_payload_o_buoc_cua_agent() -> None:
+    """Bước Gateway lồng bên dưới mới mang payload — không nhân đôi."""
+    call = ModelToolCall(call_id="call_1", name="slack__post_message", input={"text": "x"})
+    models = ScriptedModelClient([_tool_use(call), _end_turn("Đã gửi.")])
+    executor = FakeToolExecutor()
+    executor.set_result(
+        "slack__post_message",
+        ToolInvocationResult(output={"ok": True}, invocation_id="ti_1", replayed=False),
+    )
+    trace = FakeTraceSink()
+    runtime = make_runtime(models=models, executor=executor, trace=trace)
+
+    await run(runtime, make_agent(), make_conversation())
+
+    index = [step["kind"] for step in trace.steps].index("tool_call")
+    assert trace.payloads[index] == {"input": None, "output": None}

@@ -60,7 +60,8 @@ class IntegrationClient:
         *,
         name: str,
         tool_input: Mapping[str, Any],
-        connection_id: str,
+        #: Không bao giờ `None` ở đây — tool `local` không đi qua client này.
+        connection_id: str | None,
         authorization: str,
         organization_id: str | None,
         workspace_id: str | None,
