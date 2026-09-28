@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from app.domains.workflow.domain.entities import Workflow, WorkflowDraft, WorkflowVersion
+
 
 @dataclass(frozen=True, slots=True)
 class ToolContract:
@@ -57,3 +59,59 @@ class ConnectionReader(Protocol):
         self, *, tenant_id: str, workspace_id: str, connection_id: str
     ) -> BoundConnection | None:
         """`None` khi không tồn tại, hoặc thuộc tenant/workspace khác."""
+
+
+class InvocationContext(Protocol):
+    """Tenant của người gọi, đã phân giải từ token và membership."""
+
+    @property
+    def user_id(self) -> str: ...
+
+    @property
+    def organization_id(self) -> str: ...
+
+    @property
+    def workspace_id(self) -> str: ...
+
+    @property
+    def roles(self) -> frozenset[str]: ...
+
+
+class TenantGuard(Protocol):
+    """Cùng hình dạng với Protocol tên này ở Connection và Trace. `Protocol` là
+    structural typing, nên một adapter duy nhất ở `wiring` thoả cả ba mà không
+    domain nào phải biết domain kia tồn tại."""
+
+    async def require_workspace_context(
+        self, *, user_id: str, organization_id: str | None, workspace_id: str | None
+    ) -> InvocationContext: ...
+
+
+class WorkflowRepository(Protocol):
+    """Bền vững hoá workflow, draft và version."""
+
+    async def add(self, workflow: Workflow) -> None: ...
+
+    async def get(self, *, tenant_id: str, workflow_id: str) -> Workflow | None: ...
+
+    async def list_for_workspace(self, *, tenant_id: str, workspace_id: str) -> list[Workflow]: ...
+
+    async def update(self, workflow: Workflow) -> None: ...
+
+    async def save_draft(self, draft: WorkflowDraft) -> None: ...
+
+    async def get_draft(self, *, tenant_id: str, workflow_id: str) -> WorkflowDraft | None: ...
+
+    async def add_version(self, version: WorkflowVersion) -> None: ...
+
+    async def get_version(
+        self, *, tenant_id: str, workflow_id: str, number: int
+    ) -> WorkflowVersion | None: ...
+
+    async def get_version_by_id(
+        self, *, tenant_id: str, version_id: str
+    ) -> WorkflowVersion | None: ...
+
+    async def list_versions(self, *, tenant_id: str, workflow_id: str) -> list[WorkflowVersion]: ...
+
+    async def latest_version_number(self, *, tenant_id: str, workflow_id: str) -> int | None: ...

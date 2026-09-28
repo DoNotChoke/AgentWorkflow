@@ -39,6 +39,12 @@ from app.domains.tenant.infrastructure.http import USER_DIRECTORY_FACTORY, build
 from app.domains.tenant.infrastructure.http import router as tenant_router
 from app.domains.trace.infrastructure.http import TRACE_TENANT_GUARD_FACTORY
 from app.domains.trace.infrastructure.http import router as trace_router
+from app.domains.workflow.infrastructure.http import (
+    WORKFLOW_CATALOG_FACTORY,
+    WORKFLOW_CONNECTION_READER_FACTORY,
+    WORKFLOW_TENANT_GUARD_FACTORY,
+)
+from app.domains.workflow.infrastructure.http import router as workflow_router
 from app.entrypoints.middleware import (
     RequestContextMiddleware,
     app_error_handler,
@@ -50,6 +56,8 @@ from app.entrypoints.wiring import (
     build_integration_tenant_guard,
     build_tenant_guard,
     build_user_directory,
+    build_workflow_connection_reader,
+    build_workflow_tool_catalog,
 )
 
 log = get_logger(__name__)
@@ -124,6 +132,9 @@ def create_app() -> FastAPI:
     # Trace ← Tenant: cùng hình dạng với Integration, cùng lý do — Trace chỉ
     # cần biết "ai, thuộc tenant/workspace nào", không cần domain nào khác.
     setattr(app.state, TRACE_TENANT_GUARD_FACTORY, build_tenant_guard)
+    setattr(app.state, WORKFLOW_TENANT_GUARD_FACTORY, build_tenant_guard)
+    setattr(app.state, WORKFLOW_CATALOG_FACTORY, build_workflow_tool_catalog)
+    setattr(app.state, WORKFLOW_CONNECTION_READER_FACTORY, build_workflow_connection_reader)
 
     # Router của từng domain được mount ở đây. Entrypoint chỉ chạm tới tầng
     # `infrastructure` của domain, không bao giờ import thẳng tầng `domain`
@@ -134,6 +145,7 @@ def create_app() -> FastAPI:
     app.include_router(integration_router)
     app.include_router(tool_catalog_router)
     app.include_router(trace_router)
+    app.include_router(workflow_router)
 
     instrument_fastapi(app)
     return app

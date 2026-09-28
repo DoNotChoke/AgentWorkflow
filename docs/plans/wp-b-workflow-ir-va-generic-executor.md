@@ -650,7 +650,7 @@ Mỗi commit xanh độc lập — kiểm bằng cách stash phần còn lại r
 7. ✅ `feat(api): the tool catalogue, seen from the workflow side` — adapter dict
    thuần ở `integration/infrastructure`, `ConnectionPolicy` ở `wiring`, và
    `ToolCatalogReader` thật thay cho adapter tự viết trong test GĐ 2.
-8. `feat(api): publishing a workflow freezes it` — service + router: tạo, liệt
+8. ✅ `feat(api): publishing a workflow freezes it` — service + router: tạo, liệt
    kê, đọc, `PATCH /draft`, `POST /publish`, đọc version, lưu trữ. Quyền sửa và
    publish: người tạo hoặc `ws:admin`, cùng luật `ensure_can_manage` của Agent.
    Lưu trữ là soft archive, không xoá.
