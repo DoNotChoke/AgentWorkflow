@@ -1,18 +1,4 @@
-"""Chỗ nối các domain lại với nhau.
-
-Contract 1 của import-linter cấm domain import chéo nhau, nên mọi lần một domain
-cần dữ liệu của domain khác đều đi theo cùng một hình: bên cần khai một Protocol
-ở tầng `application` của mình, bên có hiện thực hoá, và **module này** là nơi
-duy nhất biết cả hai để buộc dây.
-
-Adapter phải nằm ở đây chứ không nằm trong domain nào: đặt nó vào Identity thì
-Identity phải import kiểu dữ liệu của Tenant, đặt vào Tenant thì ngược lại — cả
-hai đều phá contract 1.
-
-Module này cũng không được import thẳng tầng `domain` của bất kỳ ai (contract 5).
-Vì thế nó chỉ đọc thuộc tính của entity Identity trả về chứ không chú kiểu cho
-chúng — đọc `user.email` không cần biết `User` là gì.
-"""
+"""Chỗ nối các domain lại với nhau."""
 
 from __future__ import annotations
 
@@ -40,12 +26,7 @@ from app.domains.tenant.application.service import TenantService
 
 
 def _to_profile(user: object) -> UserProfile:
-    """Chuyển một ``User`` của Identity sang DTO mà Tenant đặt hàng.
-
-    Tham số để kiểu ``object`` là có chủ đích: chú đúng kiểu ``User`` sẽ phải
-    import ``identity.domain``, mà contract 5 cấm entrypoint làm thế. Đọc thuộc
-    tính thì không cần biết kiểu.
-    """
+    """Chuyển một ``User`` của Identity sang DTO mà Tenant đặt hàng."""
     return UserProfile(
         user_id=user.id,  # type: ignore[attr-defined]
         email=user.email,  # type: ignore[attr-defined]
@@ -65,13 +46,6 @@ class IdentityUserDirectory:
 
     async def find_by_email(self, email: str) -> UserProfile | None:
         # Identity lưu email đã `strip().lower()`, nên tra cũng phải cùng dạng.
-        # Đây là chỗ đúng để làm việc đó: module này biết dữ liệu Identity nằm ở
-        # hình dạng nào, còn Tenant thì không — và cũng không được phép biết.
-        #
-        # Không tái dùng `normalize_email` của Identity vì nó nằm ở tầng `domain`
-        # mà entrypoint không được import thẳng (contract 5). Ở đây chỉ cần khớp
-        # khoá tra cứu, không cần kiểm định dạng — email sai cú pháp đơn giản là
-        # không khớp ai cả.
         found = await self._users.get_by_email(email.strip().lower())
         return None if found is None else _to_profile(found)
 
@@ -86,12 +60,6 @@ def build_user_directory(session: AsyncSession) -> UserDirectory:
 # ─────────────────────────────────────────────────────────────────────────────
 
 #: Vai trò workspace được phép quản lý kết nối, ở dạng chuỗi đã mã hoá.
-#:
-#: So bằng chuỗi chứ không bằng enum ``WorkspaceRole`` là có chủ đích: contract
-#: 5 cấm entrypoint import thẳng tầng `domain` của một domain. Chính vì thế mà
-#: Tenant đã chọn mã hoá vai trò thành chuỗi (`org:owner`, `ws:admin`) cho các
-#: domain khác dùng — xem `core/http_auth.user_principal`. Đây dùng lại đúng
-#: cách mã hoá đó, không phát minh cách thứ hai.
 _WORKSPACE_MANAGER_ROLE = "ws:admin"
 
 #: Thu hồi được kết nối riêng của người khác — cần cho việc dọn dẹp khi có
@@ -105,12 +73,7 @@ _ORG_OWNER_ROLE = "org:owner"
 
 
 def _encode_roles(access: object) -> frozenset[str]:
-    """Mã hoá vai trò của một ``TenantAccess`` thành chuỗi.
-
-    Giữ đồng bộ với ``tenant.infrastructure.http._encode_roles``. Hai bản này
-    không dùng chung được: một bản nằm trong domain Tenant, bản kia ở entrypoint
-    và không được import tầng `domain`.
-    """
+    """Mã hoá vai trò của một ``TenantAccess`` thành chuỗi."""
     roles = {f"org:{access.org_role}"}  # type: ignore[attr-defined]
     workspace_role = access.workspace_role  # type: ignore[attr-defined]
     if workspace_role is not None:
@@ -228,8 +191,6 @@ class ConnectionCredentialProvider:
         kết thúc bằng lỗi — `session_scope` sẽ rollback. Dùng chung session thì
         bản ghi "token này chết" bị cuốn theo, và kết nối nằm `active` vĩnh
         viễn dù provider đã nói ngược lại.
-
-        Đây là báo cáo, không phải một phần công việc của request.
         """
         from app.core.db import session_scope
 
@@ -245,13 +206,7 @@ class ConnectionCredentialProvider:
 def build_credential_provider(
     session: AsyncSession, settings: Settings
 ) -> ConnectionCredentialProvider:
-    """Dựng cổng credential, để gắn vào ``app.state``.
-
-    `CredentialResolver` gom sáu gạch đầu dòng của §6.3 vào một lời gọi: phân
-    giải kết nối, kiểm tenant, kiểm quyền nhìn thấy, nạp credential đã mã hoá,
-    giải mã, làm mới token, kiểm scope. Gateway **không** được tự làm bất kỳ
-    bước nào trong số đó.
-    """
+    """Dựng cổng credential, để gắn vào ``app.state``."""
     credentials = build_provider_credentials(settings)
     return ConnectionCredentialProvider(
         CredentialResolver(
@@ -280,20 +235,7 @@ def build_integration_tenant_guard(session: AsyncSession) -> TenantGuard:
 
 
 class IntegrationTraceSink:
-    """Hiện thực `ToolInvocationSink` của Integration bằng `TraceService`.
-
-    Chỉ ghi khi lời gọi tool mang `execution_trace_id` trên `CallerRef` — do
-    Agent Runtime gắn vào khi nó gọi Gateway qua HTTP (Phase 3, phần còn lại).
-    Không có `execution_trace_id` thì rơi về `fallback`: hiện tại
-    `/internal/v1/tools/{id}/invoke` còn gọi được trực tiếp không qua Agent
-    Runtime, và khi đó không có trace nào đang mở để ghi vào — đó không phải
-    một lỗi, chỉ là không có gì để đính kèm.
-
-    Ghi trong một transaction **riêng** (`session_scope()`), không phải
-    transaction của request: một lời gọi tool lỗi giữa chừng không được cuốn
-    theo bước trace đã ghi trước đó, đúng lúc chúng cần nhất để biết vì sao
-    nó hỏng.
-    """
+    """Hiện thực `ToolInvocationSink` của Integration bằng `TraceService`."""
 
     def __init__(self, fallback: Any) -> None:
         self._fallback = fallback
@@ -355,17 +297,7 @@ class IntegrationTraceSink:
 
 
 def build_execution_trace_sink(_session: AsyncSession) -> IntegrationTraceSink:
-    """Dựng sink thật của Integration Gateway, để gắn vào ``app.state``.
-
-    Nhận `_session` chỉ để khớp chữ ký chung của mọi factory trong module này
-    (`get_gateway` gọi `factory(session)` như với credential provider) — nhưng
-    không dùng nó: `IntegrationTraceSink` tự mở transaction riêng cho mỗi lần
-    ghi, xem docstring của nó.
-
-    Usage (`LoggingUsageRecorder`) không đổi ở đây: sổ usage thật là domain
-    `usage`, thuộc Phase 7 (§18) — gộp nó vào `trace` bây giờ sẽ lẫn quyền sở
-    hữu dữ liệu giữa hai domain, đúng điều ADR-0001 quy tắc 3 cấm.
-    """
+    """Dựng sink thật của Integration Gateway, để gắn vào ``app.state``."""
     from app.domains.integration.infrastructure.sinks import LoggingToolInvocationSink
 
     return IntegrationTraceSink(fallback=LoggingToolInvocationSink())

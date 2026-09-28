@@ -9,11 +9,7 @@ from typing import Any, Protocol
 
 @dataclass(frozen=True, slots=True)
 class ToolContract:
-    """Phần của một tool mà validator workflow cần biết.
-
-    Kiểu riêng của domain `workflow`, không phải `ToolSpec` — contract 1 cấm
-    import `integration`. Hiện thực port tự chép sang từ catalog.
-    """
+    """Phần của một tool mà validator workflow cần biết."""
 
     tool_id: str
     version: str
