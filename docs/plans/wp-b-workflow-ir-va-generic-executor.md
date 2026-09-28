@@ -88,7 +88,7 @@ hoãn `llm`, và ADR-0008 cho thấy đó là một sai lầm sẽ chặn cả P
 
 ---
 
-## 3. Mười ba quyết định
+## 3. Mười lăm quyết định
 
 ### Q1 — Đọc trace thật trước, chốt IR sau
 
@@ -402,6 +402,55 @@ Năm luật, mỗi luật chặn một loại hỏng cụ thể:
 `loop` × `llm` là một cấp số nhân chi phí: 50 lượt × một lời gọi model. Validator
 gắn cảnh báo khi thân có node `llm`; ngân sách thật là việc của Phase 7.
 
+### Q14 — Lưu draft dễ tính, publish khắt khe; và bất biến canh bằng trigger
+
+Người đang sửa dở có quyền lưu một IR chưa hợp lệ — nếu không thì editor của
+Phase 6 không lưu nổi trạng thái giữa chừng. Nên hai cửa, hai mức:
+
+| | Kiểm gì | Hỏng thì |
+|---|---|---|
+| `PATCH /draft` | JSON parse được, dưới trần 256 KiB | từ chối |
+| | rồi chạy validator đầy đủ | **vẫn lưu**, trả kèm báo cáo lỗi và cảnh báo |
+| `POST /publish` | `report.ok` | từ chối |
+
+Một validator, hai mức khắt khe — đúng thứ `ValidationReport` của GĐ 2 được
+thiết kế cho, và là lý do nó trả danh sách issue thay vì ném ở lỗi đầu tiên.
+
+**Bất biến canh ở hai tầng.** Ràng buộc 2 của §47 nói version đã publish là bất
+biến. Repository không có `update` hay `delete` nào cho version, **và** migration
+0013 dựng một trigger Postgres chặn `UPDATE`/`DELETE` trên `workflow_versions`.
+Năm dòng SQL biến một quy ước thành một bảo đảm — cùng lập luận với việc
+`lint-imports` canh ranh giới credential thay vì một câu trong tài liệu.
+
+**Publish luôn tạo version mới**, không khử trùng lặp. Nhưng lưu `ir_sha256` để
+giao diện nói được *"giống hệt v3"*. Khử trùng lặp âm thầm làm người dùng tưởng
+publish hỏng.
+
+### Q15 — Đường từ domain `workflow` tới catalog tool và tới connection
+
+Publish cần hai thứ nằm ngoài domain của nó, và cả hai đều vướng contract thật
+chứ không vướng hình thức.
+
+**Connection (Q7).** `workflow` không import `connection` được — contract 1. Nên
+một port `ConnectionPolicy` ở `workflow/application/ports.py`, hiện thực ở
+`entrypoints/wiring.py`, chỗ duy nhất biết cả hai domain. Đúng khuôn ADR-0002 đã
+dựng cho credential và ADR-0003 cho trace.
+
+**Catalog tool.** Khó hơn, vì vướng hai chiều:
+
+- `workflow` không import `integration` — contract 1;
+- `entrypoints/wiring.py` không import **trực tiếp** `app.domains.*.domain` —
+  contract 5, mà `default_registry()` lại nằm ở `integration/domain/catalog.py`.
+
+| Đường | Vì sao không | |
+|---|---|---|
+| Gọi HTTP `/internal/v1/tools` | Đúng khuôn Agent Runtime, nhưng Control Plane tự gọi chính nó | ✗ |
+| Adapter trong `integration/infrastructure` trả thẳng `ToolContract` | Phải import `workflow` → phá contract 1 | ✗ |
+| **`integration/infrastructure` trả dict thuần, `wiring` dựng `ToolContract`** | Không import chéo, không tự gọi HTTP | ✓ |
+
+Dict thuần nghe như lùi một bước về kiểu, nhưng nó đúng bản chất: đây là một
+ranh giới serialize hoá, chỉ khác là nằm trong bộ nhớ thay vì trên dây.
+
 ### Q9 — Mọi I/O nằm trong activity, kể cả việc nạp plan
 
 Workflow code trên Temporal phải tất định: không mạng, không `datetime.now()`,
@@ -593,10 +642,22 @@ Mỗi commit xanh độc lập — kiểm bằng cách stash phần còn lại r
   tiên — và phải đặt ở chỗ contract 5 cho phép, vì `entrypoints` không được
   import thẳng `integration.domain`.
 
-**GĐ 3 — Vòng đời workflow**
+**GĐ 3 — Vòng đời workflow** (quyết định ở Q14 và Q15)
 
-6. `feat(api): workflows, drafts, and versions that never change` — migration 0013.
-7. `feat(api): publishing a workflow freezes it` — router + luật Q7.
+6. ✅ `feat(api): workflows, drafts, and versions that never change` — migration
+   0013 (ba bảng + trigger bất biến), entity, repository. Test: version không có
+   đường sửa nào, số version tăng đơn điệu, tenant khác không đọc được.
+7. `feat(api): the tool catalogue, seen from the workflow side` — adapter dict
+   thuần ở `integration/infrastructure`, `ConnectionPolicy` ở `wiring`, và
+   `ToolCatalogReader` thật thay cho adapter tự viết trong test GĐ 2.
+8. `feat(api): publishing a workflow freezes it` — service + router: tạo, liệt
+   kê, đọc, `PATCH /draft`, `POST /publish`, đọc version, lưu trữ. Quyền sửa và
+   publish: người tạo hoặc `ws:admin`, cùng luật `ensure_can_manage` của Agent.
+   Lưu trữ là soft archive, không xoá.
+
+**Nghiệm thu GĐ 3:** publish được kịch bản 1 và 2 của GĐ 0 (Slack, connection
+`workspace`), và publish kịch bản 3 **bị từ chối** vì connection Notion là
+`private` — Q7 tự chứng minh bằng dữ liệu thật.
 
 **GĐ 4 — Bộ xương biết đi** (chưa chạm provider)
 
