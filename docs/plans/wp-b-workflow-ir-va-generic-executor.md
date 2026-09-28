@@ -647,7 +647,7 @@ Mỗi commit xanh độc lập — kiểm bằng cách stash phần còn lại r
 6. ✅ `feat(api): workflows, drafts, and versions that never change` — migration
    0013 (ba bảng + trigger bất biến), entity, repository. Test: version không có
    đường sửa nào, số version tăng đơn điệu, tenant khác không đọc được.
-7. `feat(api): the tool catalogue, seen from the workflow side` — adapter dict
+7. ✅ `feat(api): the tool catalogue, seen from the workflow side` — adapter dict
    thuần ở `integration/infrastructure`, `ConnectionPolicy` ở `wiring`, và
    `ToolCatalogReader` thật thay cho adapter tự viết trong test GĐ 2.
 8. `feat(api): publishing a workflow freezes it` — service + router: tạo, liệt

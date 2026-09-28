@@ -21,8 +21,11 @@ from app.domains.connection.infrastructure.repositories import (
     SqlAlchemyConnectionRepository,
 )
 from app.domains.identity.infrastructure.repositories import SqlAlchemyUserRepository
+from app.domains.integration.infrastructure.catalog_view import tool_rows
 from app.domains.tenant.application.ports import UserDirectory, UserProfile
 from app.domains.tenant.application.service import TenantService
+from app.domains.workflow.application.ports import BoundConnection
+from app.domains.workflow.infrastructure.catalog import RowToolCatalog
 
 
 def _to_profile(user: object) -> UserProfile:
@@ -217,6 +220,41 @@ def build_credential_provider(
         ),
         settings,
     )
+
+
+class WorkflowConnectionReader:
+    """`ConnectionReader` của domain `workflow`, đọc từ domain `connection`."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._connections = SqlAlchemyConnectionRepository(session)
+
+    async def describe(
+        self, *, tenant_id: str, workspace_id: str, connection_id: str
+    ) -> BoundConnection | None:
+        found = await self._connections.get_by_id(connection_id)
+        if (
+            found is None
+            or found.organization_id != tenant_id
+            or found.workspace_id != workspace_id
+        ):
+            return None
+
+        return BoundConnection(
+            connection_id=found.id,
+            provider=found.provider,
+            shared_with_workspace=str(found.sharing) == "workspace",
+            status=str(found.status),
+            is_usable=str(found.status) == "active",
+        )
+
+
+def build_workflow_connection_reader(session: AsyncSession) -> WorkflowConnectionReader:
+    return WorkflowConnectionReader(session)
+
+
+def build_workflow_tool_catalog() -> RowToolCatalog:
+    """Catalog tool cho validator của domain `workflow`."""
+    return RowToolCatalog(tool_rows())
 
 
 def build_integration_tenant_guard(session: AsyncSession) -> TenantGuard:

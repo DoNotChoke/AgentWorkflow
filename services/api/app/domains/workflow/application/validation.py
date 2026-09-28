@@ -12,7 +12,11 @@ from typing import Any
 
 import jsonschema
 
-from app.domains.workflow.application.ports import ToolCatalogReader, ToolContract
+from app.domains.workflow.application.ports import (
+    ConnectionReader,
+    ToolCatalogReader,
+    ToolContract,
+)
 from app.domains.workflow.domain.ir import (
     Binding,
     Const,
@@ -299,3 +303,55 @@ class _CatalogCheck:
             return None
         element = items_of(over.root, over.schema)
         return None if element is None else Located(element, over.root)
+
+
+async def validate_connections(
+    ir: WorkflowIR,
+    reader: ConnectionReader,
+    *,
+    tenant_id: str,
+    workspace_id: str,
+) -> ValidationReport:
+    """Ô "connection availability" của §39, và luật Q7.
+
+    Tách khỏi `validate` vì nó phải đọc database: giữ validator kia thuần và
+    đồng bộ thì editor gọi được nó ở mọi lúc, còn cửa này chỉ chạy lúc publish.
+    """
+    issues: list[Issue] = []
+    for provider, connection_id in ir.connections.items():
+        found = await reader.describe(
+            tenant_id=tenant_id, workspace_id=workspace_id, connection_id=connection_id
+        )
+        if found is None:
+            issues.append(
+                Issue(
+                    "connection_khong_ton_tai",
+                    f"Không tìm thấy kết nối {connection_id} trong workspace này.",
+                )
+            )
+            continue
+        if found.provider != provider:
+            issues.append(
+                Issue(
+                    "connection_sai_provider",
+                    f"Kết nối {connection_id} là của {found.provider}, không phải {provider}.",
+                )
+            )
+        if not found.shared_with_workspace:
+            # Q7: workflow chạy cả khi người tạo đã rời tổ chức, nên nó không
+            # bám vào tài khoản riêng của ai.
+            issues.append(
+                Issue(
+                    "connection_rieng_tu",
+                    f"Kết nối {connection_id} là tài khoản riêng. Hãy dùng một kết nối chung "
+                    "của workspace, hoặc nhờ quản trị viên workspace thiết lập một cái.",
+                )
+            )
+        if not found.is_usable:
+            issues.append(
+                Issue(
+                    "connection_khong_dung_duoc",
+                    f"Kết nối {connection_id} đang ở trạng thái {found.status}.",
+                )
+            )
+    return ValidationReport(tuple(issues))

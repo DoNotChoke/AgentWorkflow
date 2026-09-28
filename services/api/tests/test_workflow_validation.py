@@ -15,11 +15,10 @@ from typing import Any
 
 import pytest
 
-from app.core.errors import ValidationError, WorkflowDefinitionError
-from app.domains.integration.domain.catalog import default_registry
-from app.domains.integration.domain.tools import SideEffect
-from app.domains.workflow.application.ports import ToolContract
-from app.domains.workflow.application.validation import validate
+from app.core.errors import WorkflowDefinitionError
+from app.domains.integration.infrastructure.catalog_view import tool_rows
+from app.domains.workflow.application.ports import BoundConnection, ToolContract
+from app.domains.workflow.application.validation import validate, validate_connections
 from app.domains.workflow.domain.ir import parse
 from app.domains.workflow.domain.validation import (
     LiteralSite,
@@ -29,33 +28,14 @@ from app.domains.workflow.domain.validation import (
     literals,
     validate_structure,
 )
+from app.domains.workflow.infrastructure.catalog import RowToolCatalog
 
 EXAMPLES = Path(__file__).resolve().parents[3] / "packages" / "schemas" / "workflow" / "examples"
-REGISTRY = default_registry()
 
 
-class RegistryCatalog:
-    def find(self, tool_id: str, version: str) -> ToolContract | None:
-        try:
-            tool = REGISTRY.get_tool(tool_id, version)
-        except ValidationError:
-            return None
-        return ToolContract(
-            tool_id=tool.tool_id,
-            version=tool.version,
-            provider=tool.provider,
-            input_schema=tool.input_schema.json_schema,
-            output_schema=tool.output_schema.json_schema,
-            mutates=tool.side_effect.mutates,
-            needs_approval=tool.approval.required or tool.side_effect is SideEffect.DESTRUCTIVE,
-            enabled=tool.enabled,
-        )
-
-    def versions(self, tool_id: str) -> tuple[str, ...]:
-        return tuple(tool.version for tool in REGISTRY.list_tools() if tool.tool_id == tool_id)
-
-
-CATALOG = RegistryCatalog()
+#: Adapter thật của ứng dụng, không phải bản tự viết trong test: nếu hai bản
+#: lệch nhau thì test này xanh trong khi publish thật đỏ.
+CATALOG = RowToolCatalog(tool_rows())
 
 
 def _example(name: str) -> dict[str, Any]:
@@ -374,10 +354,13 @@ def test_tool_khong_ton_tai_chi_vao_tool_id() -> None:
 
 
 def test_tool_can_phe_duyet_bi_chan_vi_v1_khong_co_node_phe_duyet() -> None:
-    class ApprovalCatalog(RegistryCatalog):
+    class ApprovalCatalog:
         def find(self, tool_id: str, version: str) -> ToolContract | None:
-            found = super().find(tool_id, version)
+            found = CATALOG.find(tool_id, version)
             return None if found is None else replace(found, needs_approval=True, enabled=False)
+
+        def versions(self, tool_id: str) -> tuple[str, ...]:
+            return CATALOG.versions(tool_id)
 
     codes = _codes(validate(parse(_example("kb1-slack-ghi")), ApprovalCatalog()))
     assert codes == ["tool_da_tat", "tool_can_phe_duyet"]
@@ -472,3 +455,85 @@ def test_duong_vao_output_cua_loop() -> None:
     )
     document["edges"].append({"from": "moi_trang", "to": "gom"})
     assert [(i.node, i.field) for i in _full(document).errors] == [("gom", ("input", "sai"))]
+
+
+# ─── Connection (Q7) ─────────────────────────────────────────────────────────
+
+
+class FakeConnections:
+    """`ConnectionReader` giả — bảng tra theo id, cùng khuôn adapter thật."""
+
+    def __init__(self, known: dict[str, BoundConnection]) -> None:
+        self._known = known
+        self.asked: list[str] = []
+
+    async def describe(
+        self, *, tenant_id: str, workspace_id: str, connection_id: str
+    ) -> BoundConnection | None:
+        self.asked.append(connection_id)
+        return self._known.get(connection_id)
+
+
+def _bound(**overrides: Any) -> BoundConnection:
+    base: dict[str, Any] = {
+        "connection_id": "conn_slackvidu",
+        "provider": "slack",
+        "shared_with_workspace": True,
+        "status": "active",
+        "is_usable": True,
+    }
+    base.update(overrides)
+    return BoundConnection(**base)
+
+
+async def _connections(document: dict[str, Any], known: dict[str, BoundConnection]) -> list[str]:
+    report = await validate_connections(
+        parse(document), FakeConnections(known), tenant_id="org_1", workspace_id="ws_1"
+    )
+    return _codes(report)
+
+
+async def test_connection_chung_cua_workspace_thi_publish_duoc() -> None:
+    codes = await _connections(_kb("kb1-slack-ghi"), {"conn_slackvidu": _bound()})
+    assert codes == []
+
+
+async def test_connection_rieng_tu_bi_tu_choi() -> None:
+    """Q7: workflow chạy lúc 3 giờ sáng, cả khi người tạo đã rời tổ chức, nên
+    nó không bám vào tài khoản riêng của ai."""
+    codes = await _connections(
+        _kb("kb1-slack-ghi"), {"conn_slackvidu": _bound(shared_with_workspace=False)}
+    )
+    assert codes == ["connection_rieng_tu"]
+
+
+async def test_connection_khong_con_dung_duoc_bi_tu_choi() -> None:
+    codes = await _connections(
+        _kb("kb1-slack-ghi"),
+        {"conn_slackvidu": _bound(status="expired", is_usable=False)},
+    )
+    assert codes == ["connection_khong_dung_duoc"]
+
+
+async def test_connection_khong_ton_tai_hoac_thuoc_workspace_khac() -> None:
+    """Adapter trả `None` cho cả hai trường hợp — từ phía workflow chúng giống
+    hệt nhau, và nói rõ hơn là rò rỉ sự tồn tại của tài nguyên tenant khác."""
+    assert await _connections(_kb("kb1-slack-ghi"), {}) == ["connection_khong_ton_tai"]
+
+
+async def test_connection_sai_provider_bi_tu_choi() -> None:
+    codes = await _connections(_kb("kb1-slack-ghi"), {"conn_slackvidu": _bound(provider="notion")})
+    assert codes == ["connection_sai_provider"]
+
+
+async def test_kich_ban_bac_cau_hoi_ca_hai_provider() -> None:
+    known = {
+        "conn_slackvidu": _bound(),
+        "conn_notionvidu": _bound(connection_id="conn_notionvidu", provider="notion"),
+    }
+    reader = FakeConnections(known)
+    report = await validate_connections(
+        parse(_kb("kb4-bac-cau")), reader, tenant_id="org_1", workspace_id="ws_1"
+    )
+    assert _codes(report) == []
+    assert sorted(reader.asked) == ["conn_notionvidu", "conn_slackvidu"]
