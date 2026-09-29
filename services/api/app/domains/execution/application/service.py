@@ -1,0 +1,199 @@
+"""Bản ghi của các lần chạy workflow: tạo, ghi trạng thái, đọc tiến trình."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Final
+
+from app.core.errors import AuthorizationError, WorkflowExecutionError
+from app.core.ids import ResourceKind, new_id
+from app.core.logging import get_logger
+from app.domains.execution.application.ports import ExecutionRepository
+from app.domains.execution.domain.entities import (
+    Execution,
+    ExecutionStatus,
+    Failure,
+    NodeExecution,
+    NodeStatus,
+    ensure_inputs_size,
+    move_execution,
+    move_node,
+)
+
+log = get_logger(__name__)
+
+_NOT_FOUND = "Không tìm thấy lần chạy này."
+
+DEFAULT_LIST_LIMIT: Final = 50
+MAX_LIST_LIMIT: Final = 200
+
+
+@dataclass(frozen=True, slots=True)
+class NodeSeed:
+    node_path: str
+    node_id: str
+    node_type: str
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionProgress:
+    execution: Execution
+    nodes: tuple[NodeExecution, ...]
+
+
+class ExecutionService:
+    def __init__(self, *, repository: ExecutionRepository) -> None:
+        self._executions = repository
+
+    # ─── Đọc ─────────────────────────────────────────────────────────────────
+
+    async def get(self, *, tenant_id: str, execution_id: str) -> Execution:
+        found = await self._executions.get(tenant_id=tenant_id, execution_id=execution_id)
+        if found is None:
+            raise AuthorizationError(_NOT_FOUND, details={"execution_id": execution_id})
+        return found
+
+    async def get_progress(self, *, tenant_id: str, execution_id: str) -> ExecutionProgress:
+        execution = await self.get(tenant_id=tenant_id, execution_id=execution_id)
+        nodes = await self._executions.list_nodes(tenant_id=tenant_id, execution_id=execution_id)
+        return ExecutionProgress(execution=execution, nodes=tuple(nodes))
+
+    async def list_for_workflow(
+        self, *, tenant_id: str, workflow_id: str, limit: int = DEFAULT_LIST_LIMIT
+    ) -> list[Execution]:
+        return await self._executions.list_for_workflow(
+            tenant_id=tenant_id, workflow_id=workflow_id, limit=max(1, min(limit, MAX_LIST_LIMIT))
+        )
+
+    # ─── Ghi ─────────────────────────────────────────────────────────────────
+
+    async def create(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        workflow_id: str,
+        workflow_version_id: str,
+        trigger_type: str,
+        inputs: Mapping[str, Any],
+        initiated_by: str,
+        at: datetime,
+    ) -> Execution:
+        ensure_inputs_size(inputs)
+        execution = Execution(
+            id=new_id(ResourceKind.EXECUTION),
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            workflow_id=workflow_id,
+            workflow_version_id=workflow_version_id,
+            trigger_type=trigger_type,
+            inputs=dict(inputs),
+            initiated_by=initiated_by,
+            status=ExecutionStatus.PENDING,
+            created_at=at,
+            updated_at=at,
+        )
+        await self._executions.add(execution)
+        log.info("execution_created", execution_id=execution.id, workflow_id=workflow_id)
+        return execution
+
+    async def mark_running(self, *, tenant_id: str, execution_id: str, at: datetime) -> Execution:
+        return await self._move(tenant_id, execution_id, ExecutionStatus.RUNNING, at, None)
+
+    async def finish(
+        self,
+        *,
+        tenant_id: str,
+        execution_id: str,
+        status: ExecutionStatus,
+        at: datetime,
+        failure: Failure | None = None,
+    ) -> Execution:
+        return await self._move(tenant_id, execution_id, status, at, failure)
+
+    async def seed_nodes(
+        self, *, tenant_id: str, execution_id: str, nodes: Sequence[NodeSeed], at: datetime
+    ) -> None:
+        """Hàng `pending` cho những node sắp chạy, để tiến trình thấy cả phần chưa tới."""
+        await self._open(tenant_id, execution_id)
+        await self._executions.seed_nodes(
+            [
+                NodeExecution(
+                    id=new_id(ResourceKind.NODE_EXECUTION),
+                    execution_id=execution_id,
+                    tenant_id=tenant_id,
+                    node_path=seed.node_path,
+                    node_id=seed.node_id,
+                    node_type=seed.node_type,
+                    status=NodeStatus.PENDING,
+                    updated_at=at,
+                )
+                for seed in nodes
+            ]
+        )
+
+    async def record_node(
+        self,
+        *,
+        tenant_id: str,
+        execution_id: str,
+        node: NodeSeed,
+        status: NodeStatus,
+        at: datetime,
+        attempt: int | None = None,
+        failure: Failure | None = None,
+    ) -> NodeExecution:
+        await self._open(tenant_id, execution_id)
+        current = await self._executions.get_node(
+            tenant_id=tenant_id,
+            execution_id=execution_id,
+            node_path=node.node_path,
+            for_update=True,
+        )
+        is_new = current is None
+        if current is None:
+            current = NodeExecution(
+                id=new_id(ResourceKind.NODE_EXECUTION),
+                execution_id=execution_id,
+                tenant_id=tenant_id,
+                node_path=node.node_path,
+                node_id=node.node_id,
+                node_type=node.node_type,
+                status=NodeStatus.PENDING,
+                updated_at=at,
+            )
+        moved = move_node(current, status, at=at, attempt=attempt, failure=failure)
+        if is_new or moved is not current:
+            await self._executions.save_node(moved)
+        return moved
+
+    async def _move(
+        self,
+        tenant_id: str,
+        execution_id: str,
+        to: ExecutionStatus,
+        at: datetime,
+        failure: Failure | None,
+    ) -> Execution:
+        current = await self._executions.get(
+            tenant_id=tenant_id, execution_id=execution_id, for_update=True
+        )
+        if current is None:
+            raise AuthorizationError(_NOT_FOUND, details={"execution_id": execution_id})
+        moved = move_execution(current, to, at=at, failure=failure)
+        if moved is not current:
+            await self._executions.update(moved)
+            log.info("execution_moved", execution_id=execution_id, status=str(to))
+        return moved
+
+    async def _open(self, tenant_id: str, execution_id: str) -> Execution:
+        """Execution đã kết thúc thì không nhận thêm trạng thái node."""
+        execution = await self.get(tenant_id=tenant_id, execution_id=execution_id)
+        if execution.is_terminal:
+            raise WorkflowExecutionError(
+                f"Execution {execution_id} đã kết thúc ({execution.status}).",
+                details={"execution_id": execution_id, "status": str(execution.status)},
+            )
+        return execution

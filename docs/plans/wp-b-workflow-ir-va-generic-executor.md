@@ -716,19 +716,34 @@ Mỗi commit xanh độc lập — kiểm bằng cách stash phần còn lại r
      dạng binding, `where` hụt, đường hụt, vượt `max_items`, `filter`.
    - **Thiết kế cho thân `loop` ngay từ đầu**: làm sau thì viết lại cả `plan.py`
      lẫn bảng `node_executions`.
-10. `feat(api): execution records, and the state each node is in`
+10. ✅ `feat(api): execution records, and the state each node is in`
+    - Trước nó, `fix(api): alembic sees every domain's tables` — `alembic/env.py`
+      thiếu model của `agent`, `trace`, `workflow`; lần autogenerate kế tiếp sẽ
+      sinh migration xoá bảng của ba domain đó. `alembic check` sau khi thêm:
+      ba domain không lệch gì.
     - Migration 0014, schema `execution`: `executions` (tenant, workspace,
       workflow, version, trigger, inputs, người khởi xướng, trạng thái, lỗi, mốc
       thời gian; FK `workflow_version_id` → `workflow.workflow_versions.id`
-      `ON DELETE RESTRICT` — ràng buộc mà docstring của 0013 đã hẹn) và
-      `node_executions` (`UNIQUE(execution_id, node_path)`, trạng thái, số lần
-      thử, lỗi; **không payload** — Q11).
+      `ON DELETE RESTRICT` — ràng buộc mà docstring của 0013 đã hẹn, khai bằng
+      chuỗi ở cả model để `alembic check` không thấy lệch) và `node_executions`
+      (`UNIQUE(execution_id, node_path)`, `seq` identity cho thứ tự chèn, trạng
+      thái, số lần thử, lỗi; **không payload** — Q11). Không tách cột loop/lượt:
+      `node_path` đủ, và domain `execution` không được biết định dạng `NodePath`.
     - `execution/domain/entities.py`: tám trạng thái của §13 cho execution;
       `pending`/`running`/`succeeded`/`failed`/`skipped` cho node — có `skipped`
-      ngay để GĐ 6 không cần migration. Chuyển trạng thái **đơn điệu**: activity
-      retry không kéo `succeeded` về `running`.
-    - Service `create_pending`, `mark_running`, `record_node` (upsert), `finish`,
-      `get_progress`; repository; test tenant, upsert, FK chặn xoá version.
+      ngay để GĐ 6 không cần migration. Chuyển về chính trạng thái đang có thì
+      không đổi gì (activity ghi trạng thái có thể bị Temporal chạy lại); chuyển
+      lùi hoặc trái luật thì ném `WorkflowExecutionError`. `running → running`
+      với lần thử lớn hơn là một lần retry. Trần `inputs` 64 KiB, thông báo lỗi
+      cắt ở 2000 ký tự.
+    - Service `create`, `mark_running`, `finish`, `seed_nodes` (hàng `pending`
+      cho node sắp chạy — tầng ngoài lúc bắt đầu, thân loop khi biết số phần tử;
+      `ON CONFLICT DO NOTHING` nên seed lại không kéo node đã xong về `pending`),
+      `record_node` (đọc khoá hàng, chuyển trạng thái, upsert), `get_progress`,
+      `list_for_workflow`. Execution đã kết thúc thì không nhận thêm trạng thái
+      node.
+    - Test domain, service trên repository giả, repository trên Postgres: tenant,
+      upsert, seed hai lần, thứ tự `seq`, FK chặn xoá version, CASCADE.
 11. `feat(api): a worker that runs a plan end to end`
     - `workflow/infrastructure/temporal/workflow.py` — `GenericWorkflowExecutor`,
       tuần tự, `loop` từng lượt, giữ output theo node trong bộ nhớ.
