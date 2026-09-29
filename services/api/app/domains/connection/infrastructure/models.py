@@ -30,19 +30,24 @@ class ConnectionModel(Base):
             unique=True,
             postgresql_where=text("status <> 'revoked' AND external_account_id IS NOT NULL"),
         ),
+        # Tên index khai tay cho khớp migration 0005/0006: `index=True` sẽ đặt tên
+        # theo naming convention, kèm tên schema, và `alembic check` thấy lệch.
+        Index("ix_connections_organization_id", "organization_id"),
+        Index("ix_connections_workspace_id", "workspace_id"),
+        Index("ix_connections_workspace_owner", "workspace_id", "owner_user_id"),
         {"schema": SCHEMA},
     )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
 
-    organization_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    organization_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    workspace_id: Mapped[str] = mapped_column(String(64), nullable=False)
 
     provider: Mapped[str] = mapped_column(String(64), nullable=False)
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
 
-    granted_scopes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    granted_scopes: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
 
     external_account_id: Mapped[str | None] = mapped_column(String(255))
     external_account_label: Mapped[str | None] = mapped_column(String(255))

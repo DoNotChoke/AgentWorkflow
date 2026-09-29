@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -35,6 +35,7 @@ class WorkspaceModel(Base):
         # Slug workspace chỉ cần duy nhất trong phạm vi một organization —
         # hai khách hàng khác nhau đều được có workspace tên "Default".
         UniqueConstraint("organization_id", "slug", name="uq_workspaces_organization_id_slug"),
+        Index("ix_workspaces_organization_id", "organization_id"),
         {"schema": SCHEMA},
     )
 
@@ -43,7 +44,6 @@ class WorkspaceModel(Base):
         String(64),
         ForeignKey(f"{SCHEMA}.organizations.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(60), nullable=False)
@@ -58,6 +58,8 @@ class OrgMembershipModel(Base):
         UniqueConstraint(
             "organization_id", "user_id", name="uq_org_memberships_organization_id_user_id"
         ),
+        Index("ix_org_memberships_organization_id", "organization_id"),
+        Index("ix_org_memberships_user_id", "user_id"),
         {"schema": SCHEMA},
     )
 
@@ -66,10 +68,9 @@ class OrgMembershipModel(Base):
         String(64),
         ForeignKey(f"{SCHEMA}.organizations.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     #: Không có ForeignKey sang ``identity.users`` — cấm JOIN chéo schema.
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -81,6 +82,8 @@ class WorkspaceMembershipModel(Base):
         UniqueConstraint(
             "workspace_id", "user_id", name="uq_workspace_memberships_workspace_id_user_id"
         ),
+        Index("ix_workspace_memberships_workspace_id", "workspace_id"),
+        Index("ix_workspace_memberships_user_id", "user_id"),
         {"schema": SCHEMA},
     )
 
@@ -89,9 +92,8 @@ class WorkspaceMembershipModel(Base):
         String(64),
         ForeignKey(f"{SCHEMA}.workspaces.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

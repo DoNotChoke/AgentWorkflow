@@ -83,6 +83,12 @@ jobs:
         run: alembic upgrade head
         env:
           AW_DATABASE_URL: postgresql+asyncpg://agentworkflow:agentworkflow@localhost:5432/agentworkflow
+      # `upgrade` chạy trơn cả khi model mô tả sai bảng; chỉ `check` so hai bên.
+      # Lệch ở đây là lần autogenerate kế tiếp sẽ sinh migration xoá index/bảng.
+      - name: Model khớp migration
+        run: alembic check
+        env:
+          AW_DATABASE_URL: postgresql+asyncpg://agentworkflow:agentworkflow@localhost:5432/agentworkflow
       - run: pytest --cov=app --cov-report=term-missing
         env:
           AW_DATABASE_URL: postgresql+asyncpg://agentworkflow:agentworkflow@localhost:5432/agentworkflow
