@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Protocol
 
 from app.domains.workflow.domain.entities import Workflow, WorkflowDraft, WorkflowVersion
@@ -59,6 +60,53 @@ class ConnectionReader(Protocol):
         self, *, tenant_id: str, workspace_id: str, connection_id: str
     ) -> BoundConnection | None:
         """`None` khi không tồn tại, hoặc thuộc tenant/workspace khác."""
+
+
+@dataclass(frozen=True, slots=True)
+class NodeRef:
+    """Một lần chạy node, nhìn từ bên ghi trạng thái."""
+
+    #: `str(NodePath)`: `tim`, `moi_trang[2].doc_trang`.
+    node_path: str
+    node_id: str
+    node_type: str
+
+
+class ExecutionRecorder(Protocol):
+    """Ghi trạng thái lần chạy. Hiện thực ở `entrypoints/worker_wiring.py`.
+
+    Trạng thái và hạng lỗi là chuỗi: domain này không biết domain `execution`.
+    """
+
+    async def mark_running(self, *, tenant_id: str, execution_id: str, at: datetime) -> None: ...
+
+    async def seed_nodes(
+        self, *, tenant_id: str, execution_id: str, nodes: Sequence[NodeRef], at: datetime
+    ) -> None: ...
+
+    async def record_node(
+        self,
+        *,
+        tenant_id: str,
+        execution_id: str,
+        node: NodeRef,
+        status: str,
+        at: datetime,
+        attempt: int | None = None,
+        error_category: str | None = None,
+        error_message: str | None = None,
+    ) -> None: ...
+
+    async def finish(
+        self,
+        *,
+        tenant_id: str,
+        execution_id: str,
+        status: str,
+        at: datetime,
+        error_category: str | None = None,
+        error_message: str | None = None,
+    ) -> None: ...
 
 
 class InvocationContext(Protocol):

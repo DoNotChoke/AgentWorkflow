@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Any, Final
 
-from app.core.errors import AuthorizationError, WorkflowExecutionError
+from app.core.errors import AuthorizationError, ErrorCategory, WorkflowExecutionError
 from app.core.ids import ResourceKind, new_id
 from app.core.logging import get_logger
 from app.domains.execution.application.ports import ExecutionRepository
@@ -169,6 +170,48 @@ class ExecutionService:
             await self._executions.save_node(moved)
         return moved
 
+    # ─── Cửa nguyên thuỷ cho `entrypoints/worker_wiring.py` (contract 5) ─────
+
+    async def record_node_state(
+        self,
+        *,
+        tenant_id: str,
+        execution_id: str,
+        node: NodeSeed,
+        status: str,
+        at: datetime,
+        attempt: int | None = None,
+        error_category: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        await self.record_node(
+            tenant_id=tenant_id,
+            execution_id=execution_id,
+            node=node,
+            status=_parse(NodeStatus, status),
+            at=at,
+            attempt=attempt,
+            failure=_failure(error_category, error_message),
+        )
+
+    async def finish_as(
+        self,
+        *,
+        tenant_id: str,
+        execution_id: str,
+        status: str,
+        at: datetime,
+        error_category: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        await self.finish(
+            tenant_id=tenant_id,
+            execution_id=execution_id,
+            status=_parse(ExecutionStatus, status),
+            at=at,
+            failure=_failure(error_category, error_message),
+        )
+
     async def _move(
         self,
         tenant_id: str,
@@ -197,3 +240,18 @@ class ExecutionService:
                 details={"execution_id": execution_id, "status": str(execution.status)},
             )
         return execution
+
+
+def _parse[S: StrEnum](kind: type[S], value: str) -> S:
+    try:
+        return kind(value)
+    except ValueError:
+        raise WorkflowExecutionError(
+            f"{value!r} không phải {kind.__name__}.", details={"value": value}
+        ) from None
+
+
+def _failure(category: str | None, message: str | None) -> Failure | None:
+    if category is None:
+        return None
+    return Failure(category=_parse(ErrorCategory, category), message=message or "")

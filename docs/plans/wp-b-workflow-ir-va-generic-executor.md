@@ -744,24 +744,75 @@ Mỗi commit xanh độc lập — kiểm bằng cách stash phần còn lại r
       node.
     - Test domain, service trên repository giả, repository trên Postgres: tenant,
       upsert, seed hai lần, thứ tự `seq`, FK chặn xoá version, CASCADE.
-11. `feat(api): a worker that runs a plan end to end`
-    - `workflow/infrastructure/temporal/workflow.py` — `GenericWorkflowExecutor`,
-      tuần tự, `loop` từng lượt, giữ output theo node trong bộ nhớ.
-    - `activities.py`: `load_plan`, `record_node_state`, `record_execution_state`,
-      và chữ ký `run_tool_node` (bản thật ở GĐ 5).
-    - `ExecutionRecorder` ở `workflow/application/ports.py`, hiện thực ở
-      `entrypoints/worker_wiring.py`; **contract 7** dựng ngay tại đây.
-    - `temporal_task_queue_workflow`; `worker.py` dựng `Worker` từ bảng
-      queue → (workflow, activity), bỏ `worker_heartbeat`.
-    - Test trên Temporal của docker-compose (gated), `run_tool_node` giả: kịch
-      bản 1 `succeeded` đủ hàng node; kịch bản 3 ra `moi_trang[0..2].doc_trang`;
-      tool giả hỏng không retry được thì node và execution `failed`, node sau
-      vẫn `pending`. Test replay trên lịch sử đã ghi, chạy offline.
+11. Bộ xương chạy trên Temporal — tách ba commit, mỗi commit xanh độc lập.
 
     Việc rút `transform` khỏi v1 lấy mất node duy nhất tính toán mà không gọi ra
     ngoài, nên bộ xương không còn tự chạy được bằng node thật. Dùng activity giả là
     cách giữ nguyên giá trị của bước này: chứng minh Temporal, plan, trạng thái
     node và replay đều thông, trước khi có credential hay principal.
+
+    **11a. ✅ `feat(api): the worker knows every queue, and cannot reach a credential`**
+    - `core/config.py`: `temporal_task_queue_workflow = "workflow-executor"`.
+    - `entrypoints/worker.py`: hàm thuần `worker_specs(settings)` trả bảng
+      queue → (workflow, activity); `run_worker` dựng mỗi dòng một `Worker`, bỏ
+      queue rỗng; `init_engine` lúc khởi động; bỏ `worker_heartbeat`.
+    - **Contract 7**: chép contract 6 với `source_modules =
+      ["app.entrypoints.worker"]`, không `allow_indirect_imports` — bắt cả chuỗi
+      `worker → worker_wiring → wiring`.
+    - `workflow/application/ports.py`: `ExecutionRecorder` chỉ bằng kiểu nguyên
+      thuỷ — `mark_running`, `seed_nodes`, `record_node`, `finish`. Domain
+      `workflow` không biết `execution` tồn tại.
+    - `execution/application/service.py`: cửa nguyên thuỷ cho `worker_wiring`
+      (trạng thái và lỗi là chuỗi), vì contract 5 cấm entrypoint import
+      `NodeStatus`/`Failure` — cùng cách `TraceService.start_agent_trace`.
+    - `workflow/application/runtime.py`: `PlanLoader` — đọc version theo tenant,
+      dựng bảng tool → `mutates`. Không đặt ở `WorkflowService`: dựng service đó
+      cần `ConnectionReader`, mà nó sống ở `wiring.py` — contract 7 cấm worker.
+    - `workflow/infrastructure/temporal/messages.py`: dataclass đi qua ranh giới
+      workflow ↔ activity và tên activity; không import hạ tầng, vì workflow code
+      nạp nó trong sandbox.
+    - `entrypoints/worker_wiring.py`: hiện thực `ExecutionRecorder`, mỗi lần ghi
+      một `session_scope()` riêng; chỉ biết `workflow`, `execution` và catalog tool.
+    - `workflow/infrastructure/temporal/errors.py`: `AppError` →
+      `ApplicationError(type=<hạng lỗi>, non_retryable=not retryable)` — lõi của
+      Q10; `INVOCATION_IN_PROGRESS` và `OUTCOME_UNKNOWN` để GĐ 5.
+    - `workflow/infrastructure/temporal/activities.py`: `load_plan` (IR + bảng
+      tool → `mutates` từ `RowToolCatalog`, để executor định tuyến read/write theo
+      Q12 — IR không mang side effect), `seed_nodes`, `record_node`,
+      `record_execution`, và `run_tool_node` — bản thật ở đây ném non-retryable
+      "chưa chạy được ở bản này" cho tới GĐ 5.
+    - Test: `worker_specs`, recorder trên Postgres, cửa nguyên thuỷ của
+      `ExecutionService`, bảng ánh xạ lỗi.
+
+    **11b. `feat(api): a worker that runs a plan end to end`**
+    - `workflow/infrastructure/temporal/workflow.py` — `GenericWorkflowExecutor`.
+      Input `execution_id`, `tenant_id`, `workflow_version_id`, `inputs`; workflow
+      id của Temporal = `execution_id`. Import domain qua
+      `imports_passed_through()`.
+    - `load_plan` → `build_plan` trong workflow code. Có node `condition`/`llm`
+      thì `finish(failed, "chưa hỗ trợ")` **trước khi gọi bất kỳ tool nào** — GĐ 6
+      mới mở. Rồi `mark_running`, seed tầng ngoài, chạy theo `runnable`; `loop`
+      tính `loop_items` (thuần), seed thân theo lượt, chạy tuần tự; output của
+      loop là mảng output của node `collect`.
+    - Lỗi activity và `WorkflowExecutionError` của `bindings.py` **bắt trong
+      workflow code**: ghi node `failed`, loop cha `failed`, execution `failed`,
+      rồi ném `ApplicationError(non_retryable=True)` để Temporal UI và DB cùng
+      nói *Failed*. Exception không phải `ApplicationError` lọt ra thì SDK retry
+      workflow task mãi và execution kẹt `running`.
+    - Mọi mốc thời gian qua `workflow.now()`. Activity ghi trạng thái retry 5 lần;
+      `WorkflowExecutionError` không retry.
+    - Test trên Temporal + Postgres thật (gated), queue riêng mỗi test,
+      `run_tool_node` giả, activity ghi thật: kịch bản 1 `succeeded`; kịch bản 3
+      ra `moi_trang[0..2].doc_trang`; tool hỏng ở `con` thì `moi_trang` vẫn
+      `pending`; lượt 1 hỏng thì lượt 2 `pending`; vượt `max_items` thì thân không
+      được seed; kịch bản 5 hỏng "chưa hỗ trợ" mà tool giả không bị gọi lần nào.
+    - Replay: lịch sử kịch bản 3 ở `tests/fixtures/histories/kb3.json`, `Replayer`
+      chạy offline ở mọi nơi; tạo lại fixture chỉ khi bật `AW_RECORD_HISTORY=1`.
+
+    **11c. `ci: a Temporal server for the executor tests`**
+    - Job `test` chỉ có Postgres và Redis; với `AW_TEST_REQUIRE_INFRA=1` test
+      executor sẽ đỏ. Thêm bước `docker run temporalio/temporal server start-dev`
+      và chờ health — `services:` không truyền được lệnh cho container.
 12. `feat(api): start a workflow by hand, and see where it is`
     - `execution/infrastructure/temporal/client.py` — start bằng tên, `id =
       execution_id` để start hai lần không thành hai lần chạy; start hỏng thì
@@ -841,6 +892,9 @@ không có commit trong WP-B — ghi lại ở đây để không rơi mất.
   workflow. Đo ở commit 11. Nếu một kết quả vượt 256 KiB thì activity đẩy nó sang
   payload store (ADR-0006) và chỉ trả tham chiếu — chưa làm cho tới khi số đo nói
   cần.
+- **Mỗi node là ba activity** (ghi `running`, gọi tool, ghi kết quả): loop 200
+  lượt ~600 activity, cỡ 3–4 nghìn sự kiện — dưới ngưỡng cảnh báo 10k. Nếu đo
+  thấy nặng, chuyển activity ghi trạng thái sang local activity.
 - **Không có đường xử lý execution kẹt.** Không huỷ, không resume, không retry tay.
   Chấp nhận trong WP-B, nhưng nó là việc phải làm trước khi có người dùng thật.
 

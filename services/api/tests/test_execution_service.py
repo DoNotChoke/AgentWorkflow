@@ -235,3 +235,63 @@ async def test_liet_ke_moi_nhat_truoc_va_co_tran(
     found = await service.list_for_workflow(tenant_id=ORG_A, workflow_id="wf_1", limit=2)
     assert [e.created_at for e in found] == [T0 + timedelta(minutes=2), T0 + timedelta(minutes=1)]
     assert await service.list_for_workflow(tenant_id=ORG_B, workflow_id="wf_1") == []
+
+
+# ─── Cửa nguyên thuỷ cho worker_wiring ───────────────────────────────────────
+
+
+async def test_cua_nguyen_thuy_doc_duoc_chuoi_trang_thai_va_hang_loi(
+    service: ExecutionService,
+) -> None:
+    execution = await _started(service)
+    await service.record_node_state(
+        tenant_id=ORG_A, execution_id=execution.id, node=DOC, status="running", at=T0, attempt=1
+    )
+    await service.record_node_state(
+        tenant_id=ORG_A,
+        execution_id=execution.id,
+        node=DOC,
+        status="failed",
+        at=T0,
+        error_category="OutcomeUnknown",
+        error_message="Không rõ đã đăng hay chưa.",
+    )
+    await service.finish_as(
+        tenant_id=ORG_A,
+        execution_id=execution.id,
+        status="failed",
+        at=T0,
+        error_category="OutcomeUnknown",
+        error_message="Không rõ đã đăng hay chưa.",
+    )
+
+    progress = await service.get_progress(tenant_id=ORG_A, execution_id=execution.id)
+    assert progress.execution.status is ExecutionStatus.FAILED
+    assert progress.execution.failure == Failure(
+        ErrorCategory.OUTCOME_UNKNOWN, "Không rõ đã đăng hay chưa."
+    )
+    assert progress.nodes[0].status is NodeStatus.FAILED
+
+
+@pytest.mark.parametrize(("status", "category"), [("dang_chay", None), ("failed", "LoiKhongCo")])
+async def test_chuoi_la_la_loi_cua_lan_chay(
+    service: ExecutionService, status: str, category: str | None
+) -> None:
+    execution = await _started(service)
+    with pytest.raises(WorkflowExecutionError):
+        await service.record_node_state(
+            tenant_id=ORG_A,
+            execution_id=execution.id,
+            node=DOC,
+            status=status,
+            at=T0,
+            error_category=category,
+        )
+    with pytest.raises(WorkflowExecutionError):
+        await service.finish_as(
+            tenant_id=ORG_A,
+            execution_id=execution.id,
+            status=status,
+            at=T0,
+            error_category=category,
+        )

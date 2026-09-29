@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     # ─── Temporal ──────────────────────────────────────────────
     temporal_host: str = "localhost:7233"
     temporal_namespace: str = "default"
+    #: Workflow task của executor. Bốn queue còn lại là capability queue cho activity (§14.1).
+    temporal_task_queue_workflow: str = "workflow-executor"
     temporal_task_queue_integration_read: str = "integration-read"
     temporal_task_queue_integration_write: str = "integration-write"
     temporal_task_queue_ai: str = "ai-tasks"

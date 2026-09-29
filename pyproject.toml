@@ -253,3 +253,23 @@ forbidden_modules = [
     "app.domains.connection.application.service",
     "app.entrypoints.wiring",
 ]
+
+# ── Contract 7: Temporal worker không có đường nào tới credential (§2.4) ──────
+#
+# Cùng hàng rào với contract 6, cho tiến trình thứ hai không được giải mã
+# credential. Worker nối domain qua `entrypoints/worker_wiring.py`, không qua
+# `entrypoints/wiring.py`; node `tool` sẽ gọi Integration Gateway qua HTTP (Q5 của
+# kế hoạch WP-B, ADR-0009).
+#
+# Không `allow_indirect_imports`: chuỗi `worker -> worker_wiring -> wiring` phải
+# bị bắt.
+[[tool.importlinter.contracts]]
+name = "Temporal worker không có đường nào tới credential"
+type = "forbidden"
+source_modules = ["app.entrypoints.worker"]
+forbidden_modules = [
+    "app.core.crypto",
+    "app.domains.connection.infrastructure.credential_store",
+    "app.domains.connection.application.service",
+    "app.entrypoints.wiring",
+]
