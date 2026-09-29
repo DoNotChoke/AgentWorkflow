@@ -700,7 +700,7 @@ Mỗi commit xanh độc lập — kiểm bằng cách stash phần còn lại r
 
 **GĐ 4 — Bộ xương biết đi** (chưa chạm provider; bộ thông dịch theo Q16)
 
-9. `feat(api): the order a plan runs in` — thuần, không DB, không Temporal.
+9. ✅ `feat(api): the order a plan runs in` — thuần, không DB, không Temporal.
    - `workflow/domain/plan.py`: `build_plan(ir)` — thứ tự topo, hoà thì theo thứ
      tự khai báo, từ chối IR sai cấu trúc; `NodePath` (`n2`, `n3[2].b1`, lượt đếm
      từ 0 — định dạng này đóng băng ở ADR-0012); `runnable(settled)` — node chạy
