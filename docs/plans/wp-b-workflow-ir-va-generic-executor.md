@@ -88,7 +88,7 @@ hoãn `llm`, và ADR-0008 cho thấy đó là một sai lầm sẽ chặn cả P
 
 ---
 
-## 3. Mười lăm quyết định
+## 3. Mười sáu quyết định
 
 ### Q1 — Đọc trace thật trước, chốt IR sau
 
@@ -451,6 +451,43 @@ dựng cho credential và ADR-0003 cho trace.
 Dict thuần nghe như lùi một bước về kiểu, nhưng nó đúng bản chất: đây là một
 ranh giới serialize hoá, chỉ khác là nằm trong bộ nhớ thay vì trên dây.
 
+### Q16 — Bộ thông dịch IR nằm ở `workflow`; `execution` chỉ giữ bản ghi
+
+Bản đầu của §4 đặt `plan.py` ở `execution/domain`. Không làm được: thông dịch IR
+cần `WorkflowIR` và các kiểu binding của `workflow/domain/ir.py`, mà contract 1
+cấm `execution` import `workflow`.
+
+| Đường | Vì sao | |
+|---|---|---|
+| `execution` tự parse lại IR bằng kiểu riêng | Chép ~400 dòng parser; hai bản sẽ lệch nhau — đúng loại lỗi mà `RowToolCatalog` vừa xoá ở GĐ 3 | ✗ |
+| Đưa IR vào `core` hoặc một shared kernel | Mở một cửa `core` mới chỉ để né một ranh giới; cần ADR | ✗ |
+| **Thông dịch ở `workflow`, bản ghi ở `execution`** | Không chép, không mở cửa mới | ✓ |
+
+Nó khớp §18: Execution sở hữu *"execution records, node execution records,
+approvals, execution-facing status"* — bản ghi, không phải việc hiểu IR. Và nó
+theo đúng khuôn đã có: Integration Gateway nằm ở `integration` và ghi trace qua
+port; executor nằm ở `workflow` và ghi trạng thái node qua port.
+
+Hình dạng cụ thể:
+
+- `workflow/domain/plan.py`, `workflow/domain/bindings.py` — thuần, không
+  Temporal (contract 3).
+- `workflow/infrastructure/temporal/` — `GenericWorkflowExecutor` và activity.
+- `workflow/application/ports.py` thêm `ExecutionRecorder`; hiện thực ở
+  `entrypoints/worker_wiring.py` bằng `ExecutionService`.
+- `execution` giữ entity, máy trạng thái, bảng, service, router, và client
+  Temporal. Client khởi động workflow **bằng tên chuỗi**
+  (`"GenericWorkflowExecutor"`), nên Control Plane không import `workflow` để
+  làm việc đó.
+- `execution/application/ports.py` có `WorkflowVersionSource` — đọc version đã
+  publish dưới dạng dữ liệu thuần, hiện thực ở `wiring` bằng `WorkflowService`.
+
+**Lỗi dữ liệu lúc chạy là `WorkflowExecutionError`**, không phải
+`ValidationError` như Q8 viết: `where` không khớp, đường không tồn tại, `over`
+không phải mảng, vượt `max_items`. Đó là lỗi của *lần chạy này*, không phải của
+request hay của định nghĩa — và hạng lỗi đó đã có sẵn trong `ErrorCategory`,
+không retry.
+
 ### Q9 — Mọi I/O nằm trong activity, kể cả việc nạp plan
 
 Workflow code trên Temporal phải tất định: không mạng, không `datetime.now()`,
@@ -546,27 +583,29 @@ services/api/app/domains/workflow/
   domain/entities.py                 Workflow, WorkflowDraft, WorkflowVersion, trạng thái
   domain/validation.py               bốn nhóm của §39
   domain/generated/ir_v1.py          JSON Schema dạng Python (sinh, commit)
-  application/ports.py               repository + ToolCatalogReader + ConnectionChecker
+  domain/plan.py                     IR → thứ tự chạy, NodePath, node chạy được tiếp (Q16)
+  domain/bindings.py                 binding → giá trị thật; phần tử của loop (Q16)
+  application/ports.py               repository + ToolCatalogReader + ConnectionReader
+                                     + ExecutionRecorder
   application/service.py             CRUD draft, publish, đọc version
   infrastructure/models.py           workflows, workflow_drafts, workflow_versions
   infrastructure/repositories.py
   infrastructure/http.py             /v1/workflows…
+  infrastructure/temporal/
+    workflow.py                      GenericWorkflowExecutor — tất định, không I/O
+    activities.py                    nạp plan, gọi tool, ghi state, xin token
 
 services/api/app/domains/execution/
   domain/entities.py                 Execution, NodeExecution, hai máy trạng thái §13
-  domain/plan.py                     IR → thứ tự chạy; "node nào chạy được tiếp"
-  application/ports.py               repository + WorkflowVersionSource + ToolRunner
+  application/ports.py               repository + WorkflowVersionSource + ExecutionLauncher
   application/service.py             tạo execution, ghi node state, đọc tiến trình
   infrastructure/models.py           executions, node_executions
   infrastructure/repositories.py
-  infrastructure/temporal/
-    workflow.py                      Generic Executor — tất định, không I/O
-    activities.py                    nạp plan, gọi tool, ghi state, xin token
-    client.py                        khởi động workflow từ Control Plane
+  infrastructure/temporal/client.py  khởi động workflow bằng tên, từ Control Plane
   infrastructure/http.py             /v1/executions…
 
 services/api/app/entrypoints/
-  worker_wiring.py                   nối execution↔workflow↔trace (khuôn ADR-0003)
+  worker_wiring.py                   nối workflow↔execution↔trace (khuôn ADR-0003)
 
 services/api/alembic/versions/
   0013_workflow_definitions_and_versions.py
@@ -585,7 +624,7 @@ services/api/alembic/versions/
 | `entrypoints/worker.py` | năm `Worker`, đăng ký workflow và activity; bỏ `worker_heartbeat` |
 | `entrypoints/http.py` | gắn router `workflow` và `execution` |
 | `trace/application/service.py` | `start_workflow_trace` |
-| `pyproject.toml` | contract 7 — worker không có đường tới credential |
+| `pyproject.toml` | contract 7 — worker không có đường tới credential; dựng cùng commit tạo `worker_wiring.py` (GĐ 4), không đợi GĐ 5 |
 | `README.md`, `packages/schemas/README.md` | trạng thái Phase 4 |
 
 ---
@@ -651,7 +690,7 @@ Mỗi commit xanh độc lập — kiểm bằng cách stash phần còn lại r
    thuần ở `integration/infrastructure`, `ConnectionPolicy` ở `wiring`, và
    `ToolCatalogReader` thật thay cho adapter tự viết trong test GĐ 2.
 8. ✅ `feat(api): publishing a workflow freezes it` — service + router: tạo, liệt
-   kê, đọc, `PATCH /draft`, `POST /publish`, đọc version, lưu trữ. Quyền sửa và
+   kê, đọc, `PUT /draft`, `POST /publish`, đọc version, lưu trữ. Quyền sửa và
    publish: người tạo hoặc `ws:admin`, cùng luật `ensure_can_manage` của Agent.
    Lưu trữ là soft archive, không xoá.
 
@@ -659,44 +698,90 @@ Mỗi commit xanh độc lập — kiểm bằng cách stash phần còn lại r
 `workspace`), và publish kịch bản 3 **bị từ chối** vì connection Notion là
 `private` — Q7 tự chứng minh bằng dữ liệu thật.
 
-**GĐ 4 — Bộ xương biết đi** (chưa chạm provider)
+**GĐ 4 — Bộ xương biết đi** (chưa chạm provider; bộ thông dịch theo Q16)
 
-8. `feat(api): the order a plan runs in` — `execution/domain/plan.py`. **Thiết kế
-   cho thân `loop` ngay từ đầu**: node định danh bằng đường `n3[2].b1`, không bằng
-   `id` phẳng. Làm sau thì viết lại cả `plan.py` lẫn bảng `node_executions`.
-9. `feat(api): execution records, and the state each node is in` — migration
-   0014, `node_executions` khoá theo đường có chỉ số lượt.
-10. `feat(api): a worker that runs a plan end to end` — executor với `trigger`,
-    `tool` và **`loop` quanh `tool`**, nhưng activity gọi tool là **bản giả đăng ký
-    trong `WorkflowEnvironment`**, không chạm provider nào. Kèm test replay.
+9. `feat(api): the order a plan runs in` — thuần, không DB, không Temporal.
+   - `workflow/domain/plan.py`: `build_plan(ir)` — thứ tự topo, hoà thì theo thứ
+     tự khai báo, từ chối IR sai cấu trúc; `NodePath` (`n2`, `n3[2].b1`, lượt đếm
+     từ 0 — định dạng này đóng băng ở ADR-0012); `runnable(settled)` — node chạy
+     được tiếp khi mọi tiền bối đã xong hoặc bị bỏ qua, dùng cho resume và cho
+     nhánh `condition` ở GĐ 6.
+   - `workflow/domain/bindings.py`: `lookup` trả giá trị hoặc `Missing` (GĐ 6 cần
+     cho `exists`), `resolve` ném `WorkflowExecutionError` nói rõ node, trường,
+     đoạn đường hụt; đi được vào mảng bằng chỉ số (`results.0.id`); `where` lấy
+     phần tử đầu tiên khớp, `pick` đi tiếp từ đó; `from_connection` đọc metadata
+     có trong `Scope` (GĐ 5 mới điền); `loop_items` áp `filter` rồi kiểm
+     `max_items` — thừa thì hỏng, không cắt ngầm.
+   - Test trên cả sáu example: thứ tự, NodePath của kịch bản 3 qua ba lượt, mỗi
+     dạng binding, `where` hụt, đường hụt, vượt `max_items`, `filter`.
+   - **Thiết kế cho thân `loop` ngay từ đầu**: làm sau thì viết lại cả `plan.py`
+     lẫn bảng `node_executions`.
+10. `feat(api): execution records, and the state each node is in`
+    - Migration 0014, schema `execution`: `executions` (tenant, workspace,
+      workflow, version, trigger, inputs, người khởi xướng, trạng thái, lỗi, mốc
+      thời gian; FK `workflow_version_id` → `workflow.workflow_versions.id`
+      `ON DELETE RESTRICT` — ràng buộc mà docstring của 0013 đã hẹn) và
+      `node_executions` (`UNIQUE(execution_id, node_path)`, trạng thái, số lần
+      thử, lỗi; **không payload** — Q11).
+    - `execution/domain/entities.py`: tám trạng thái của §13 cho execution;
+      `pending`/`running`/`succeeded`/`failed`/`skipped` cho node — có `skipped`
+      ngay để GĐ 6 không cần migration. Chuyển trạng thái **đơn điệu**: activity
+      retry không kéo `succeeded` về `running`.
+    - Service `create_pending`, `mark_running`, `record_node` (upsert), `finish`,
+      `get_progress`; repository; test tenant, upsert, FK chặn xoá version.
+11. `feat(api): a worker that runs a plan end to end`
+    - `workflow/infrastructure/temporal/workflow.py` — `GenericWorkflowExecutor`,
+      tuần tự, `loop` từng lượt, giữ output theo node trong bộ nhớ.
+    - `activities.py`: `load_plan`, `record_node_state`, `record_execution_state`,
+      và chữ ký `run_tool_node` (bản thật ở GĐ 5).
+    - `ExecutionRecorder` ở `workflow/application/ports.py`, hiện thực ở
+      `entrypoints/worker_wiring.py`; **contract 7** dựng ngay tại đây.
+    - `temporal_task_queue_workflow`; `worker.py` dựng `Worker` từ bảng
+      queue → (workflow, activity), bỏ `worker_heartbeat`.
+    - Test trên Temporal của docker-compose (gated), `run_tool_node` giả: kịch
+      bản 1 `succeeded` đủ hàng node; kịch bản 3 ra `moi_trang[0..2].doc_trang`;
+      tool giả hỏng không retry được thì node và execution `failed`, node sau
+      vẫn `pending`. Test replay trên lịch sử đã ghi, chạy offline.
 
     Việc rút `transform` khỏi v1 lấy mất node duy nhất tính toán mà không gọi ra
     ngoài, nên bộ xương không còn tự chạy được bằng node thật. Dùng activity giả là
     cách giữ nguyên giá trị của bước này: chứng minh Temporal, plan, trạng thái
     node và replay đều thông, trước khi có credential hay principal.
+12. `feat(api): start a workflow by hand, and see where it is`
+    - `execution/infrastructure/temporal/client.py` — start bằng tên, `id =
+      execution_id` để start hai lần không thành hai lần chạy; start hỏng thì
+      execution `failed`.
+    - `WorkflowVersionSource` ở `wiring`; `POST /v1/executions` kiểm `inputs`
+      theo `input_schema` của trigger (§13.1 *validating runtime inputs*) → 422
+      hoặc 202; `GET /v1/executions/{id}`, `GET /v1/executions?workflow_id=`.
+    - Trong GĐ 4, node `tool` chạy thật hỏng với thông báo "chưa hỗ trợ" cho tới
+      GĐ 5 — chấp nhận có chủ đích.
+
+**Nghiệm thu GĐ 4:** kịch bản 1 và 3 chạy hết trên Temporal với tool giả, replay
+xanh, contract 1–8 giữ.
 
 **GĐ 5 — Node `tool`**
 
-11. `feat(api): a workflow principal that cannot pretend to be a person` — ADR-0010.
-12. `feat(api): activities that reach the outside world` — contract 7, ánh xạ lỗi
-    Q10, queue Q12, khoá idempotency **có chỉ số lượt** (ADR-0012). Test: `loop` 3
-    lượt `post_message` ra **3** hàng sổ khác nhau, không phải 1 hàng + 2 replay.
-    Test tương tác ADR-0007 × Temporal cancel.
-13. `feat(api): a workflow that posts to Slack` — chạy lại kịch bản 1 và 2 của GĐ 0
+13. `feat(api): a workflow principal that cannot pretend to be a person` — ADR-0010.
+14. `feat(api): activities that reach the outside world` — ánh xạ lỗi Q10, queue
+    Q12, khoá idempotency **có chỉ số lượt** (ADR-0012). Test: `loop` 3 lượt
+    `post_message` ra **3** hàng sổ khác nhau, không phải 1 hàng + 2 replay. Test
+    tương tác ADR-0007 × Temporal cancel.
+15. `feat(api): a workflow that posts to Slack` — chạy lại kịch bản 1 và 2 của GĐ 0
     dưới dạng workflow, kịch bản 2 dùng `where`.
 
 **GĐ 6 — `condition` và `llm`**
 
-14. `feat(api): a plan that can take one branch or the other` — chạy lại kịch bản 5.
-15. `feat(api): a prompt the workflow can run on its own` — ADR-0011; chạy lại
+16. `feat(api): a plan that can take one branch or the other` — chạy lại kịch bản 5.
+17. `feat(api): a prompt the workflow can run on its own` — ADR-0011; chạy lại
     kịch bản 4 với node `llm` thay cho 22 literal do model viết.
 
 **GĐ 7 — Quan sát và đóng sổ**
 
-16. `feat(api): a workflow run leaves an execution trace` — chạy lại kịch bản 3 dưới
+18. `feat(api): a workflow run leaves an execution trace` — chạy lại kịch bản 3 dưới
     dạng `loop` và đối chiếu trace với trace Agent gốc.
-17. `feat(api): watch an execution as it runs` — SSE §25.
-18. `docs: ADR-0009 to ADR-0012` + README.
+19. `feat(api): watch an execution as it runs` — SSE §25.
+20. `docs: ADR-0009 to ADR-0012` + README.
 
 Mỗi GĐ từ 5 trở đi kết thúc bằng việc **chạy lại một kịch bản của GĐ 0 dưới dạng
 workflow**. Sáu kịch bản vì vậy vừa là dữ liệu thiết kế IR, vừa là bộ nghiệm thu
@@ -736,6 +821,11 @@ không có commit trong WP-B — ghi lại ở đây để không rơi mất.
   một node chết vì chính cơ chế retry của Temporal. **Đây là tương tác cần một test
   riêng trước khi tin**, và có thể là tín hiệu đầu tiên cho điều kiện xem xét lại
   của ADR-0007.
+- **Output của tool nằm trong lịch sử Temporal.** Kết quả activity là một phần
+  lịch sử; một trang Notion lớn nhân 200 lượt có thể chạm trần sự kiện của một
+  workflow. Đo ở commit 11. Nếu một kết quả vượt 256 KiB thì activity đẩy nó sang
+  payload store (ADR-0006) và chỉ trả tham chiếu — chưa làm cho tới khi số đo nói
+  cần.
 - **Không có đường xử lý execution kẹt.** Không huỷ, không resume, không retry tay.
   Chấp nhận trong WP-B, nhưng nó là việc phải làm trước khi có người dùng thật.
 
@@ -746,10 +836,10 @@ không có commit trong WP-B — ghi lại ở đây để không rơi mất.
 | # | Về gì | Đóng băng ở commit |
 |---|---|---|
 | **0008** | **Compiler là hybrid; LLM không bao giờ phát ra IR** | **đã viết, 2026-09-17** |
-| 0009 | Worker gọi Gateway qua HTTP, và contract 7 canh đường tới credential (Q5) | 12 |
-| 0010 | Workflow principal: token theo activity, tenant từ execution record, và vì sao không bao giờ mượn `pk="user"` (Q6) | 11 |
-| 0011 | Node `llm` với tới Model Gateway bằng đường nào (Q4) | 15 |
-| 0012 | `loop`: định danh node theo lượt lặp, và khoá idempotency mang chỉ số lượt (Q13) | 12 |
+| 0009 | Worker gọi Gateway qua HTTP, và contract 7 canh đường tới credential (Q5) | 14 |
+| 0010 | Workflow principal: token theo activity, tenant từ execution record, và vì sao không bao giờ mượn `pk="user"` (Q6) | 13 |
+| 0011 | Node `llm` với tới Model Gateway bằng đường nào (Q4) | 17 |
+| 0012 | `loop`: định danh node theo lượt lặp, và khoá idempotency mang chỉ số lượt (Q13) | 14 |
 | 0013 | `transform` chạy code trong sandbox, và sandbox không bao giờ chạy trong Control Plane | [WP-C](wp-c-transform-sandbox.md) |
 
 ADR-0008 được viết **trước** WP-B chứ không phải trong nó, vì nó đặt hai ràng buộc
