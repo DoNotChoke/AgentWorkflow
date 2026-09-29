@@ -20,10 +20,13 @@ from app.core.db import DOMAIN_SCHEMAS, Base
 # Mỗi domain có bảng phải có đúng một dòng ở dưới. Thêm domain mới mà quên dòng
 # này là lỗi im lặng: `alembic upgrade head` vẫn chạy đúng, chỉ tới lần
 # autogenerate kế tiếp mới lộ ra, dưới dạng một migration xoá bảng.
+from app.domains.agent.infrastructure import models as agent_models  # noqa: F401
 from app.domains.connection.infrastructure import models as connection_models  # noqa: F401
 from app.domains.identity.infrastructure import models as identity_models  # noqa: F401
 from app.domains.integration.infrastructure import models as integration_models  # noqa: F401
 from app.domains.tenant.infrastructure import models as tenant_models  # noqa: F401
+from app.domains.trace.infrastructure import models as trace_models  # noqa: F401
+from app.domains.workflow.infrastructure import models as workflow_models  # noqa: F401
 
 config = context.config
 
