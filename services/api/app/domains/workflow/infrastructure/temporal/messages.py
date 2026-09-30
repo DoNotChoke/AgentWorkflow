@@ -35,6 +35,8 @@ class ExecutorInput:
     workflow_version_id: str
     inputs: dict[str, Any]
     queues: ExecutorQueues
+    #: Connection của lần chạy, theo node tool. Mặc định rỗng để lịch sử cũ vẫn decode được.
+    connections: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

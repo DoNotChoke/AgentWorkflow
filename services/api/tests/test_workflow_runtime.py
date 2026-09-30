@@ -9,10 +9,12 @@ from typing import Any
 
 import pytest
 
-from app.core.errors import WorkflowExecutionError
+from app.core.errors import ConnectionChoiceRequiredError, ValidationError, WorkflowExecutionError
 from app.domains.integration.infrastructure.catalog_view import tool_rows
-from app.domains.workflow.application.runtime import PlanLoader
+from app.domains.workflow.application.ports import BoundConnection
+from app.domains.workflow.application.runtime import PlanLoader, bind_run_connections
 from app.domains.workflow.domain.entities import WorkflowVersion, fingerprint
+from app.domains.workflow.domain.ir import parse
 from app.domains.workflow.infrastructure.catalog import RowToolCatalog
 
 EXAMPLES = Path(__file__).resolve().parents[3] / "packages" / "schemas" / "workflow" / "examples"
@@ -75,3 +77,99 @@ async def test_tool_bien_mat_khoi_catalog_sau_khi_publish() -> None:
     ir["nodes"][1]["tool_version"] = "9.9"
     with pytest.raises(WorkflowExecutionError, match="không còn trong catalog"):
         await _loader(_version(ir)).load(tenant_id="org_1", workflow_version_id="wfv_1")
+
+
+# ─── Connection của lần chạy ─────────────────────────────────────────────────
+
+
+class _Connections:
+    def __init__(self, *known: BoundConnection) -> None:
+        self._known = {c.connection_id: c for c in known}
+
+    async def describe(
+        self, *, tenant_id: str, workspace_id: str, connection_id: str
+    ) -> BoundConnection | None:
+        return self._known.get(connection_id)
+
+
+CHUNG = BoundConnection("conn_chung", "slack", True, "active", True, "usr_admin")
+CUA_AN = BoundConnection("conn_an", "slack", False, "active", True, "usr_an")
+CUA_BINH = BoundConnection("conn_binh", "slack", False, "active", True, "usr_binh")
+HET_HAN = BoundConnection("conn_hethan", "slack", True, "expired", False, "usr_admin")
+NOTION = BoundConnection("conn_notion", "notion", True, "active", True, "usr_admin")
+
+
+async def _bind(
+    example: str = "kb2-slack-doc-roi-ghi",
+    *,
+    by_node: dict[str, str] | None = None,
+    by_provider: dict[str, str] | None = None,
+    actor: str = "usr_an",
+) -> dict[str, str]:
+    return await bind_run_connections(
+        parse(_example(example)),
+        catalog=CATALOG,
+        connections=_Connections(CHUNG, CUA_AN, CUA_BINH, HET_HAN, NOTION),
+        tenant_id="org_1",
+        workspace_id="ws_1",
+        actor_id=actor,
+        by_node=by_node or {},
+        by_provider=by_provider or {},
+    )
+
+
+async def _bind_error(**kwargs: Any) -> ValidationError:
+    with pytest.raises(ValidationError) as caught:
+        await _bind(**kwargs)
+    return caught.value
+
+
+async def test_theo_provider_ap_cho_moi_node_cua_provider_do() -> None:
+    assert await _bind(by_provider={"slack": "conn_chung"}) == {
+        "kenh": "conn_chung",
+        "dang": "conn_chung",
+    }
+
+
+async def test_hai_node_cung_provider_dung_hai_connection_khac_nhau() -> None:
+    bindings = await _bind(by_provider={"slack": "conn_chung"}, by_node={"dang": "conn_an"})
+    assert bindings == {"kenh": "conn_chung", "dang": "conn_an"}
+
+
+async def test_node_trong_than_loop_cung_can_connection() -> None:
+    bindings = await _bind("kb3-notion-doc-sau", by_provider={"notion": "conn_notion"})
+    assert bindings == {"tim": "conn_notion", "con": "conn_notion", "doc_trang": "conn_notion"}
+
+
+async def test_chon_duoc_tai_khoan_rieng_cua_chinh_minh() -> None:
+    assert await _bind(by_provider={"slack": "conn_an"}, actor="usr_an") == {
+        "kenh": "conn_an",
+        "dang": "conn_an",
+    }
+
+
+async def test_tai_khoan_rieng_cua_nguoi_khac_trong_nhu_khong_ton_tai() -> None:
+    other = await _bind_error(by_provider={"slack": "conn_binh"}, actor="usr_an")
+    missing = await _bind_error(by_provider={"slack": "conn_khongco"})
+    assert other.message.replace("conn_binh", "X") == missing.message.replace("conn_khongco", "X")
+
+
+async def test_khong_chon_thi_buoc_chon_va_chi_ra_tung_node() -> None:
+    with pytest.raises(ConnectionChoiceRequiredError) as caught:
+        await _bind(by_node={"kenh": "conn_chung"})
+    assert caught.value.details == {"nodes": [{"node": "dang", "provider": "slack"}]}
+    assert caught.value.http_status == 409
+
+
+async def test_sai_provider_va_het_han_bi_tu_choi_theo_node() -> None:
+    wrong = await _bind_error(by_provider={"slack": "conn_chung"}, by_node={"dang": "conn_notion"})
+    assert [p["node"] for p in wrong.details["connections"]] == ["dang"]
+    assert "node dang cần slack" in wrong.message
+    assert "expired" in (await _bind_error(by_provider={"slack": "conn_hethan"})).message
+
+
+async def test_chon_cho_thu_workflow_khong_dung_la_loi() -> None:
+    error = await _bind_error(
+        by_provider={"slack": "conn_chung", "notion": "conn_notion"}, by_node={"t": "conn_chung"}
+    )
+    assert error.details == {"nodes": ["t"], "providers": ["notion"]}

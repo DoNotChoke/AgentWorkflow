@@ -81,6 +81,7 @@ class ExecutionService:
         inputs: Mapping[str, Any],
         initiated_by: str,
         at: datetime,
+        connection_bindings: Mapping[str, str] | None = None,
     ) -> Execution:
         ensure_inputs_size(inputs)
         execution = Execution(
@@ -95,6 +96,7 @@ class ExecutionService:
             status=ExecutionStatus.PENDING,
             created_at=at,
             updated_at=at,
+            connection_bindings=dict(connection_bindings or {}),
         )
         await self._executions.add(execution)
         log.info("execution_created", execution_id=execution.id, workflow_id=workflow_id)

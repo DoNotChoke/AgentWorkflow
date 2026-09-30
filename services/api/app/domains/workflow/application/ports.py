@@ -38,19 +38,17 @@ class ToolCatalogReader(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class BoundConnection:
-    """Kết nối mà một workflow đang bind, nhìn từ domain `workflow`.
-
-    Không mang token và không mang scope: publish chỉ cần biết nó có tồn tại,
-    có dùng được, có phải tài khoản chung hay không.
-    """
+    """Kết nối mà một workflow đang bind, nhìn từ domain `workflow`."""
 
     connection_id: str
     provider: str
-    #: `False` là tài khoản riêng của một người — Q7 từ chối bind nó.
+    #: `False` là tài khoản riêng: không làm mặc định của version được, và chỉ
+    #: chính chủ chọn được nó cho lần chạy.
     shared_with_workspace: bool
     #: `active`, `expired`, `revoked`… Đưa nguyên vào thông báo lỗi.
     status: str
     is_usable: bool
+    owner_user_id: str = ""
 
 
 class ConnectionReader(Protocol):

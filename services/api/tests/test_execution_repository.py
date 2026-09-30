@@ -103,6 +103,7 @@ def _execution(version: WorkflowVersion, **changes: object) -> Execution:
         trigger_type="manual",
         inputs={"ten_trang": "Ghi chú AWS", "so": [1, 2]},
         initiated_by="usr_1",
+        connection_bindings={"notion": "conn_notionvidu"},
         status=ExecutionStatus.PENDING,
         created_at=NOW,
         updated_at=NOW,

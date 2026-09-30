@@ -20,6 +20,8 @@ from app.domains.workflow.infrastructure.temporal.errors import (
     to_application_error,
 )
 from app.domains.workflow.infrastructure.temporal.messages import (
+    ExecutorInput,
+    ExecutorQueues,
     NodeRefMessage,
     RecordNodeInput,
 )
@@ -77,3 +79,26 @@ async def test_du_lieu_di_qua_temporal_nguyen_ven() -> None:
     ]
     encoded = await converter.encode(values)
     assert await converter.decode(encoded, [LoadedPlan, RecordNodeInput]) == values
+
+
+async def test_input_cua_executor_mang_connection_va_lich_su_cu_van_doc_duoc() -> None:
+    converter = DataConverter.default
+    queues = ExecutorQueues("p", "r", "w")
+    current = ExecutorInput("exe_1", "org_1", "wfv_1", {}, queues, {"slack": "conn_an"})
+    (encoded,) = await converter.encode([current])
+    assert await converter.decode([encoded], [ExecutorInput]) == [current]
+
+    # Input ghi trước khi có trường `connections`: execution đang chạy dở vẫn decode được.
+    (old,) = await converter.encode(
+        [
+            {
+                "execution_id": "exe_1",
+                "tenant_id": "org_1",
+                "workflow_version_id": "wfv_1",
+                "inputs": {},
+                "queues": {"processing": "p", "integration_read": "r", "integration_write": "w"},
+            }
+        ]
+    )
+    (decoded,) = await converter.decode([old], [ExecutorInput])
+    assert decoded.connections == {}

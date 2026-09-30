@@ -115,9 +115,11 @@ async def test_tao_ra_pending_voi_id_exe(service: ExecutionService) -> None:
         inputs={},
         initiated_by="usr_1",
         at=T0,
+        connection_bindings={"slack": "conn_an"},
     )
     assert execution.id.startswith("exe_")
     assert execution.status is ExecutionStatus.PENDING
+    assert execution.connection_bindings == {"slack": "conn_an"}
 
 
 async def test_tenant_khac_khong_thay_lan_chay(service: ExecutionService) -> None:

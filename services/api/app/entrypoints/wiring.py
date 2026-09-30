@@ -245,6 +245,7 @@ class WorkflowConnectionReader:
             shared_with_workspace=str(found.sharing) == "workspace",
             status=str(found.status),
             is_usable=str(found.status) == "active",
+            owner_user_id=found.owner_user_id,
         )
 
 

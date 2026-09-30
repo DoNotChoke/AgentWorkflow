@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.core.errors import WorkflowExecutionError
-from app.domains.workflow.application.ports import ToolCatalogReader, WorkflowRepository
-from app.domains.workflow.domain.ir import ToolNode, parse
+from app.core.errors import (
+    ConnectionChoiceRequiredError,
+    ValidationError,
+    WorkflowExecutionError,
+)
+from app.domains.workflow.application.ports import (
+    ConnectionReader,
+    ToolCatalogReader,
+    WorkflowRepository,
+)
+from app.domains.workflow.domain.ir import ToolNode, WorkflowIR, parse
 
 
 def tool_key(tool_id: str, version: str) -> str:
@@ -58,3 +67,85 @@ class PlanLoader:
             ir=dict(version.ir),
             mutating_tools=sorted(mutating),
         )
+
+
+def nodes_needing_connection(ir: WorkflowIR, catalog: ToolCatalogReader) -> dict[str, str]:
+    """Node tool của workflow, kèm provider của tool đó."""
+    needed: dict[str, str] = {}
+    for _, node in ir.walk():
+        if isinstance(node, ToolNode):
+            contract = catalog.find(node.tool_id, node.tool_version)
+            if contract is not None:
+                needed[node.id] = contract.provider
+    return needed
+
+
+async def bind_run_connections(
+    ir: WorkflowIR,
+    *,
+    catalog: ToolCatalogReader,
+    connections: ConnectionReader,
+    tenant_id: str,
+    workspace_id: str,
+    actor_id: str,
+    by_node: Mapping[str, str],
+    by_provider: Mapping[str, str],
+) -> dict[str, str]:
+    """Connection mà một lần chạy dùng, theo node tool.
+
+    `by_node` thắng `by_provider`. Không có gì được đoán: node nào trống thì phải
+    chọn. Connection riêng chỉ chính chủ dùng được; của người khác thì trông như
+    không tồn tại.
+    """
+    needed = nodes_needing_connection(ir, catalog)
+
+    unknown_nodes = sorted(set(by_node) - set(needed))
+    unknown_providers = sorted(set(by_provider) - set(needed.values()))
+    if unknown_nodes or unknown_providers:
+        raise ValidationError(
+            "Lựa chọn connection trỏ vào thứ workflow không dùng.",
+            details={"nodes": unknown_nodes, "providers": unknown_providers},
+        )
+
+    chosen = {
+        node_id: by_node.get(node_id) or by_provider.get(provider)
+        for node_id, provider in needed.items()
+    }
+    missing = [
+        {"node": node_id, "provider": needed[node_id]}
+        for node_id, connection_id in chosen.items()
+        if not connection_id
+    ]
+    if missing:
+        raise ConnectionChoiceRequiredError(
+            "Cần chọn connection cho " + ", ".join(item["node"] for item in missing) + ".",
+            details={"nodes": missing},
+        )
+    resolved = {
+        node_id: connection_id for node_id, connection_id in chosen.items() if connection_id
+    }
+
+    problems: list[dict[str, str]] = []
+    for node_id, connection_id in resolved.items():
+        provider = needed[node_id]
+        found = await connections.describe(
+            tenant_id=tenant_id, workspace_id=workspace_id, connection_id=connection_id
+        )
+        if found is None or (not found.shared_with_workspace and found.owner_user_id != actor_id):
+            reason = f"Không tìm thấy kết nối {connection_id} trong workspace này."
+        elif found.provider != provider:
+            reason = (
+                f"Kết nối {connection_id} là của {found.provider}, node {node_id} cần {provider}."
+            )
+        elif not found.is_usable:
+            reason = f"Kết nối {connection_id} đang ở trạng thái {found.status}."
+        else:
+            continue
+        problems.append({"node": node_id, "connection_id": connection_id, "reason": reason})
+
+    if problems:
+        raise ValidationError(
+            "; ".join(problem["reason"] for problem in problems),
+            details={"connections": problems},
+        )
+    return resolved

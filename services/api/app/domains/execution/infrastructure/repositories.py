@@ -41,6 +41,7 @@ def _to_execution(row: ExecutionModel) -> Execution:
         started_at=row.started_at,
         finished_at=row.finished_at,
         failure=_failure(row.error_category, row.error_message),
+        connection_bindings=dict(row.connection_bindings),
     )
 
 
@@ -96,6 +97,7 @@ class SqlAlchemyExecutionRepository:
                 trigger_type=execution.trigger_type,
                 inputs=dict(execution.inputs),
                 initiated_by=execution.initiated_by,
+                connection_bindings=dict(execution.connection_bindings),
                 status=str(execution.status),
                 error_category=None,
                 error_message=None,

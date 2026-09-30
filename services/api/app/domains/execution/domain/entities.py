@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Final
@@ -115,6 +115,8 @@ class Execution:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     failure: Failure | None = None
+    #: Connection đã dùng, theo node tool. Bất biến như chính lần chạy.
+    connection_bindings: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def is_terminal(self) -> bool:

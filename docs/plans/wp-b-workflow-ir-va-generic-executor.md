@@ -833,7 +833,7 @@ Mỗi commit xanh độc lập — kiểm bằng cách stash phần còn lại r
       và chờ health — `services:` không truyền được lệnh cho container.
 12. Chạy bằng tay — tách hai commit theo [ADR-0014](../adr/0014-connection-gan-theo-lan-chay.md).
 
-    **12a. `feat(api): a run chooses a connection for every tool node`**
+    **12a. ✅ `feat(api): a run chooses a connection for every tool node`**
     - ADR-0014 thay Q7: workflow không lưu connection; lần chạy chọn cho từng node
       `tool`, có viết tắt theo provider; thiếu thì `ConnectionChoiceRequiredError`
       (409) kèm `{node, provider}`, không đoán; connection riêng của người khác trông
