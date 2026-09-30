@@ -38,7 +38,7 @@ boto3>=1.35,<2.0
 temporalio>=1.9,<2.0
 
 # ─── AI Plane (§4.3, §5.2) — Model Gateway, đa provider (WP5) ────────────────
-anthropic>=0.40
+anthropic>=0.40,<1.0                 # 1.x chuyển sang httpx2
 openai>=1.50,<2.0
 
 # ─── HTTP client cho Integration Plane (§6.3) ────────────────────────────────
