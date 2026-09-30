@@ -8,12 +8,28 @@ from dataclasses import dataclass
 from typing import Final
 
 from app.core.errors import WorkflowDefinitionError
-from app.domains.workflow.domain.ir import BodyNode, LoopNode, Node, WorkflowIR
+from app.domains.workflow.domain.ir import (
+    BodyNode,
+    ConditionNode,
+    LlmNode,
+    LoopNode,
+    Node,
+    WorkflowIR,
+)
 from app.domains.workflow.domain.validation import ensure_valid, validate_structure
 
 _PATH: Final = re.compile(
     r"^(?:(?P<loop>[a-z][a-z0-9_]*)\[(?P<iteration>\d+)\]\.)?(?P<node>[a-z][a-z0-9_]*)$"
 )
+
+
+#: Loại node mà executor bản này chưa chạy được.
+_UNSUPPORTED: Final = (ConditionNode, LlmNode)
+
+
+def unsupported_nodes(ir: WorkflowIR) -> list[str]:
+    """Id các node chưa chạy được, kể cả trong thân loop, theo thứ tự tên."""
+    return sorted(node.id for _, node in ir.walk() if isinstance(node, _UNSUPPORTED))
 
 
 @dataclass(frozen=True, slots=True)

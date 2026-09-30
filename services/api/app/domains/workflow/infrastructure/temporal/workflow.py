@@ -34,7 +34,7 @@ with workflow.unsafe.imports_passed_through():
         TriggerNode,
         parse,
     )
-    from app.domains.workflow.domain.plan import NodePath, Plan, build_plan
+    from app.domains.workflow.domain.plan import NodePath, Plan, build_plan, unsupported_nodes
     from app.domains.workflow.infrastructure.temporal.messages import (
         EXECUTOR_WORKFLOW,
         LOAD_PLAN,
@@ -66,7 +66,6 @@ _TOOL_RETRY: Final = RetryPolicy(
     maximum_interval=timedelta(seconds=30),
     maximum_attempts=3,
 )
-_UNSUPPORTED: Final = (ConditionNode, LlmNode)
 
 
 class _NodeFailedError(Exception):
@@ -138,7 +137,7 @@ class GenericWorkflowExecutor:
         except AppError as error:
             raise _NodeFailedError.of(error) from None
 
-        unsupported = sorted(node.id for _, node in ir.walk() if isinstance(node, _UNSUPPORTED))
+        unsupported = unsupported_nodes(ir)
         if unsupported:
             raise _NodeFailedError(
                 str(ErrorCategory.WORKFLOW_DEFINITION),

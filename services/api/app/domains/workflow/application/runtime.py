@@ -69,6 +69,16 @@ class PlanLoader:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class RunnableVersion:
+    """Version sẵn sàng chạy: đã kiểm, đã chọn connection cho từng node tool."""
+
+    workflow_id: str
+    workflow_version_id: str
+    number: int
+    connections: dict[str, str]
+
+
 def nodes_needing_connection(ir: WorkflowIR, catalog: ToolCatalogReader) -> dict[str, str]:
     """Node tool của workflow, kèm provider của tool đó."""
     needed: dict[str, str] = {}

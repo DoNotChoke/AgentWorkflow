@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from temporalio.client import Client
 
 from app.core.config import Settings
-from app.core.errors import AuthorizationError
+from app.core.errors import AuthorizationError, ProviderUnavailableError
 from app.domains.connection.application.ports import TenantGuard, WorkspaceContext
 from app.domains.connection.application.service import CredentialResolver, ResolvedCredential
 from app.domains.connection.infrastructure.credential_store import build_credential_store
@@ -20,12 +22,20 @@ from app.domains.connection.infrastructure.provider_credentials import (
 from app.domains.connection.infrastructure.repositories import (
     SqlAlchemyConnectionRepository,
 )
+from app.domains.execution.application.ports import RunnableVersion as ExecutionRunnable
 from app.domains.identity.infrastructure.repositories import SqlAlchemyUserRepository
 from app.domains.integration.infrastructure.catalog_view import tool_rows
 from app.domains.tenant.application.ports import UserDirectory, UserProfile
 from app.domains.tenant.application.service import TenantService
 from app.domains.workflow.application.ports import BoundConnection
+from app.domains.workflow.application.service import WorkflowService
 from app.domains.workflow.infrastructure.catalog import RowToolCatalog
+from app.domains.workflow.infrastructure.repositories import SqlAlchemyWorkflowRepository
+from app.domains.workflow.infrastructure.temporal.messages import (
+    EXECUTOR_WORKFLOW,
+    ExecutorInput,
+    ExecutorQueues,
+)
 
 
 def _to_profile(user: object) -> UserProfile:
@@ -340,3 +350,107 @@ def build_execution_trace_sink(_session: AsyncSession) -> IntegrationTraceSink:
     from app.domains.integration.infrastructure.sinks import LoggingToolInvocationSink
 
     return IntegrationTraceSink(fallback=LoggingToolInvocationSink())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Execution ← Workflow, và Execution → Temporal
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class WorkflowRunPreparer:
+    """`WorkflowRunSource` của domain `execution`, bằng `WorkflowService.prepare_run`."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._workflows = WorkflowService(
+            repository=SqlAlchemyWorkflowRepository(session),
+            catalog=build_workflow_tool_catalog(),
+            connections=WorkflowConnectionReader(session),
+        )
+
+    async def prepare(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        actor_id: str,
+        workflow_id: str,
+        version: int | None,
+        inputs: Mapping[str, Any],
+        by_node: Mapping[str, str],
+        by_provider: Mapping[str, str],
+    ) -> ExecutionRunnable:
+        runnable = await self._workflows.prepare_run(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            actor_id=actor_id,
+            workflow_id=workflow_id,
+            version=version,
+            inputs=inputs,
+            by_node=by_node,
+            by_provider=by_provider,
+        )
+        return ExecutionRunnable(
+            workflow_id=runnable.workflow_id,
+            workflow_version_id=runnable.workflow_version_id,
+            number=runnable.number,
+            connections=dict(runnable.connections),
+        )
+
+
+def build_execution_run_source(session: AsyncSession) -> WorkflowRunPreparer:
+    return WorkflowRunPreparer(session)
+
+
+class TemporalExecutionLauncher:
+    """`ExecutionLauncher` bằng Temporal. Client kết nối lười, ở lần start đầu tiên."""
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+        self._client: Client | None = None
+        self._lock: asyncio.Lock | None = None
+
+    async def _connect(self) -> Client:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        async with self._lock:
+            if self._client is None:
+                self._client = await Client.connect(
+                    self._settings.temporal_host, namespace=self._settings.temporal_namespace
+                )
+            return self._client
+
+    async def start(
+        self,
+        *,
+        execution_id: str,
+        tenant_id: str,
+        workflow_version_id: str,
+        inputs: Mapping[str, Any],
+        connections: Mapping[str, str],
+    ) -> None:
+        settings = self._settings
+        request = ExecutorInput(
+            execution_id=execution_id,
+            tenant_id=tenant_id,
+            workflow_version_id=workflow_version_id,
+            inputs=dict(inputs),
+            queues=ExecutorQueues(
+                processing=settings.temporal_task_queue_processing,
+                integration_read=settings.temporal_task_queue_integration_read,
+                integration_write=settings.temporal_task_queue_integration_write,
+            ),
+            connections=dict(connections),
+        )
+        try:
+            client = await self._connect()
+            await client.start_workflow(
+                EXECUTOR_WORKFLOW,
+                request,
+                id=execution_id,
+                task_queue=settings.temporal_task_queue_workflow,
+            )
+        except Exception as error:  # noqa: BLE001 — mọi lỗi start đều là "runtime không nhận"
+            raise ProviderUnavailableError(
+                f"Temporal không nhận lần chạy ({type(error).__name__}).",
+                details={"execution_id": execution_id},
+            ) from error

@@ -11,7 +11,12 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, Final
 
-from app.core.errors import AuthorizationError, ValidationError, WorkflowDefinitionError
+from app.core.errors import (
+    AuthorizationError,
+    ValidationError,
+    WorkflowDefinitionError,
+    WorkflowExecutionError,
+)
 from app.core.ids import ResourceKind, new_id
 from app.core.logging import get_logger
 from app.domains.workflow.application.ports import (
@@ -19,7 +24,9 @@ from app.domains.workflow.application.ports import (
     ToolCatalogReader,
     WorkflowRepository,
 )
+from app.domains.workflow.application.runtime import RunnableVersion, bind_run_connections
 from app.domains.workflow.application.validation import validate
+from app.domains.workflow.domain.bindings import check_inputs
 from app.domains.workflow.domain.entities import (
     Workflow,
     WorkflowDraft,
@@ -32,7 +39,8 @@ from app.domains.workflow.domain.entities import (
     published,
     unarchive,
 )
-from app.domains.workflow.domain.ir import parse
+from app.domains.workflow.domain.ir import CURRENT_MAJOR, TriggerNode, parse
+from app.domains.workflow.domain.plan import unsupported_nodes
 from app.domains.workflow.domain.validation import Issue, ValidationReport, ensure_valid
 
 log = get_logger(__name__)
@@ -44,7 +52,7 @@ _WORKFLOW_NOT_FOUND = "Không tìm thấy workflow này."
 #: Draft của một workflow vừa tạo: đúng một trigger, chưa có gì khác. Hợp lệ
 #: nhưng chưa làm gì — chỗ để người dùng bắt đầu, không phải một ví dụ.
 EMPTY_DRAFT: Final[Mapping[str, Any]] = {
-    "schema_version": "1.0",
+    "schema_version": f"{CURRENT_MAJOR}.0",
     "nodes": [
         {
             "id": "t",
@@ -221,6 +229,77 @@ class WorkflowService:
             number=version.number,
         )
         return version
+
+    # ─── Chạy ────────────────────────────────────────────────────────────────
+
+    async def prepare_run(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        actor_id: str,
+        workflow_id: str,
+        version: int | None,
+        inputs: Mapping[str, Any],
+        by_node: Mapping[str, str],
+        by_provider: Mapping[str, str],
+    ) -> RunnableVersion:
+        """Mọi thứ kiểm được trước khi một lần chạy tồn tại. Không ghi gì."""
+        workflow = await self.get_workflow(tenant_id=tenant_id, workflow_id=workflow_id)
+        if workflow.workspace_id != workspace_id:
+            raise AuthorizationError(_WORKFLOW_NOT_FOUND, details={"workflow_id": workflow_id})
+        ensure_not_archived(workflow)
+
+        if version is not None:
+            chosen = await self.get_version(
+                tenant_id=tenant_id, workflow_id=workflow_id, number=version
+            )
+        elif workflow.current_version_id is None:
+            raise ValidationError(
+                "Workflow này chưa được publish.", details={"workflow_id": workflow_id}
+            )
+        else:
+            current = await self._workflows.get_version_by_id(
+                tenant_id=tenant_id, version_id=workflow.current_version_id
+            )
+            if current is None:
+                raise ValidationError(
+                    "Không đọc được version hiện tại của workflow.",
+                    details={"workflow_id": workflow_id},
+                )
+            chosen = current
+
+        ir = parse(chosen.ir)
+        unsupported = unsupported_nodes(ir)
+        if unsupported:
+            raise ValidationError(
+                f"Node {', '.join(unsupported)} là loại chưa chạy được ở bản này.",
+                details={"nodes": unsupported},
+            )
+
+        trigger = next(node for node in ir.nodes if isinstance(node, TriggerNode))
+        try:
+            check_inputs(trigger, inputs)
+        except WorkflowExecutionError as error:
+            # Ở cửa HTTP đây là lỗi của request, không phải của lần chạy.
+            raise ValidationError(error.message, details=error.details) from error
+
+        connections = await bind_run_connections(
+            ir,
+            catalog=self._catalog,
+            connections=self._connections,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            actor_id=actor_id,
+            by_node=by_node,
+            by_provider=by_provider,
+        )
+        return RunnableVersion(
+            workflow_id=workflow_id,
+            workflow_version_id=chosen.id,
+            number=chosen.number,
+            connections=connections,
+        )
 
     # ─── Lưu trữ ─────────────────────────────────────────────────────────────
 

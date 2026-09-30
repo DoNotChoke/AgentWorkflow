@@ -852,23 +852,41 @@ Mỗi commit xanh độc lập — kiểm bằng cách stash phần còn lại r
     - Migration 0015: `executions.connection_bindings` (node → connection);
       `ExecutorInput.connections` mặc định rỗng để lịch sử cũ vẫn decode được.
 
-    **12b. `feat(api): start a workflow by hand, and see where it is`**
-    - Client Temporal ở `entrypoints/wiring.py`, không ở `execution`: dựng
-      `ExecutorInput` cần `workflow/infrastructure/temporal/messages.py`, mà
+    **12b. ✅ `feat(api): start a workflow by hand, and see where it is`**
+    - `domain/plan.py`: `unsupported_nodes(ir)` — luật "node chưa chạy được" chuyển
+      từ `temporal/workflow.py` về đây, executor và API dùng chung. Chuỗi lệnh của
+      executor không đổi, replay phải xanh.
+    - `WorkflowService.prepare_run`: workflow cùng tenant **và** workspace (khác thì
+      "không tìm thấy"), không lưu trữ, có version (bỏ trống = version hiện tại, có
+      số = đúng số đó), không có node chưa hỗ trợ, `inputs` khớp trigger — lỗi này
+      đổi sang `ValidationError` (422), vì `WorkflowExecutionError` ánh xạ ra 500 —
+      rồi `bind_run_connections`. Trả `RunnableVersion`.
+    - `execution/application/ports.py`: `WorkflowRunSource` và `ExecutionLauncher`,
+      chỉ kiểu nguyên thuỷ.
+    - `execution/application/starting.py`: `ExecutionStarter` — `prepare` (chỉ đọc)
+      → ① transaction riêng tạo execution, commit → ② start Temporal ngoài
+      transaction → ③ ② hỏng thì transaction riêng ghi execution `failed`
+      (`ProviderUnavailable`) và trả **502** kèm `execution_id`. Commit trước khi
+      start vì `get_session` chỉ commit khi handler trả về, và activity
+      `record_execution` không được chạy trước lúc hàng execution tồn tại.
+    - `execution/infrastructure/http.py`: `POST /v1/executions {workflow_id,
+      version?, inputs, connections?, connections_by_provider?}` → 202 kèm
+      `Location`; `GET /v1/executions/{id}` (inputs, connection đã dùng, node theo
+      `seq`); `GET /v1/executions?workflow_id=&limit=` — `workflow_id` bắt buộc.
+      Execution của workspace khác trông như không tồn tại.
+    - `entrypoints/wiring.py`: `WorkflowRunPreparer` (hiện thực `WorkflowRunSource`)
+      và `TemporalExecutionLauncher` — client Temporal ở đây, không ở `execution`:
+      dựng `ExecutorInput` cần `workflow/infrastructure/temporal/messages.py`, mà
       contract 1 cấm `execution` import `workflow`. Start bằng tên, `id =
-      execution_id`; client dựng lười để API lên được khi Temporal chưa lên.
-    - `WorkflowService.prepare_run`: workflow cùng tenant và workspace, không lưu
-      trữ, đã publish (version hiện tại hoặc đúng số), không có node chưa hỗ trợ
-      (`unsupported_nodes` chuyển về `domain/plan.py`, dùng chung với executor),
-      `inputs` khớp trigger (422), rồi `bind_run_connections`.
-    - `ExecutionStarter` ba nhịp, mỗi nhịp một transaction: tạo execution và
-      commit → start Temporal → start hỏng thì execution `failed` và trả 503. Commit
-      trước khi start vì `get_session` chỉ commit khi handler trả về, và activity
-      `record_execution` không được phép chạy trước lúc hàng execution tồn tại.
-    - `POST /v1/executions {workflow_id, version?, inputs, connections?,
-      connections_by_provider?}` → 202 kèm
-      `Location`; `GET /v1/executions/{id}` (node theo `seq`);
-      `GET /v1/executions?workflow_id=&limit=`. Mọi thành viên workspace chạy được.
+      execution_id`, queue từ `Settings`; client dựng lười để API lên được khi
+      Temporal chưa lên; mọi lỗi start quy về `ProviderUnavailableError`.
+    - Test: `prepare_run` trên repository giả; `ExecutionStarter` trên port giả;
+      API trên Postgres với launcher giả; đường trọn qua launcher thật, Temporal và
+      worker trong tiến trình — lịch sử workflow mang đúng connection đã chọn.
+    - Rủi ro chấp nhận: start không rõ kết quả (timeout nhưng Temporal đã nhận) thì
+      execution bị ghi `failed` và lần ghi `running` đầu tiên của workflow bị từ
+      chối — workflow tự dừng, không chạy mù; hỏi lại Temporal (`describe`) trước
+      khi ghi `failed` để GĐ 7. Chưa có `Idempotency-Key` cho `POST`.
     - Trong GĐ 4, node `tool` chạy thật hỏng với thông báo "chưa hỗ trợ" cho tới
       GĐ 5 — chấp nhận có chủ đích.
 

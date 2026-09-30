@@ -26,6 +26,12 @@ from app.core.observability import (
 from app.core.redis import close_redis, init_redis, redis_healthy
 from app.domains.connection.infrastructure.http import TENANT_GUARD_FACTORY
 from app.domains.connection.infrastructure.http import router as connection_router
+from app.domains.execution.infrastructure.http import (
+    EXECUTION_LAUNCHER_FACTORY,
+    EXECUTION_RUN_SOURCE_FACTORY,
+    EXECUTION_TENANT_GUARD_FACTORY,
+)
+from app.domains.execution.infrastructure.http import router as execution_router
 from app.domains.identity.infrastructure.http import TENANT_PROVISIONER_FACTORY
 from app.domains.identity.infrastructure.http import router as identity_router
 from app.domains.integration.infrastructure.http import (
@@ -51,7 +57,9 @@ from app.entrypoints.middleware import (
     unhandled_error_handler,
 )
 from app.entrypoints.wiring import (
+    TemporalExecutionLauncher,
     build_credential_provider,
+    build_execution_run_source,
     build_execution_trace_sink,
     build_integration_tenant_guard,
     build_tenant_guard,
@@ -136,6 +144,13 @@ def create_app() -> FastAPI:
     setattr(app.state, WORKFLOW_CATALOG_FACTORY, build_workflow_tool_catalog)
     setattr(app.state, WORKFLOW_CONNECTION_READER_FACTORY, build_workflow_connection_reader)
 
+    # Execution ← Workflow: kiểm lần chạy và chọn connection. Execution → Temporal:
+    # một launcher cho cả app, client Temporal kết nối lười ở lần start đầu tiên.
+    launcher = TemporalExecutionLauncher(settings)
+    setattr(app.state, EXECUTION_TENANT_GUARD_FACTORY, build_tenant_guard)
+    setattr(app.state, EXECUTION_RUN_SOURCE_FACTORY, build_execution_run_source)
+    setattr(app.state, EXECUTION_LAUNCHER_FACTORY, lambda: launcher)
+
     # Router của từng domain được mount ở đây. Entrypoint chỉ chạm tới tầng
     # `infrastructure` của domain, không bao giờ import thẳng tầng `domain`
     # (contract 5 trong pyproject.toml).
@@ -146,6 +161,7 @@ def create_app() -> FastAPI:
     app.include_router(tool_catalog_router)
     app.include_router(trace_router)
     app.include_router(workflow_router)
+    app.include_router(execution_router)
 
     instrument_fastapi(app)
     return app

@@ -50,23 +50,38 @@ class ExecutionService:
 
     # ─── Đọc ─────────────────────────────────────────────────────────────────
 
-    async def get(self, *, tenant_id: str, execution_id: str) -> Execution:
+    async def get(
+        self, *, tenant_id: str, execution_id: str, workspace_id: str | None = None
+    ) -> Execution:
+        """`workspace_id` có thì lần chạy của workspace khác trông như không tồn tại."""
         found = await self._executions.get(tenant_id=tenant_id, execution_id=execution_id)
-        if found is None:
+        if found is None or (workspace_id is not None and found.workspace_id != workspace_id):
             raise AuthorizationError(_NOT_FOUND, details={"execution_id": execution_id})
         return found
 
-    async def get_progress(self, *, tenant_id: str, execution_id: str) -> ExecutionProgress:
-        execution = await self.get(tenant_id=tenant_id, execution_id=execution_id)
+    async def get_progress(
+        self, *, tenant_id: str, execution_id: str, workspace_id: str | None = None
+    ) -> ExecutionProgress:
+        execution = await self.get(
+            tenant_id=tenant_id, execution_id=execution_id, workspace_id=workspace_id
+        )
         nodes = await self._executions.list_nodes(tenant_id=tenant_id, execution_id=execution_id)
         return ExecutionProgress(execution=execution, nodes=tuple(nodes))
 
     async def list_for_workflow(
-        self, *, tenant_id: str, workflow_id: str, limit: int = DEFAULT_LIST_LIMIT
+        self,
+        *,
+        tenant_id: str,
+        workflow_id: str,
+        limit: int = DEFAULT_LIST_LIMIT,
+        workspace_id: str | None = None,
     ) -> list[Execution]:
-        return await self._executions.list_for_workflow(
+        found = await self._executions.list_for_workflow(
             tenant_id=tenant_id, workflow_id=workflow_id, limit=max(1, min(limit, MAX_LIST_LIMIT))
         )
+        if workspace_id is None:
+            return found
+        return [execution for execution in found if execution.workspace_id == workspace_id]
 
     # ─── Ghi ─────────────────────────────────────────────────────────────────
 
