@@ -23,6 +23,11 @@ Những thay đổi thông thường không cần ADR. Việc lạm dụng ADR l
 | [0006](0006-payload-cua-execution-trace.md) | Payload của Execution Trace: khoá theo nội dung, hai tầng lưu, trần cứng | Accepted |
 | [0007](0007-so-idempotency-co-lease-va-trang-thai-khong-ro.md) | Sổ idempotency có lease, và `unknown` là một trạng thái riêng | Accepted |
 | [0008](0008-workflow-compiler-la-hybrid.md) | Workflow Compiler là hybrid: LLM quyết định tổng quát hoá, code tất định dựng IR | Accepted |
+| [0014](0014-connection-gan-theo-lan-chay.md) | Workflow không lưu connection; mỗi lần chạy chọn connection cho từng node | Accepted |
+
+Số 0009–0013 đã được `docs/plans/wp-b-workflow-ir-va-generic-executor.md` giữ
+trước cho các quyết định của WP-B và WP-C, nên ADR tiếp theo ngoài danh sách đó
+lấy 0014.
 
 Mẫu: [`0000-template.md`](0000-template.md).
 

@@ -292,6 +292,10 @@ sẽ lách qua `require_user_id` mà không ai thấy, và xoá luôn luật ở
 
 ### Q7 — Workflow version chỉ bind được connection phạm vi `workspace`
 
+> **Đã thay bằng [ADR-0014](../adr/0014-connection-gan-theo-lan-chay.md)** (2026-09-30):
+> workflow không lưu connection; mỗi lần chạy chọn connection cho từng node tool —
+> connection dùng chung, hoặc connection riêng của chính người chạy. IR lên v2.
+
 §13 nói execution record mang *"connection bindings"*. Câu hỏi: khi một workflow
 chạy theo lịch lúc 3 giờ sáng, nó dùng connection của ai?
 
@@ -827,13 +831,44 @@ Mỗi commit xanh độc lập — kiểm bằng cách stash phần còn lại r
     - Job `test` chỉ có Postgres và Redis; với `AW_TEST_REQUIRE_INFRA=1` test
       executor sẽ đỏ. Thêm bước `docker run temporalio/temporal:1.9.1 server start-dev`
       và chờ health — `services:` không truyền được lệnh cho container.
-12. `feat(api): start a workflow by hand, and see where it is`
-    - `execution/infrastructure/temporal/client.py` — start bằng tên, `id =
-      execution_id` để start hai lần không thành hai lần chạy; start hỏng thì
-      execution `failed`.
-    - `WorkflowVersionSource` ở `wiring`; `POST /v1/executions` kiểm `inputs`
-      theo `input_schema` của trigger (§13.1 *validating runtime inputs*) → 422
-      hoặc 202; `GET /v1/executions/{id}`, `GET /v1/executions?workflow_id=`.
+12. Chạy bằng tay — tách hai commit theo [ADR-0014](../adr/0014-connection-gan-theo-lan-chay.md).
+
+    **12a. `feat(api): a run chooses a connection for every tool node`**
+    - ADR-0014 thay Q7: workflow không lưu connection; lần chạy chọn cho từng node
+      `tool`, có viết tắt theo provider; thiếu thì `ConnectionChoiceRequiredError`
+      (409) kèm `{node, provider}`, không đoán; connection riêng của người khác trông
+      như không tồn tại.
+    - **IR v2**: bỏ `connections`; `from_connection` trỏ theo node.
+      `ir.v1.schema.json` giữ nguyên, `ir.v2.schema.json` mới, build script sinh
+      `ir_v1.py` và `ir_v2.py`. `parse` nhận major 1 và 2; `upgrade_v1` bỏ
+      `connections` và đổi `from_connection` theo provider thành node tool duy nhất
+      của provider đó — mơ hồ thì báo lỗi. Sáu ví dụ lên v2. Replay kịch bản 3 (lịch
+      sử mang IR v1 thật) vẫn xanh — bằng chứng đường nâng giữ §41.
+    - Publish bỏ mọi luật connection (`validate_connections`, `connection_chua_bind`,
+      `connection_rieng_tu`); validator thêm `from_connection_khong_phai_tool`.
+    - `nodes_needing_connection`, `bind_run_connections(by_node, by_provider)` ở
+      `workflow/application/runtime.py`; `BoundConnection.owner_user_id` điền ở
+      `wiring`.
+    - Migration 0015: `executions.connection_bindings` (node → connection);
+      `ExecutorInput.connections` mặc định rỗng để lịch sử cũ vẫn decode được.
+
+    **12b. `feat(api): start a workflow by hand, and see where it is`**
+    - Client Temporal ở `entrypoints/wiring.py`, không ở `execution`: dựng
+      `ExecutorInput` cần `workflow/infrastructure/temporal/messages.py`, mà
+      contract 1 cấm `execution` import `workflow`. Start bằng tên, `id =
+      execution_id`; client dựng lười để API lên được khi Temporal chưa lên.
+    - `WorkflowService.prepare_run`: workflow cùng tenant và workspace, không lưu
+      trữ, đã publish (version hiện tại hoặc đúng số), không có node chưa hỗ trợ
+      (`unsupported_nodes` chuyển về `domain/plan.py`, dùng chung với executor),
+      `inputs` khớp trigger (422), rồi `bind_run_connections`.
+    - `ExecutionStarter` ba nhịp, mỗi nhịp một transaction: tạo execution và
+      commit → start Temporal → start hỏng thì execution `failed` và trả 503. Commit
+      trước khi start vì `get_session` chỉ commit khi handler trả về, và activity
+      `record_execution` không được phép chạy trước lúc hàng execution tồn tại.
+    - `POST /v1/executions {workflow_id, version?, inputs, connections?,
+      connections_by_provider?}` → 202 kèm
+      `Location`; `GET /v1/executions/{id}` (node theo `seq`);
+      `GET /v1/executions?workflow_id=&limit=`. Mọi thành viên workspace chạy được.
     - Trong GĐ 4, node `tool` chạy thật hỏng với thông báo "chưa hỗ trợ" cho tới
       GĐ 5 — chấp nhận có chủ đích.
 
@@ -924,6 +959,7 @@ không có commit trong WP-B — ghi lại ở đây để không rơi mất.
 | 0011 | Node `llm` với tới Model Gateway bằng đường nào (Q4) | 17 |
 | 0012 | `loop`: định danh node theo lượt lặp, và khoá idempotency mang chỉ số lượt (Q13) | 14 |
 | 0013 | `transform` chạy code trong sandbox, và sandbox không bao giờ chạy trong Control Plane | [WP-C](wp-c-transform-sandbox.md) |
+| **0014** | **Workflow không lưu connection; lần chạy chọn cho từng node (thay Q7)** | **đã viết, 2026-09-30** |
 
 ADR-0008 được viết **trước** WP-B chứ không phải trong nó, vì nó đặt hai ràng buộc
 ngược lên IR v1 — node `llm` phải có (quyết định 6), và mọi literal phải địa chỉ
