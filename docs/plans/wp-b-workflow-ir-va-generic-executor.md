@@ -784,11 +784,17 @@ Mỗi commit xanh độc lập — kiểm bằng cách stash phần còn lại r
     - Test: `worker_specs`, recorder trên Postgres, cửa nguyên thuỷ của
       `ExecutionService`, bảng ánh xạ lỗi.
 
-    **11b. `feat(api): a worker that runs a plan end to end`**
+    **11b. ✅ `feat(api): a worker that runs a plan end to end`**
     - `workflow/infrastructure/temporal/workflow.py` — `GenericWorkflowExecutor`.
-      Input `execution_id`, `tenant_id`, `workflow_version_id`, `inputs`; workflow
-      id của Temporal = `execution_id`. Import domain qua
-      `imports_passed_through()`.
+      Input `execution_id`, `tenant_id`, `workflow_version_id`, `inputs` và
+      `ExecutorQueues` — tên queue của activity đi theo input vì workflow code không
+      được đọc cấu hình; bên start (commit 12) điền từ `Settings`, test điền queue
+      riêng. Workflow id của Temporal = `execution_id`; tên workflow là chuỗi
+      `EXECUTOR_WORKFLOW` để Control Plane start mà không import class. Import
+      domain qua `imports_passed_through()`.
+    - Node `trigger` kiểm `inputs` theo `input_schema` (`bindings.check_inputs`),
+      dù commit 12 cũng kiểm ở HTTP: lịch chạy và webhook (Phase 7) sẽ không đi qua
+      HTTP đó, nên executor là chốt cuối.
     - `load_plan` → `build_plan` trong workflow code. Có node `condition`/`llm`
       thì `finish(failed, "chưa hỗ trợ")` **trước khi gọi bất kỳ tool nào** — GĐ 6
       mới mở. Rồi `mark_running`, seed tầng ngoài, chạy theo `runnable`; `loop`
@@ -800,14 +806,22 @@ Mỗi commit xanh độc lập — kiểm bằng cách stash phần còn lại r
       nói *Failed*. Exception không phải `ApplicationError` lọt ra thì SDK retry
       workflow task mãi và execution kẹt `running`.
     - Mọi mốc thời gian qua `workflow.now()`. Activity ghi trạng thái retry 5 lần;
-      `WorkflowExecutionError` không retry.
+      `WorkflowExecutionError` không retry. Lỗi của chính activity ghi trạng thái
+      không bắt: hỏng hết lượt retry là DB có vấn đề, workflow hỏng thẳng.
+    - `attempt` luôn là 1: executor không thấy Temporal retry bên trong activity
+      tool. GĐ 5 sửa bằng cách để `run_tool_node` trả kèm `activity.info().attempt`.
     - Test trên Temporal + Postgres thật (gated), queue riêng mỗi test,
       `run_tool_node` giả, activity ghi thật: kịch bản 1 `succeeded`; kịch bản 3
       ra `moi_trang[0..2].doc_trang`; tool hỏng ở `con` thì `moi_trang` vẫn
       `pending`; lượt 1 hỏng thì lượt 2 `pending`; vượt `max_items` thì thân không
       được seed; kịch bản 5 hỏng "chưa hỗ trợ" mà tool giả không bị gọi lần nào.
+      Thêm: `where` chọn kênh theo tên, `where` không khớp, input sai schema.
     - Replay: lịch sử kịch bản 3 ở `tests/fixtures/histories/kb3.json`, `Replayer`
       chạy offline ở mọi nơi; tạo lại fixture chỉ khi bật `AW_RECORD_HISTORY=1`.
+      Đã kiểm: đổi thứ tự `load_plan` và `record_execution` thì test này ra
+      `NondeterminismError`.
+    - Số đo: kịch bản 3 với ba lượt lặp là 24 activity, 149 sự kiện — khoảng sáu
+      sự kiện một activity.
 
     **11c. `ci: a Temporal server for the executor tests`**
     - Job `test` chỉ có Postgres và Redis; với `AW_TEST_REQUIRE_INFRA=1` test

@@ -24,6 +24,7 @@ from app.domains.workflow.infrastructure.temporal.activities import (
     ExecutorActivities,
     run_tool_node,
 )
+from app.domains.workflow.infrastructure.temporal.workflow import GenericWorkflowExecutor
 from app.entrypoints.worker_wiring import build_executor_activities
 
 log = get_logger(__name__)
@@ -41,7 +42,7 @@ class WorkerSpec:
 def worker_specs(settings: Settings, executor: ExecutorActivities) -> list[WorkerSpec]:
     """Queue → workflow và activity. Queue không có gì để chạy thì bỏ."""
     specs = [
-        WorkerSpec(settings.temporal_task_queue_workflow),
+        WorkerSpec(settings.temporal_task_queue_workflow, workflows=(GenericWorkflowExecutor,)),
         WorkerSpec(
             settings.temporal_task_queue_processing,
             activities=(

@@ -12,6 +12,7 @@ from app.core.errors import WorkflowExecutionError
 from app.domains.workflow.domain.bindings import (
     Missing,
     Scope,
+    check_inputs,
     lookup,
     loop_items,
     resolve,
@@ -25,6 +26,7 @@ from app.domains.workflow.domain.ir import (
     FromNode,
     LoopNode,
     ToolNode,
+    TriggerNode,
     parse,
 )
 
@@ -232,3 +234,29 @@ def test_over_khong_phai_mang_la_loi() -> None:
 def test_phan_tu_khong_phai_object_khong_qua_filter() -> None:
     items = loop_items(_loop(), _scope(con={"results": ["chuoi", 3, {"type": "child_page"}]}))
     assert items == ({"type": "child_page"},)
+
+
+# ─── Input của lần chạy ──────────────────────────────────────────────────────
+
+
+def _trigger() -> TriggerNode:
+    trigger = parse(_example("kb2-slack-doc-roi-ghi")).nodes[0]
+    assert isinstance(trigger, TriggerNode)
+    return trigger
+
+
+def test_input_khop_schema_thi_qua() -> None:
+    check_inputs(_trigger(), {"ten_kenh": "test", "noi_dung": "xin chào"})
+
+
+def test_thieu_input_bat_buoc_la_loi_cua_lan_chay() -> None:
+    with pytest.raises(WorkflowExecutionError, match="ten_kenh") as caught:
+        check_inputs(_trigger(), {"noi_dung": "xin chào"})
+    assert caught.value.details["node"] == "t"
+    assert not caught.value.retryable
+
+
+def test_input_sai_kieu_noi_ro_cho_sai() -> None:
+    with pytest.raises(WorkflowExecutionError, match="ten_kenh") as caught:
+        check_inputs(_trigger(), {"ten_kenh": 3, "noi_dung": "xin chào"})
+    assert caught.value.details["path"] == ["ten_kenh"]

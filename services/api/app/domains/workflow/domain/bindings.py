@@ -6,6 +6,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Final
 
+import jsonschema
+
 from app.core.errors import WorkflowExecutionError
 from app.domains.workflow.domain.ir import (
     Binding,
@@ -17,6 +19,7 @@ from app.domains.workflow.domain.ir import (
     LoopNode,
     Path,
     ScalarBinding,
+    TriggerNode,
 )
 
 
@@ -89,6 +92,20 @@ def resolve_inputs(bindings: Mapping[str, Binding], scope: Scope, *, node: str) 
             continue
         resolved[key] = resolve(binding, scope, node=node, at=("input", key))
     return resolved
+
+
+def check_inputs(trigger: TriggerNode, inputs: Mapping[str, Any]) -> None:
+    """Input của lần chạy khớp `input_schema` của trigger, hoặc là lỗi của lần chạy."""
+    error = jsonschema.exceptions.best_match(
+        jsonschema.Draft202012Validator(trigger.input_schema).iter_errors(dict(inputs))
+    )
+    if error is None:
+        return
+    where = "/".join(str(part) for part in error.absolute_path) or "(gốc)"
+    raise WorkflowExecutionError(
+        f"Input của lần chạy sai ở {where}: {error.message}",
+        details={"node": trigger.id, "path": list(error.absolute_path)},
+    )
 
 
 def loop_items(loop: LoopNode, scope: Scope) -> tuple[Any, ...]:

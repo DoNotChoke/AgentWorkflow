@@ -9,11 +9,32 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final
 
+#: Tên workflow. Control Plane start bằng chuỗi này, không import class.
+EXECUTOR_WORKFLOW: Final = "GenericWorkflowExecutor"
+
 LOAD_PLAN: Final = "load_plan"
 SEED_NODES: Final = "seed_nodes"
 RECORD_NODE: Final = "record_node"
 RECORD_EXECUTION: Final = "record_execution"
 RUN_TOOL_NODE: Final = "run_tool_node"
+
+
+@dataclass(frozen=True)
+class ExecutorQueues:
+    """Queue của activity. Đi theo input vì workflow code không được đọc cấu hình."""
+
+    processing: str
+    integration_read: str
+    integration_write: str
+
+
+@dataclass(frozen=True)
+class ExecutorInput:
+    execution_id: str
+    tenant_id: str
+    workflow_version_id: str
+    inputs: dict[str, Any]
+    queues: ExecutorQueues
 
 
 @dataclass(frozen=True)
