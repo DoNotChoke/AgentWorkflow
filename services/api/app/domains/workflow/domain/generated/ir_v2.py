@@ -1,0 +1,535 @@
+"""SINH TỰ ĐỘNG — đừng sửa file này bằng tay.
+
+Nguồn: `packages/schemas/workflow/ir.v2.schema.json`
+Sinh lại:
+
+    python packages/schemas/workflow/build_ir_schema.py
+
+Sửa tay ở đây sẽ bị lần sinh sau ghi đè, và test đối chiếu sẽ đỏ trước đó.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Final
+
+IR_SCHEMA: Final[dict[str, Any]] = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://agentworkflow.dev/schemas/workflow/2.0/ir.schema.json",
+    "title": "Workflow IR",
+    "description": "Workflow ở dạng dữ liệu (§11). Schema này chỉ canh HÌNH DẠNG. Những luật cần nhìn cả tài liệu — đồ thị không chu trình, binding trỏ vào node phía trên, input khớp tool — nằm ở workflow/domain/validation.py và workflow/application/validation.py.",
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "schema_version",
+        "nodes",
+        "edges",
+    ],
+    "properties": {
+        "schema_version": {
+            "description": "Version của ĐỊNH DẠNG IR, không phải của workflow (§40). Major đổi là thay đổi phá vỡ; bản major cũ phải còn diễn giải được (§41).",
+            "type": "string",
+            "pattern": "^2\\.[0-9]+$",
+        },
+        "nodes": {
+            "description": "Các node ở tầng ngoài cùng. Node trong thân loop nằm trong `body` của loop đó, không nằm ở đây.",
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 200,
+            "items": {
+                "$ref": "#/$defs/topNode",
+            },
+        },
+        "edges": {
+            "description": "Cạnh điều khiển giữa các node tầng ngoài. Thứ tự dữ liệu không suy ra từ đây — binding tự nói nó đọc từ đâu.",
+            "type": "array",
+            "maxItems": 400,
+            "items": {
+                "$ref": "#/$defs/edge",
+            },
+        },
+    },
+    "$defs": {
+        "nodeId": {
+            "description": "Duy nhất trong CẢ tài liệu, kể cả trong thân loop — để một đường như `n3[2].b1` luôn chỉ đúng một chỗ.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,31}$",
+        },
+        "path": {
+            "description": "Đường đi vào một giá trị JSON. Segment toàn chữ số là chỉ số mảng. Không có wildcard: lặp là việc của node loop.",
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+            },
+        },
+        "jsonSchema": {
+            "description": "Một JSON Schema. Tính hợp lệ của chính nó được validator kiểm, không phải schema này.",
+            "type": "object",
+        },
+        "edge": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "from",
+                "to",
+            ],
+            "properties": {
+                "from": {
+                    "$ref": "#/$defs/nodeId",
+                },
+                "to": {
+                    "$ref": "#/$defs/nodeId",
+                },
+                "branch": {
+                    "description": "Chỉ có trên cạnh đi ra từ một node condition, và bắt buộc ở đó.",
+                    "enum": [
+                        "true",
+                        "false",
+                    ],
+                },
+            },
+        },
+        "binding": {
+            "description": "Một giá trị đi vào node. Dữ liệu, không phải ngôn ngữ (Q8): không nội suy chuỗi, không số học, không hàm.",
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/fromConst",
+                },
+                {
+                    "$ref": "#/$defs/fromInput",
+                },
+                {
+                    "$ref": "#/$defs/fromNode",
+                },
+                {
+                    "$ref": "#/$defs/fromItem",
+                },
+                {
+                    "$ref": "#/$defs/fromConnection",
+                },
+            ],
+        },
+        "fromConst": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "const",
+            ],
+            "properties": {
+                "const": True,
+            },
+        },
+        "fromInput": {
+            "description": "Một trường của input mà trigger khai.",
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "from_input",
+            ],
+            "properties": {
+                "from_input": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,63}$",
+                },
+            },
+        },
+        "fromNode": {
+            "description": "Output của một node đã chạy trước. Có `where` thì `path` phải trỏ vào một mảng, và giá trị là phần tử ĐẦU TIÊN khớp mọi điều kiện so bằng — rồi `pick` đi tiếp vào phần tử đó.",
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "from_node",
+            ],
+            "properties": {
+                "from_node": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "node",
+                        "path",
+                    ],
+                    "properties": {
+                        "node": {
+                            "$ref": "#/$defs/nodeId",
+                        },
+                        "path": {
+                            "$ref": "#/$defs/path",
+                        },
+                        "where": {
+                            "type": "object",
+                            "minProperties": 1,
+                            "maxProperties": 4,
+                            "propertyNames": {
+                                "pattern": "^[A-Za-z0-9_]{1,64}$",
+                            },
+                            "additionalProperties": {
+                                "$ref": "#/$defs/scalarBinding",
+                            },
+                        },
+                        "pick": {
+                            "$ref": "#/$defs/path",
+                        },
+                    },
+                    "dependentRequired": {
+                        "pick": [
+                            "where",
+                        ],
+                    },
+                },
+            },
+        },
+        "scalarBinding": {
+            "description": "Vế phải của một điều kiện `where`. Không lồng from_node — một where chỉ lọc, không đi tìm tiếp.",
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/fromConst",
+                },
+                {
+                    "$ref": "#/$defs/fromInput",
+                },
+                {
+                    "$ref": "#/$defs/fromItem",
+                },
+            ],
+        },
+        "fromItem": {
+            "description": "Phần tử đang lặp. Chỉ hợp lệ trong thân loop. `[]` là chính phần tử.",
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "from_item",
+            ],
+            "properties": {
+                "from_item": {
+                    "$ref": "#/$defs/path",
+                },
+            },
+        },
+        "fromConnection": {
+            "description": "Metadata KHÔNG bí mật của connection mà node tool `node` dùng ở lần chạy này (§11.2). Không bao giờ là token — ràng buộc 3 của §47.",
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "from_connection",
+            ],
+            "properties": {
+                "from_connection": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "node",
+                        "field",
+                    ],
+                    "properties": {
+                        "node": {
+                            "type": "string",
+                            "pattern": "^[a-z][a-z0-9_]{0,31}$",
+                        },
+                        "field": {
+                            "enum": [
+                                "external_account_id",
+                                "external_account_label",
+                            ],
+                        },
+                    },
+                },
+            },
+        },
+        "bindingMap": {
+            "type": "object",
+            "maxProperties": 64,
+            "propertyNames": {
+                "pattern": "^[A-Za-z0-9_]{1,64}$",
+            },
+            "additionalProperties": {
+                "$ref": "#/$defs/binding",
+            },
+        },
+        "topNode": {
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/triggerNode",
+                },
+                {
+                    "$ref": "#/$defs/toolNode",
+                },
+                {
+                    "$ref": "#/$defs/conditionNode",
+                },
+                {
+                    "$ref": "#/$defs/llmNode",
+                },
+                {
+                    "$ref": "#/$defs/loopNode",
+                },
+                {
+                    "$ref": "#/$defs/unknownNode",
+                },
+            ],
+        },
+        "bodyNode": {
+            "description": "Thân loop v1 là một dãy thẳng: không trigger, không condition, không loop lồng. Node `transform` chạy code đến ở WP-C.",
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/toolNode",
+                },
+                {
+                    "$ref": "#/$defs/llmNode",
+                },
+                {
+                    "$ref": "#/$defs/unknownNode",
+                },
+            ],
+        },
+        "unknownNode": {
+            "description": "Node thuộc loại mà định dạng này chưa biết (Q2). Schema để nó đi qua để một công cụ đọc — editor, compiler — vẫn mở được tài liệu và nói 'chưa hỗ trợ'; thứ từ chối nó là domain, lúc parse, với thông báo nói rõ loại nào.",
+            "type": "object",
+            "required": [
+                "id",
+                "type",
+            ],
+            "properties": {
+                "id": {
+                    "$ref": "#/$defs/nodeId",
+                },
+                "type": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,31}$",
+                    "not": {
+                        "enum": [
+                            "trigger",
+                            "tool",
+                            "condition",
+                            "llm",
+                            "loop",
+                        ],
+                    },
+                },
+            },
+        },
+        "triggerNode": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "id",
+                "type",
+                "trigger",
+                "input_schema",
+            ],
+            "properties": {
+                "id": {
+                    "$ref": "#/$defs/nodeId",
+                },
+                "type": {
+                    "const": "trigger",
+                },
+                "label": {
+                    "type": "string",
+                    "maxLength": 200,
+                },
+                "trigger": {
+                    "description": "v1 chỉ có manual; schedule và webhook là Phase 7.",
+                    "enum": [
+                        "manual",
+                    ],
+                },
+                "input_schema": {
+                    "$ref": "#/$defs/jsonSchema",
+                },
+            },
+        },
+        "toolNode": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "id",
+                "type",
+                "tool_id",
+                "tool_version",
+                "input",
+            ],
+            "properties": {
+                "id": {
+                    "$ref": "#/$defs/nodeId",
+                },
+                "type": {
+                    "const": "tool",
+                },
+                "label": {
+                    "type": "string",
+                    "maxLength": 200,
+                },
+                "tool_id": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$",
+                    "maxLength": 128,
+                },
+                "tool_version": {
+                    "description": "Đúng một bản major.minor. Workflow đã publish không được tự trôi sang minor mới.",
+                    "type": "string",
+                    "pattern": "^[0-9]+\\.[0-9]+$",
+                },
+                "input": {
+                    "$ref": "#/$defs/bindingMap",
+                },
+            },
+        },
+        "conditionNode": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "id",
+                "type",
+                "left",
+                "op",
+            ],
+            "properties": {
+                "id": {
+                    "$ref": "#/$defs/nodeId",
+                },
+                "type": {
+                    "const": "condition",
+                },
+                "label": {
+                    "type": "string",
+                    "maxLength": 200,
+                },
+                "left": {
+                    "$ref": "#/$defs/binding",
+                },
+                "op": {
+                    "enum": [
+                        "eq",
+                        "ne",
+                        "lt",
+                        "gt",
+                        "contains",
+                        "exists",
+                    ],
+                },
+                "right": {
+                    "$ref": "#/$defs/binding",
+                },
+            },
+            "if": {
+                "properties": {
+                    "op": {
+                        "const": "exists",
+                    },
+                },
+            },
+            "then": {
+                "not": {
+                    "required": [
+                        "right",
+                    ],
+                },
+            },
+            "else": {
+                "required": [
+                    "right",
+                ],
+            },
+        },
+        "llmNode": {
+            "description": "Một lời gọi model, một vòng, không tool (ADR-0008 quyết định 6). `instructions` là hằng; dữ liệu đi qua `input` dưới dạng JSON, không nội suy vào câu lệnh.",
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "id",
+                "type",
+                "model",
+                "instructions",
+                "input",
+                "output_schema",
+            ],
+            "properties": {
+                "id": {
+                    "$ref": "#/$defs/nodeId",
+                },
+                "type": {
+                    "const": "llm",
+                },
+                "label": {
+                    "type": "string",
+                    "maxLength": 200,
+                },
+                "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                },
+                "instructions": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000,
+                },
+                "input": {
+                    "$ref": "#/$defs/bindingMap",
+                },
+                "output_schema": {
+                    "$ref": "#/$defs/jsonSchema",
+                },
+            },
+        },
+        "loopNode": {
+            "description": "Chạy `body` tuần tự trên từng phần tử của `over` (Q13). Output là mảng output của node `collect`, theo thứ tự phần tử.",
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "id",
+                "type",
+                "over",
+                "max_items",
+                "body",
+                "collect",
+            ],
+            "properties": {
+                "id": {
+                    "$ref": "#/$defs/nodeId",
+                },
+                "type": {
+                    "const": "loop",
+                },
+                "label": {
+                    "type": "string",
+                    "maxLength": 200,
+                },
+                "over": {
+                    "$ref": "#/$defs/binding",
+                },
+                "filter": {
+                    "description": "Chỉ lặp trên phần tử khớp MỌI điều kiện so bằng. `max_items` tính sau khi lọc.",
+                    "type": "object",
+                    "minProperties": 1,
+                    "maxProperties": 4,
+                    "propertyNames": {
+                        "pattern": "^[A-Za-z0-9_]{1,64}$",
+                    },
+                    "additionalProperties": {
+                        "$ref": "#/$defs/scalarBinding",
+                    },
+                },
+                "max_items": {
+                    "description": "Trần cứng. Mảng dài hơn làm node hỏng, không bị cắt ngầm.",
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 200,
+                },
+                "body": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "items": {
+                        "$ref": "#/$defs/bodyNode",
+                    },
+                },
+                "collect": {
+                    "$ref": "#/$defs/nodeId",
+                },
+            },
+        },
+    },
+}

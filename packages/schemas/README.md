@@ -62,7 +62,8 @@ connector Slack đầu tiên với bốn tool. Xem [`tool/README.md`](tool/READM
 
 `event/` — trống, Phase 7 cùng với §33.
 
-`workflow/` — **IR v1, Phase 4.** Năm node (`trigger`, `tool`, `condition`,
+`workflow/` — **IR v2, Phase 4** (v1 vẫn đọc được; v2 bỏ connection khỏi IR, xem
+ADR-0014). Năm node (`trigger`, `tool`, `condition`,
 `llm`, `loop`), năm dạng binding, và sáu ví dụ viết tay từ trace thật của GĐ 0. Xem [`workflow/README.md`](workflow/README.md).
 
 IR v1 được chốt **sau** khi đọc trace thật, đúng như cảnh báo ở đây trước đó:

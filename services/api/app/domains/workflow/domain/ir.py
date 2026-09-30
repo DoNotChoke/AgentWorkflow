@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final, Literal
 
 import jsonschema
 
 from app.core.errors import WorkflowDefinitionError
-from app.domains.workflow.domain.generated.ir_v1 import IR_SCHEMA
+from app.domains.workflow.domain.generated.ir_v1 import IR_SCHEMA as IR_V1_SCHEMA
+from app.domains.workflow.domain.generated.ir_v2 import IR_SCHEMA as IR_V2_SCHEMA
 
-SUPPORTED_MAJOR: Final = 1
+CURRENT_MAJOR: Final = 2
+#: Major cũ vẫn phải diễn giải được: version đã publish là bất biến.
+SUPPORTED_MAJORS: Final = frozenset({1, 2})
 
 #: Trần của một tài liệu IR, đo trên JSON chuẩn hoá. Plan đi vào lịch sử Temporal
 MAX_DOCUMENT_BYTES: Final = 256 * 1024
@@ -21,7 +25,10 @@ MAX_DOCUMENT_BYTES: Final = 256 * 1024
 #: Số lỗi hình dạng tối đa trả về trong một lần — đủ để sửa, không đủ để ngập.
 _MAX_SHAPE_ERRORS: Final = 20
 
-_VALIDATOR = jsonschema.Draft202012Validator(IR_SCHEMA)
+_VALIDATORS: Final = {
+    1: jsonschema.Draft202012Validator(IR_V1_SCHEMA),
+    2: jsonschema.Draft202012Validator(IR_V2_SCHEMA),
+}
 
 Path = tuple[str, ...]
 Branch = Literal["true", "false"]
@@ -47,7 +54,9 @@ class FromItem:
 
 @dataclass(frozen=True, slots=True)
 class FromConnection:
-    provider: str
+    """Metadata của connection mà node tool `node` dùng ở lần chạy này."""
+
+    node: str
     field: str
 
 
@@ -140,10 +149,11 @@ class Edge:
 
 @dataclass(frozen=True, slots=True)
 class WorkflowIR:
+    """Không mang connection: lần chạy chọn connection cho từng node tool."""
+
     schema_version: str
     nodes: tuple[Node, ...]
     edges: tuple[Edge, ...]
-    connections: Mapping[str, str] = field(default_factory=dict)
 
     def walk(self) -> Iterator[tuple[LoopNode | None, Node]]:
         """Mọi node, kể cả trong thân loop, kèm loop bao nó."""
@@ -169,8 +179,11 @@ def parse(document: Mapping[str, Any]) -> WorkflowIR:
             details={"byte_size": size, "max_bytes": MAX_DOCUMENT_BYTES},
         )
 
-    _ensure_supported_version(document.get("schema_version"))
-    _ensure_shape(document)
+    major = _major(document.get("schema_version"))
+    if major == 1:
+        _ensure_shape(document, 1)
+        document = upgrade_v1(document)
+    _ensure_shape(document, CURRENT_MAJOR)
     _ensure_known_node_types(document)
 
     return WorkflowIR(
@@ -180,25 +193,66 @@ def parse(document: Mapping[str, Any]) -> WorkflowIR:
             Edge(source=raw["from"], target=raw["to"], branch=raw.get("branch"))
             for raw in document["edges"]
         ),
-        connections=dict(document.get("connections", {})),
     )
 
 
-def _ensure_supported_version(raw: object) -> None:
-    """Chặn trước jsonschema: `pattern` sẽ chỉ nói "không khớp ^1\\.", không nói
-    vì sao (§39, Runtime Compatibility Validation)."""
+def upgrade_v1(document: Mapping[str, Any]) -> dict[str, Any]:
+    """IR v1 → v2: bỏ `connections`; `from_connection` theo provider thành theo node.
+
+    Node được chọn là node tool duy nhất của provider đó, nhận ra qua tiền tố
+    `tool_id` — đúng với mọi tool trong catalog. Không có hoặc có nhiều hơn một
+    thì không diễn giải được một cách chắc chắn.
+    """
+    upgraded = copy.deepcopy(dict(document))
+    upgraded.pop("connections", None)
+    upgraded["schema_version"] = f"{CURRENT_MAJOR}.0"
+
+    owners: dict[str, list[str]] = {}
+    for node in upgraded["nodes"]:
+        for inner in (node, *node.get("body", ())):
+            if inner.get("type") == "tool":
+                provider = inner["tool_id"].partition(".")[0]
+                owners.setdefault(provider, []).append(inner["id"])
+
+    def rewrite(value: Any) -> Any:
+        if isinstance(value, list):
+            return [rewrite(item) for item in value]
+        if not isinstance(value, dict) or "const" in value:
+            return value
+        source = value.get("from_connection")
+        if isinstance(source, dict) and "provider" in source:
+            candidates = owners.get(source["provider"], [])
+            if len(candidates) != 1:
+                raise WorkflowDefinitionError(
+                    f"from_connection của provider {source['provider']!r} không nâng lên IR "
+                    f"v{CURRENT_MAJOR} được: có {len(candidates)} node tool dùng provider đó.",
+                    details={"provider": source["provider"], "nodes": candidates},
+                )
+            return {"from_connection": {"node": candidates[0], "field": source["field"]}}
+        return {key: rewrite(item) for key, item in value.items()}
+
+    upgraded["nodes"] = rewrite(upgraded["nodes"])
+    return upgraded
+
+
+def _major(raw: object) -> int:
+    """Chặn trước jsonschema: `pattern` sẽ chỉ nói "không khớp", không nói vì sao."""
     if not isinstance(raw, str):
-        return
+        return CURRENT_MAJOR
     major, _, _ = raw.partition(".")
-    if major.isdigit() and int(major) != SUPPORTED_MAJOR:
+    if not major.isdigit():
+        return CURRENT_MAJOR
+    if int(major) not in SUPPORTED_MAJORS:
         raise WorkflowDefinitionError(
-            f"IR version {raw} chưa chạy được; runtime này hiểu major {SUPPORTED_MAJOR}.",
-            details={"schema_version": raw, "supported_major": SUPPORTED_MAJOR},
+            f"IR version {raw} chưa chạy được; runtime này hiểu major "
+            f"{', '.join(str(m) for m in sorted(SUPPORTED_MAJORS))}.",
+            details={"schema_version": raw, "supported_majors": sorted(SUPPORTED_MAJORS)},
         )
+    return int(major)
 
 
-def _ensure_shape(document: Mapping[str, Any]) -> None:
-    errors = sorted(_VALIDATOR.iter_errors(document), key=lambda e: list(e.absolute_path))
+def _ensure_shape(document: Mapping[str, Any], major: int) -> None:
+    errors = sorted(_VALIDATORS[major].iter_errors(document), key=lambda e: list(e.absolute_path))
     if not errors:
         return
     shown = [
@@ -307,7 +361,7 @@ def _binding(raw: Mapping[str, Any]) -> Binding:
         return FromItem(tuple(raw["from_item"]))
     if "from_connection" in raw:
         source = raw["from_connection"]
-        return FromConnection(provider=source["provider"], field=source["field"])
+        return FromConnection(node=source["node"], field=source["field"])
     source = raw["from_node"]
     pick = source.get("pick")
     return FromNode(
@@ -328,8 +382,6 @@ def to_document(ir: WorkflowIR) -> dict[str, Any]:
         "nodes": [_node_document(node) for node in ir.nodes],
         "edges": [_edge_document(edge) for edge in ir.edges],
     }
-    if ir.connections:
-        document["connections"] = dict(ir.connections)
     return document
 
 
@@ -392,7 +444,7 @@ def _binding_document(binding: Binding) -> dict[str, Any]:
         case FromItem():
             return {"from_item": list(binding.path)}
         case FromConnection():
-            return {"from_connection": {"provider": binding.provider, "field": binding.field}}
+            return {"from_connection": {"node": binding.node, "field": binding.field}}
         case FromNode():
             source: dict[str, Any] = {"node": binding.node, "path": list(binding.path)}
             if binding.where is not None:

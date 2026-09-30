@@ -1,6 +1,6 @@
 """SINH TỰ ĐỘNG — đừng sửa file này bằng tay.
 
-Nguồn: `packages/schemas/workflow/ir.schema.json`
+Nguồn: `packages/schemas/workflow/ir.v1.schema.json`
 Sinh lại:
 
     python packages/schemas/workflow/build_ir_schema.py

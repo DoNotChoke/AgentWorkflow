@@ -11,7 +11,6 @@ import os
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -23,15 +22,6 @@ os.environ.setdefault("AW_KMS_LOCAL_MASTER_KEY", "test-master-key-khong-dung-tha
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app.core.db import session_scope  # noqa: E402
-from app.domains.connection.domain.entities import (  # noqa: E402
-    Connection,
-    ConnectionStatus,
-    SharingPolicy,
-)
-from app.domains.connection.infrastructure.repositories import (  # noqa: E402
-    SqlAlchemyConnectionRepository,
-)
 from app.entrypoints.http import create_app  # noqa: E402
 
 pytestmark = pytest.mark.integration
@@ -111,54 +101,6 @@ def _create(nguoi: Nguoi, name: str = "Tổng hợp #support") -> str:
     return str(created.json()["id"])
 
 
-async def _add_connection(
-    *,
-    tenant_id: str,
-    workspace_id: str,
-    user_id: str,
-    provider: str = "slack",
-    sharing: SharingPolicy = SharingPolicy.WORKSPACE,
-) -> str:
-    connection = Connection(
-        id=f"conn_{uuid.uuid4().hex}",
-        organization_id=tenant_id,
-        workspace_id=workspace_id,
-        provider=provider,
-        display_name=f"{provider} — test",
-        status=ConnectionStatus.ACTIVE,
-        granted_scopes=frozenset({"chat:write"}),
-        connected_by=user_id,
-        created_at=NOW,
-        updated_at=NOW,
-        sharing=sharing,
-        owner_user_id=user_id,
-    )
-    async with session_scope() as session:
-        await SqlAlchemyConnectionRepository(session).add(connection)
-    return connection.id
-
-
-def _connection(client: TestClient, nguoi: Nguoi, **overrides: Any) -> str:
-    """Tạo một connection thật. Đi thẳng qua repository vì vòng OAuth không
-    chạy được trong test — thứ đang kiểm là luật publish, không phải OAuth."""
-    assert client.portal is not None
-    return str(
-        client.portal.call(
-            partial(
-                _add_connection,
-                tenant_id=nguoi.organization_id,
-                workspace_id=nguoi.workspace_id,
-                user_id=nguoi.user_id,
-                **overrides,
-            )
-        )
-    )
-
-
-def _bind(document: dict[str, Any], connections: dict[str, str]) -> dict[str, Any]:
-    return {**document, "connections": connections}
-
-
 # ─── Tạo, đọc, sửa draft ─────────────────────────────────────────────────────
 
 
@@ -230,13 +172,10 @@ def test_canh_bao_khong_chan_publish(client: TestClient) -> None:
 
 
 def test_publish_dong_bang_thanh_version_mot(client: TestClient) -> None:
+    """Không cần connection nào: lần chạy mới chọn."""
     nguoi = Nguoi(client)
     workflow_id = _create(nguoi)
-    connection_id = _connection(client, nguoi)
-    nguoi.put(
-        f"/v1/workflows/{workflow_id}/draft",
-        json={"ir": _bind(_example("kb1-slack-ghi"), {"slack": connection_id})},
-    )
+    nguoi.put(f"/v1/workflows/{workflow_id}/draft", json={"ir": _example("kb1-slack-ghi")})
 
     published = nguoi.post(f"/v1/workflows/{workflow_id}/publish")
 
@@ -250,13 +189,11 @@ def test_publish_dong_bang_thanh_version_mot(client: TestClient) -> None:
 def test_publish_lan_hai_ra_version_hai_va_version_cu_giu_nguyen(client: TestClient) -> None:
     nguoi = Nguoi(client)
     workflow_id = _create(nguoi)
-    connection_id = _connection(client, nguoi)
-    first_ir = _bind(_example("kb1-slack-ghi"), {"slack": connection_id})
+    first_ir = _example("kb1-slack-ghi")
     nguoi.put(f"/v1/workflows/{workflow_id}/draft", json={"ir": first_ir})
     nguoi.post(f"/v1/workflows/{workflow_id}/publish")
 
-    doi = _bind(_example("kb2-slack-doc-roi-ghi"), {"slack": connection_id})
-    nguoi.put(f"/v1/workflows/{workflow_id}/draft", json={"ir": doi})
+    nguoi.put(f"/v1/workflows/{workflow_id}/draft", json={"ir": _example("kb2-slack-doc-roi-ghi")})
     second = nguoi.post(f"/v1/workflows/{workflow_id}/publish").json()
 
     assert second["number"] == 2
@@ -269,33 +206,29 @@ def test_publish_lan_hai_ra_version_hai_va_version_cu_giu_nguyen(client: TestCli
 def test_publish_draft_khong_hop_le_bi_tu_choi(client: TestClient) -> None:
     nguoi = Nguoi(client)
     workflow_id = _create(nguoi)
-    nguoi.put(f"/v1/workflows/{workflow_id}/draft", json={"ir": _example("kb1-slack-ghi")})
+    ir = _example("kb1-slack-ghi")
+    ir["nodes"][1]["tool_version"] = "9.9"
+    nguoi.put(f"/v1/workflows/{workflow_id}/draft", json={"ir": ir})
 
     refused = nguoi.post(f"/v1/workflows/{workflow_id}/publish")
 
     assert refused.status_code == 422, refused.text
     codes = [issue["code"] for issue in refused.json()["error"]["details"]["issues"]]
-    assert "connection_khong_ton_tai" in codes
+    assert "tool_khong_ton_tai" in codes
     assert nguoi.get(f"/v1/workflows/{workflow_id}").json()["current_version_id"] is None
 
 
-def test_publish_ket_noi_rieng_tu_bi_tu_choi(client: TestClient) -> None:
-    """Nghiệm thu Q7. Workflow chạy cả khi người tạo đã rời tổ chức, nên nó
-    không bám vào tài khoản riêng của ai."""
+def test_workflow_khong_mang_connection(client: TestClient) -> None:
+    """Connection chọn theo lần chạy; IR v2 không còn chỗ cho nó."""
     nguoi = Nguoi(client)
     workflow_id = _create(nguoi)
-    rieng_tu = _connection(client, nguoi, provider="notion", sharing=SharingPolicy.PRIVATE)
-    nguoi.put(
-        f"/v1/workflows/{workflow_id}/draft",
-        json={"ir": _bind(_example("kb3-notion-doc-sau"), {"notion": rieng_tu})},
-    )
+    ir = _example("kb1-slack-ghi") | {"connections": {"slack": "conn_slackvidu"}}
+    nguoi.put(f"/v1/workflows/{workflow_id}/draft", json={"ir": ir})
 
     refused = nguoi.post(f"/v1/workflows/{workflow_id}/publish")
 
     assert refused.status_code == 422, refused.text
-    issues = refused.json()["error"]["details"]["issues"]
-    assert [issue["code"] for issue in issues] == ["connection_rieng_tu"]
-    assert "quản trị viên workspace" in issues[0]["message"]
+    assert "connections" in refused.text
 
 
 # ─── Ranh giới ───────────────────────────────────────────────────────────────

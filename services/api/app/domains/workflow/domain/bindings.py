@@ -43,7 +43,7 @@ class Scope:
     #: Output theo id node. Trong thân loop, gồm cả node đã chạy của lượt hiện tại.
     outputs: Mapping[str, Any]
     item: Any = _NO_ITEM
-    #: Metadata không bí mật của connection, theo provider (§11.2).
+    #: Metadata không bí mật của connection, theo node tool.
     connections: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
 
     def with_item(self, item: Any, outputs: Mapping[str, Any]) -> Scope:
@@ -63,9 +63,11 @@ def lookup(binding: Binding, scope: Scope) -> Any | Missing:
                 return scope.item
             return _walk(scope.item, binding.path)
         case FromConnection():
-            metadata = scope.connections.get(binding.provider, {})
+            metadata = scope.connections.get(binding.node, {})
             if binding.field not in metadata:
-                return Missing(f"connection {binding.provider} không có trường {binding.field!r}.")
+                return Missing(
+                    f"connection của node {binding.node} không có trường {binding.field!r}."
+                )
             return metadata[binding.field]
         case FromNode():
             return _from_node(binding, scope)

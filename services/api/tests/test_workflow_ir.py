@@ -15,6 +15,7 @@ from app.domains.workflow.domain.ir import (
     ConditionNode,
     ConditionOp,
     Const,
+    FromConnection,
     FromInput,
     FromItem,
     FromNode,
@@ -24,6 +25,7 @@ from app.domains.workflow.domain.ir import (
     TriggerNode,
     parse,
     to_document,
+    upgrade_v1,
 )
 
 EXAMPLES = Path(__file__).resolve().parents[3] / "packages" / "schemas" / "workflow" / "examples"
@@ -77,11 +79,58 @@ def test_node_llm_va_condition() -> None:
 def test_major_khac_bi_tu_choi_bang_loi_noi_ro_ly_do() -> None:
     """Không để `pattern` của schema nói thay: "không khớp ^1\\." không bảo người
     đọc rằng tài liệu đến từ một runtime mới hơn (§39)."""
-    document = _example("kb1-slack-ghi") | {"schema_version": "2.0"}
+    document = _example("kb1-slack-ghi") | {"schema_version": "3.0"}
     with pytest.raises(WorkflowDefinitionError) as caught:
         parse(document)
-    assert "major 1" in caught.value.message
-    assert caught.value.details["schema_version"] == "2.0"
+    assert "major 1, 2" in caught.value.message
+    assert caught.value.details["schema_version"] == "3.0"
+
+
+# ─── IR v1 vẫn diễn giải được ────────────────────────────────────────────────
+
+
+def _v1(document: dict[str, Any], connections: dict[str, str]) -> dict[str, Any]:
+    return copy.deepcopy(document) | {"schema_version": "1.0", "connections": connections}
+
+
+def test_v1_duoc_nang_len_v2_va_bo_connection() -> None:
+    v1 = _v1(_example("kb3-notion-doc-sau"), {"notion": "conn_notionvidu"})
+    ir = parse(v1)
+    assert ir.schema_version == "2.0"
+    assert to_document(ir) == _example("kb3-notion-doc-sau")
+
+
+def test_from_connection_v1_tro_vao_node_tool_duy_nhat_cua_provider() -> None:
+    v1 = _v1(_example("kb1-slack-ghi"), {"slack": "conn_slackvidu"})
+    v1["nodes"][1]["input"]["text"] = {
+        "from_connection": {"provider": "slack", "field": "external_account_label"}
+    }
+    dang = parse(v1).nodes[1]
+    assert isinstance(dang, ToolNode)
+    assert dang.input["text"] == FromConnection(node="dang", field="external_account_label")
+
+
+def test_from_connection_v1_mo_ho_thi_khong_doan() -> None:
+    v1 = _v1(_example("kb2-slack-doc-roi-ghi"), {"slack": "conn_slackvidu"})
+    v1["nodes"][2]["input"]["text"] = {
+        "from_connection": {"provider": "slack", "field": "external_account_label"}
+    }
+    with pytest.raises(WorkflowDefinitionError) as caught:
+        parse(v1)
+    assert caught.value.details == {"provider": "slack", "nodes": ["kenh", "dang"]}
+
+
+def test_hang_so_giong_binding_khong_bi_nang_nham() -> None:
+    v1 = _v1(_example("kb1-slack-ghi"), {})
+    literal = {"from_connection": {"provider": "slack", "field": "x"}}
+    v1["nodes"][1]["input"]["text"] = {"const": literal}
+    assert upgrade_v1(v1)["nodes"][1]["input"]["text"] == {"const": literal}
+
+
+def test_v1_sai_hinh_dang_bao_theo_schema_v1() -> None:
+    v1 = _v1(_example("kb1-slack-ghi"), {"slack": "khong-phai-conn"})
+    with pytest.raises(WorkflowDefinitionError, match="sai hình dạng"):
+        parse(v1)
 
 
 def test_node_chua_ho_tro_bi_tu_choi_va_goi_dung_ten() -> None:

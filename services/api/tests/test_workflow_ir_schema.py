@@ -14,7 +14,8 @@ from typing import Any
 import jsonschema
 import pytest
 
-from app.domains.workflow.domain.generated.ir_v1 import IR_SCHEMA
+from app.domains.workflow.domain.generated.ir_v1 import IR_SCHEMA as IR_V1_SCHEMA
+from app.domains.workflow.domain.generated.ir_v2 import IR_SCHEMA
 
 SCHEMA_ROOT = Path(__file__).resolve().parents[3] / "packages" / "schemas" / "workflow"
 VALIDATOR = jsonschema.Draft202012Validator(IR_SCHEMA)
@@ -30,15 +31,18 @@ def _load(path: Path) -> dict[str, Any]:
 
 def test_thu_muc_va_vi_du_ton_tai() -> None:
     """`parametrize` trên danh sách rỗng không chạy gì — trông y hệt thành công."""
-    assert (SCHEMA_ROOT / "ir.schema.json").is_file()
+    assert (SCHEMA_ROOT / "ir.v1.schema.json").is_file()
+    assert (SCHEMA_ROOT / "ir.v2.schema.json").is_file()
     assert len(_examples()) == 6
 
 
 def test_ban_python_khop_voi_json() -> None:
-    assert _load(SCHEMA_ROOT / "ir.schema.json") == IR_SCHEMA
+    assert _load(SCHEMA_ROOT / "ir.v1.schema.json") == IR_V1_SCHEMA
+    assert _load(SCHEMA_ROOT / "ir.v2.schema.json") == IR_SCHEMA
 
 
 def test_schema_tu_no_la_json_schema_hop_le() -> None:
+    jsonschema.Draft202012Validator.check_schema(IR_V1_SCHEMA)
     jsonschema.Draft202012Validator.check_schema(IR_SCHEMA)
 
 
@@ -94,7 +98,14 @@ def _broken(mutate: Any) -> dict[str, Any]:
             ),
             "eq thiếu right",
         ),
-        (lambda d: d.update(connections={"slack": "khong-phai-conn"}), "connection id sai dạng"),
+        (lambda d: d.update(connections={"slack": "conn_slack"}), "v2 không mang connection"),
+        (lambda d: d.update(schema_version="1.0"), "v1 không qua schema v2"),
+        (
+            lambda d: d["nodes"][1]["input"].update(
+                text={"from_connection": {"provider": "slack", "field": "external_account_id"}}
+            ),
+            "from_connection theo provider là hình dạng v1",
+        ),
     ],
 )
 def test_hinh_dang_sai_bi_tu_choi(mutate: Any, vi_sao: str) -> None:
@@ -136,8 +147,8 @@ def test_than_loop_khong_chua_node_dieu_khien(kind: str) -> None:
     assert list(VALIDATOR.iter_errors(document))
 
 
-def test_transform_la_mot_loai_chua_biet_o_v1() -> None:
-    """`transform` chạy code là node của WP-C. Ở v1 nó chưa tồn tại, nên schema
+def test_transform_la_mot_loai_chua_biet() -> None:
+    """`transform` chạy code là node của WP-C. Hiện nó chưa tồn tại, nên schema
     đối xử với nó như mọi loại chưa biết — cho qua, để `parse` từ chối."""
     document = _broken(
         lambda d: d["nodes"].append({"id": "doi", "type": "transform", "code": "return 1"})

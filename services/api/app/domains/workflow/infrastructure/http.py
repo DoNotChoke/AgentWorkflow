@@ -297,7 +297,6 @@ async def publish_workflow(
 ) -> VersionResponse:
     version = await service.publish(
         tenant_id=context.organization_id,
-        workspace_id=context.workspace_id,
         workflow_id=workflow_id,
         actor_id=context.user_id,
         can_manage_workspace=_can_manage(context),

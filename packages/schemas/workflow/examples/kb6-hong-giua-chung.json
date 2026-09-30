@@ -1,8 +1,5 @@
 {
-  "schema_version": "1.0",
-  "connections": {
-    "slack": "conn_slackvidu"
-  },
+  "schema_version": "2.0",
   "nodes": [
     {
       "id": "t",

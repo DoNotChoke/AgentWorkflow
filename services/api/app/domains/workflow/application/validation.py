@@ -1,5 +1,5 @@
 """Luật của §39 cần nhìn catalog tool: input khớp schema của tool, đường
-`from_node` có trong output của node nguồn, connection đã bind.
+`from_node` có trong output của node nguồn.
 
 Luật chỉ cần chính tài liệu nằm ở `workflow/domain/validation.py`; `validate`
 chạy cả hai.
@@ -12,15 +12,10 @@ from typing import Any
 
 import jsonschema
 
-from app.domains.workflow.application.ports import (
-    ConnectionReader,
-    ToolCatalogReader,
-    ToolContract,
-)
+from app.domains.workflow.application.ports import ToolCatalogReader, ToolContract
 from app.domains.workflow.domain.ir import (
     Binding,
     Const,
-    FromConnection,
     FromInput,
     FromItem,
     FromNode,
@@ -41,7 +36,6 @@ from app.domains.workflow.domain.schema_paths import (
 )
 from app.domains.workflow.domain.validation import (
     Issue,
-    Severity,
     ValidationReport,
     bindings_of,
     validate_structure,
@@ -63,7 +57,6 @@ class _CatalogCheck:
 
     def run(self) -> Iterator[Issue]:
         yield from self._tools()
-        yield from self._connections()
         for loop, node in self._ir.walk():
             item = self._item_schema(loop) if loop is not None else None
             if isinstance(node, LoopNode):
@@ -138,32 +131,6 @@ class _CatalogCheck:
                 node=node.id,
                 field=("input", *(str(s) for s in error.absolute_path)),
             )
-
-    # ─── Connection ──────────────────────────────────────────────────────────
-
-    def _connections(self) -> Iterator[Issue]:
-        used: dict[str, str] = {}
-        for node_id, contract in self._contracts.items():
-            used.setdefault(contract.provider, node_id)
-        for _, node in self._ir.walk():
-            for _, binding in bindings_of(node):
-                if isinstance(binding, FromConnection):
-                    used.setdefault(binding.provider, node.id)
-
-        for provider, node_id in used.items():
-            if provider not in self._ir.connections:
-                yield Issue(
-                    "connection_chua_bind",
-                    f"Chưa chọn connection {provider} (node {node_id} cần nó).",
-                    node=node_id,
-                )
-        for provider in self._ir.connections:
-            if provider not in used:
-                yield Issue(
-                    "connection_khong_dung",
-                    f"Đã chọn connection {provider} nhưng không node nào dùng.",
-                    severity=Severity.WARNING,
-                )
 
     # ─── Đường dữ liệu ───────────────────────────────────────────────────────
 
@@ -303,55 +270,3 @@ class _CatalogCheck:
             return None
         element = items_of(over.root, over.schema)
         return None if element is None else Located(element, over.root)
-
-
-async def validate_connections(
-    ir: WorkflowIR,
-    reader: ConnectionReader,
-    *,
-    tenant_id: str,
-    workspace_id: str,
-) -> ValidationReport:
-    """Ô "connection availability" của §39, và luật Q7.
-
-    Tách khỏi `validate` vì nó phải đọc database: giữ validator kia thuần và
-    đồng bộ thì editor gọi được nó ở mọi lúc, còn cửa này chỉ chạy lúc publish.
-    """
-    issues: list[Issue] = []
-    for provider, connection_id in ir.connections.items():
-        found = await reader.describe(
-            tenant_id=tenant_id, workspace_id=workspace_id, connection_id=connection_id
-        )
-        if found is None:
-            issues.append(
-                Issue(
-                    "connection_khong_ton_tai",
-                    f"Không tìm thấy kết nối {connection_id} trong workspace này.",
-                )
-            )
-            continue
-        if found.provider != provider:
-            issues.append(
-                Issue(
-                    "connection_sai_provider",
-                    f"Kết nối {connection_id} là của {found.provider}, không phải {provider}.",
-                )
-            )
-        if not found.shared_with_workspace:
-            # Q7: workflow chạy cả khi người tạo đã rời tổ chức, nên nó không
-            # bám vào tài khoản riêng của ai.
-            issues.append(
-                Issue(
-                    "connection_rieng_tu",
-                    f"Kết nối {connection_id} là tài khoản riêng. Hãy dùng một kết nối chung "
-                    "của workspace, hoặc nhờ quản trị viên workspace thiết lập một cái.",
-                )
-            )
-        if not found.is_usable:
-            issues.append(
-                Issue(
-                    "connection_khong_dung_duoc",
-                    f"Kết nối {connection_id} đang ở trạng thái {found.status}.",
-                )
-            )
-    return ValidationReport(tuple(issues))

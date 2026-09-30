@@ -17,8 +17,8 @@ import pytest
 
 from app.core.errors import WorkflowDefinitionError
 from app.domains.integration.infrastructure.catalog_view import tool_rows
-from app.domains.workflow.application.ports import BoundConnection, ToolContract
-from app.domains.workflow.application.validation import validate, validate_connections
+from app.domains.workflow.application.ports import ToolContract
+from app.domains.workflow.application.validation import validate
 from app.domains.workflow.domain.ir import parse
 from app.domains.workflow.domain.validation import (
     LiteralSite,
@@ -401,12 +401,17 @@ def test_hang_so_kiem_duoc_qua_ref_cua_schema_tool() -> None:
     assert issue.field[:2] == ("input", "blocks")
 
 
-def test_connection_phai_bind_va_bind_thua_la_canh_bao() -> None:
+def test_from_connection_chi_tro_vao_node_tool() -> None:
     document = _kb("kb1-slack-ghi")
-    document["connections"] = {"notion": "conn_notionvidu"}
-    report = _full(document)
-    assert _codes(report) == ["connection_chua_bind"]
-    assert _codes(report, Severity.WARNING) == ["connection_khong_dung"]
+    document["nodes"][1]["input"]["text"] = {
+        "from_connection": {"node": "t", "field": "external_account_label"}
+    }
+    assert _codes(_full(document)) == ["from_connection_khong_phai_tool"]
+
+    document["nodes"][1]["input"]["text"] = {
+        "from_connection": {"node": "dang", "field": "external_account_label"}
+    }
+    assert _codes(_full(document)) == []
 
 
 @pytest.mark.parametrize(
@@ -455,85 +460,3 @@ def test_duong_vao_output_cua_loop() -> None:
     )
     document["edges"].append({"from": "moi_trang", "to": "gom"})
     assert [(i.node, i.field) for i in _full(document).errors] == [("gom", ("input", "sai"))]
-
-
-# ─── Connection (Q7) ─────────────────────────────────────────────────────────
-
-
-class FakeConnections:
-    """`ConnectionReader` giả — bảng tra theo id, cùng khuôn adapter thật."""
-
-    def __init__(self, known: dict[str, BoundConnection]) -> None:
-        self._known = known
-        self.asked: list[str] = []
-
-    async def describe(
-        self, *, tenant_id: str, workspace_id: str, connection_id: str
-    ) -> BoundConnection | None:
-        self.asked.append(connection_id)
-        return self._known.get(connection_id)
-
-
-def _bound(**overrides: Any) -> BoundConnection:
-    base: dict[str, Any] = {
-        "connection_id": "conn_slackvidu",
-        "provider": "slack",
-        "shared_with_workspace": True,
-        "status": "active",
-        "is_usable": True,
-    }
-    base.update(overrides)
-    return BoundConnection(**base)
-
-
-async def _connections(document: dict[str, Any], known: dict[str, BoundConnection]) -> list[str]:
-    report = await validate_connections(
-        parse(document), FakeConnections(known), tenant_id="org_1", workspace_id="ws_1"
-    )
-    return _codes(report)
-
-
-async def test_connection_chung_cua_workspace_thi_publish_duoc() -> None:
-    codes = await _connections(_kb("kb1-slack-ghi"), {"conn_slackvidu": _bound()})
-    assert codes == []
-
-
-async def test_connection_rieng_tu_bi_tu_choi() -> None:
-    """Q7: workflow chạy lúc 3 giờ sáng, cả khi người tạo đã rời tổ chức, nên
-    nó không bám vào tài khoản riêng của ai."""
-    codes = await _connections(
-        _kb("kb1-slack-ghi"), {"conn_slackvidu": _bound(shared_with_workspace=False)}
-    )
-    assert codes == ["connection_rieng_tu"]
-
-
-async def test_connection_khong_con_dung_duoc_bi_tu_choi() -> None:
-    codes = await _connections(
-        _kb("kb1-slack-ghi"),
-        {"conn_slackvidu": _bound(status="expired", is_usable=False)},
-    )
-    assert codes == ["connection_khong_dung_duoc"]
-
-
-async def test_connection_khong_ton_tai_hoac_thuoc_workspace_khac() -> None:
-    """Adapter trả `None` cho cả hai trường hợp — từ phía workflow chúng giống
-    hệt nhau, và nói rõ hơn là rò rỉ sự tồn tại của tài nguyên tenant khác."""
-    assert await _connections(_kb("kb1-slack-ghi"), {}) == ["connection_khong_ton_tai"]
-
-
-async def test_connection_sai_provider_bi_tu_choi() -> None:
-    codes = await _connections(_kb("kb1-slack-ghi"), {"conn_slackvidu": _bound(provider="notion")})
-    assert codes == ["connection_sai_provider"]
-
-
-async def test_kich_ban_bac_cau_hoi_ca_hai_provider() -> None:
-    known = {
-        "conn_slackvidu": _bound(),
-        "conn_notionvidu": _bound(connection_id="conn_notionvidu", provider="notion"),
-    }
-    reader = FakeConnections(known)
-    report = await validate_connections(
-        parse(_kb("kb4-bac-cau")), reader, tenant_id="org_1", workspace_id="ws_1"
-    )
-    assert _codes(report) == []
-    assert sorted(reader.asked) == ["conn_notionvidu", "conn_slackvidu"]

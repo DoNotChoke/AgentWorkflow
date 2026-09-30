@@ -19,7 +19,7 @@ from app.domains.workflow.application.ports import (
     ToolCatalogReader,
     WorkflowRepository,
 )
-from app.domains.workflow.application.validation import validate, validate_connections
+from app.domains.workflow.application.validation import validate
 from app.domains.workflow.domain.entities import (
     Workflow,
     WorkflowDraft,
@@ -185,7 +185,6 @@ class WorkflowService:
         self,
         *,
         tenant_id: str,
-        workspace_id: str,
         workflow_id: str,
         actor_id: str,
         can_manage_workspace: bool,
@@ -197,12 +196,7 @@ class WorkflowService:
 
         # Ở đây `parse` được phép ném: publish là cửa khắt khe.
         parsed = parse(draft.ir)
-        report = validate(parsed, self._catalog).merged(
-            await validate_connections(
-                parsed, self._connections, tenant_id=tenant_id, workspace_id=workspace_id
-            )
-        )
-        ensure_valid(report)
+        ensure_valid(validate(parsed, self._catalog))
 
         at = datetime.now(UTC)
         latest = await self._workflows.latest_version_number(

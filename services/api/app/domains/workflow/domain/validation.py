@@ -21,6 +21,7 @@ from app.domains.workflow.domain.ir import (
     Binding,
     ConditionNode,
     Const,
+    FromConnection,
     FromInput,
     FromItem,
     FromNode,
@@ -410,6 +411,14 @@ def _check(
         )
     elif isinstance(binding, FromNode):
         yield from _check_from_node(node_id, field, binding, scope, every, owner, inputs)
+    elif isinstance(binding, FromConnection) and not isinstance(every.get(binding.node), ToolNode):
+        yield Issue(
+            "from_connection_khong_phai_tool",
+            f"{node_id}.{'.'.join(field)} đọc connection của {binding.node!r}, "
+            "nhưng chỉ node tool mới có connection.",
+            node=node_id,
+            field=field,
+        )
 
 
 def _check_from_node(

@@ -115,10 +115,15 @@ def test_from_item_ngoai_than_loop_la_khong_co() -> None:
     assert isinstance(lookup(FromItem(("id",)), _scope()), Missing)
 
 
-def test_from_connection_doc_metadata() -> None:
-    scope = Scope(inputs={}, outputs={}, connections={"slack": {"workspace_name": "Acme"}})
-    assert lookup(FromConnection("slack", "workspace_name"), scope) == "Acme"
-    assert isinstance(lookup(FromConnection("notion", "workspace_name"), scope), Missing)
+def test_from_connection_doc_metadata_cua_connection_ma_node_dung() -> None:
+    scope = Scope(
+        inputs={},
+        outputs={},
+        connections={"kenh": {"workspace_name": "Acme"}, "dang": {"workspace_name": "Beta"}},
+    )
+    assert lookup(FromConnection(node="kenh", field="workspace_name"), scope) == "Acme"
+    assert lookup(FromConnection(node="dang", field="workspace_name"), scope) == "Beta"
+    assert isinstance(lookup(FromConnection(node="tim", field="workspace_name"), scope), Missing)
 
 
 # ─── Không có giá trị ────────────────────────────────────────────────────────

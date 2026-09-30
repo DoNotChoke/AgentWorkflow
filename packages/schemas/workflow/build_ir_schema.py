@@ -1,4 +1,4 @@
-"""Sinh module Python mang JSON Schema của Workflow IR.
+"""Sinh module Python mang JSON Schema của Workflow IR, mỗi major một module.
 
     python packages/schemas/workflow/build_ir_schema.py            # ghi ra file
     python packages/schemas/workflow/build_ir_schema.py --check    # chỉ báo lệch, không ghi
@@ -25,22 +25,13 @@ for stream in (sys.stdout, sys.stderr):
 
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[2]
-SOURCE = HERE / "ir.schema.json"
-TARGET = (
-    REPO_ROOT
-    / "services"
-    / "api"
-    / "app"
-    / "domains"
-    / "workflow"
-    / "domain"
-    / "generated"
-    / "ir_v1.py"
-)
+GENERATED = REPO_ROOT / "services" / "api" / "app" / "domains" / "workflow" / "domain" / "generated"
+#: Major cũ vẫn phải diễn giải được (§41), nên mọi major đều được sinh.
+MAJORS = (1, 2)
 
 HEADER = '''"""SINH TỰ ĐỘNG — đừng sửa file này bằng tay.
 
-Nguồn: `packages/schemas/workflow/ir.schema.json`
+Nguồn: `packages/schemas/workflow/{source}`
 Sinh lại:
 
     python packages/schemas/workflow/build_ir_schema.py
@@ -74,9 +65,10 @@ def emit(value: object, indent: int = 0) -> str:
     return repr(value)
 
 
-def render() -> str:
-    document = json.loads(SOURCE.read_text(encoding="utf-8"))
-    return f"{HEADER}IR_SCHEMA: Final[dict[str, Any]] = {emit(document)}\n"
+def render(source: Path) -> str:
+    document = json.loads(source.read_text(encoding="utf-8"))
+    header = HEADER.replace("{source}", source.name)
+    return f"{header}IR_SCHEMA: Final[dict[str, Any]] = {emit(document)}\n"
 
 
 def format_with_ruff(path: Path) -> None:
@@ -90,39 +82,48 @@ def format_with_ruff(path: Path) -> None:
         raise SystemExit(1)
 
 
+def check(source: Path, target: Path, generated: str) -> int:
+    if not target.exists():
+        print(f"Chưa có {target.relative_to(REPO_ROOT)}. Chạy lại không kèm --check.")
+        return 1
+    scratch = target.with_suffix(".check.py")
+    scratch.write_text(generated, encoding="utf-8")
+    try:
+        format_with_ruff(scratch)
+        expected = scratch.read_text(encoding="utf-8")
+    finally:
+        scratch.unlink(missing_ok=True)
+    if expected != target.read_text(encoding="utf-8"):
+        print(
+            f"{target.relative_to(REPO_ROOT)} đã lệch khỏi {source.name}.\n"
+            "Chạy: python packages/schemas/workflow/build_ir_schema.py"
+        )
+        return 1
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Chỉ báo lệch; không ghi gì.")
     args = parser.parse_args()
 
-    generated = render()
+    status = 0
+    for major in MAJORS:
+        source = HERE / f"ir.v{major}.schema.json"
+        target = GENERATED / f"ir_v{major}.py"
+        generated = render(source)
+        if args.check:
+            status |= check(source, target, generated)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        (target.parent / "__init__.py").touch()
+        target.write_text(generated, encoding="utf-8")
+        format_with_ruff(target)
+        print(f"Đã sinh {target.relative_to(REPO_ROOT)}")
 
-    if args.check:
-        if not TARGET.exists():
-            print(f"Chưa có {TARGET.relative_to(REPO_ROOT)}. Chạy lại không kèm --check.")
-            return 1
-        scratch = TARGET.with_suffix(".check.py")
-        scratch.write_text(generated, encoding="utf-8")
-        try:
-            format_with_ruff(scratch)
-            expected = scratch.read_text(encoding="utf-8")
-        finally:
-            scratch.unlink(missing_ok=True)
-        if expected != TARGET.read_text(encoding="utf-8"):
-            print(
-                f"{TARGET.relative_to(REPO_ROOT)} đã lệch khỏi ir.schema.json.\n"
-                "Chạy: python packages/schemas/workflow/build_ir_schema.py"
-            )
-            return 1
+    if args.check and status == 0:
         print("IR schema khớp với JSON.")
-        return 0
-
-    TARGET.parent.mkdir(parents=True, exist_ok=True)
-    (TARGET.parent / "__init__.py").touch()
-    TARGET.write_text(generated, encoding="utf-8")
-    format_with_ruff(TARGET)
-    print(f"Đã sinh {TARGET.relative_to(REPO_ROOT)}")
-    return 0
+    return status
 
 
 if __name__ == "__main__":
