@@ -40,7 +40,7 @@ python -m venv .venv
 .venv\Scripts\activate                 # Windows
 pip install -r requirements.txt -r requirements-dev.txt
 
-docker compose up -d                   # postgres, redis, minio, temporal, otel, jaeger
+docker compose up -d                   # postgres, redis, s3, temporal, otel, jaeger
 alembic upgrade head                   # tạo schema cho từng domain
 ```
 
@@ -76,7 +76,7 @@ curl http://localhost:8000/readyz
 | Agent Runtime | http://localhost:8001 |
 | Temporal UI | http://localhost:8233 |
 | Jaeger UI | http://localhost:16686 |
-| MinIO console | http://localhost:9001 (`minio` / `minio123`) |
+| S3 console (RustFS) | http://localhost:9001/rustfs/console/ (`minio` / `minio123`) |
 | PostgreSQL | `localhost:5432` (`agentworkflow` / `agentworkflow`) |
 | Redis | `localhost:6379` |
 
@@ -195,7 +195,7 @@ họ không có quyền dùng.
 
 **Execution Trace giữ nội dung, không chỉ vân tay.** Mỗi bước — một lần gọi
 tool, một lần hỏi model — lưu cái đã gửi đi và cái nhận về. Payload nhỏ nằm
-ngay trong `trace.trace_steps`, payload lớn ra MinIO theo khoá là chính mã
+ngay trong `trace.trace_steps`, payload lớn ra object storage (S3) theo khoá là chính mã
 băm của nó, payload quá lớn chỉ còn vân tay. Lượt chat vỡ giữa chừng không để
 lại tin nhắn nào trong `messages` — trace là nơi duy nhất còn giữ nó. Quyết
 định ở [ADR-0006](docs/adr/0006-payload-cua-execution-trace.md), kế hoạch ở

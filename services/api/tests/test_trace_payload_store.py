@@ -1,11 +1,11 @@
 """Payload của bước trace: chọn chỗ cất, và tìm lại được thứ đã cất.
 
 Ba nhánh quyết định (inline, object, vượt trần) kiểm được mà không cần hạ tầng
-— chúng chỉ so kích thước. Nhánh `object` thì cần MinIO thật và mang mark
+— chúng chỉ so kích thước. Nhánh `object` thì cần S3 thật và mang mark
 ``integration``: cái đáng kiểm ở đó là byte đi ra rồi quay về đúng nguyên vẹn,
 mà một bản giả trong bộ nhớ luôn làm được điều ấy.
 
-    docker compose up -d minio
+    docker compose up -d s3
     pytest -m integration
 """
 
@@ -57,7 +57,7 @@ async def bucket() -> AsyncIterator[str]:
     init_object_store(settings)
     if not await object_store_healthy(bucket=settings.s3_bucket_traces):
         await close_object_store()
-        infra_unavailable("chưa kết nối được MinIO: docker compose up -d minio")
+        infra_unavailable("chưa kết nối được S3: docker compose up -d s3")
     yield settings.s3_bucket_traces
     await close_object_store()
 
@@ -79,7 +79,7 @@ def test_hai_tenant_co_cung_payload_van_la_hai_doi_tuong() -> None:
     assert object_key(tenant_id="org_a", sha256=sha) != object_key(tenant_id="org_b", sha256=sha)
 
 
-# ─── Chọn chỗ cất (không cần MinIO) ──────────────────────────────────────────
+# ─── Chọn chỗ cất (không cần S3) ──────────────────────────────────────────
 
 
 async def test_payload_nho_nam_luon_trong_hang() -> None:
@@ -135,7 +135,7 @@ async def test_doc_lai_payload_absent_tra_none() -> None:
     assert await make_store().get(tenant_id=TENANT, stored=stored) is None
 
 
-# ─── Vòng cất–đọc thật (cần MinIO) ───────────────────────────────────────────
+# ─── Vòng cất–đọc thật (cần S3) ───────────────────────────────────────────
 
 
 @pytest.mark.integration

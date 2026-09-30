@@ -1,11 +1,11 @@
 """Object store S3 (§4.7).
 
-Phần kiểm khoá chạy được ở mọi nơi. Phần cất–đọc cần MinIO thật và mang mark
+Phần kiểm khoá chạy được ở mọi nơi. Phần cất–đọc cần S3 thật và mang mark
 ``integration``: cái đang được kiểm là hành vi của chính S3 — đè khoá, khoá
 vắng mặt trả về gì — mà một bản giả trong bộ nhớ thì luôn cư xử đúng như mình
 tưởng tượng, kể cả khi giả định ấy sai.
 
-    docker compose up -d minio
+    docker compose up -d s3
     pytest -m integration
 """
 
@@ -33,12 +33,12 @@ from app.core.objectstore import (
 
 @pytest.fixture
 async def bucket() -> AsyncIterator[str]:
-    """Kết nối MinIO thật, bỏ qua test nếu không có."""
+    """Kết nối S3 thật, bỏ qua test nếu không có."""
     settings = Settings()
     init_object_store(settings)
     if not await object_store_healthy(bucket=settings.s3_bucket_traces):
         await close_object_store()
-        infra_unavailable("chưa kết nối được MinIO: docker compose up -d minio")
+        infra_unavailable("chưa kết nối được S3: docker compose up -d s3")
     yield settings.s3_bucket_traces
     await close_object_store()
 
@@ -49,7 +49,7 @@ def key() -> str:
     return f"test/{uuid.uuid4().hex}.json"
 
 
-# ─── Vòng đời client (không cần MinIO) ───────────────────────────────────────
+# ─── Vòng đời client (không cần S3) ───────────────────────────────────────
 
 
 async def test_chua_khoi_tao_thi_bao_ro_thay_vi_tra_ve_none() -> None:
@@ -71,7 +71,7 @@ async def test_khoi_tao_hai_lan_van_la_mot_client() -> None:
     await close_object_store()
 
 
-# ─── Khoá (không cần MinIO) ──────────────────────────────────────────────────
+# ─── Khoá (không cần S3) ──────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -116,7 +116,7 @@ async def test_khoa_hong_bi_chan_truoc_khi_cham_mang() -> None:
         await put_object(bucket="aw-traces", key="../escape", body=b"{}")
 
 
-# ─── Cất và đọc (cần MinIO) ──────────────────────────────────────────────────
+# ─── Cất và đọc (cần S3) ──────────────────────────────────────────────────
 
 
 @pytest.mark.integration
