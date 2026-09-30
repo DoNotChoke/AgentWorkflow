@@ -91,18 +91,29 @@ jobs:
           done
           docker logs temporal
           exit 1
-      # Payload store của trace ghi ra S3; test của nó cần MinIO và bucket có sẵn.
-      - name: MinIO
+      # Payload store của trace ghi ra S3; test của nó cần một S3 và bucket có sẵn.
+      # MinIO đã rút image khỏi Docker Hub và Quay; RustFS tương thích MinIO.
+      - name: S3 (RustFS)
         run: |
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=minio -e MINIO_ROOT_PASSWORD=minio123 \
-            minio/minio:RELEASE.2025-04-22T22-12-26Z server /data
-          for i in $(seq 1 30); do
-            docker exec minio mc ready local >/dev/null 2>&1 && break
-            sleep 2
-          done
-          docker exec minio mc alias set ci http://localhost:9000 minio minio123
-          docker exec minio mc mb --ignore-existing ci/aw-traces ci/aw-attachments ci/aw-artifacts
+          docker run -d --name s3 -p 9000:9000 \
+            -e RUSTFS_ACCESS_KEY=minio -e RUSTFS_SECRET_KEY=minio123 \
+            rustfs/rustfs:1.0.0
+          python - <<'EOF'
+          import time
+          import boto3
+          s3 = boto3.client("s3", endpoint_url="http://localhost:9000", region_name="us-east-1",
+                            aws_access_key_id="minio", aws_secret_access_key="minio123")
+          for _ in range(30):
+              try:
+                  s3.list_buckets()
+                  break
+              except Exception:
+                  time.sleep(2)
+          else:
+              raise SystemExit("S3 không lên sau 60 giây")
+          for bucket in ("aw-traces", "aw-attachments", "aw-artifacts"):
+              s3.create_bucket(Bucket=bucket)
+          EOF
       - name: Migration chạy được từ đầu
         run: alembic upgrade head
         env:
