@@ -79,6 +79,18 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - run: pip install -r requirements.txt -r requirements-dev.txt
+      # Test executor cần Temporal. `services:` không truyền được lệnh cho
+      # container, nên chạy tay; dev server giữ mọi thứ trong bộ nhớ.
+      - name: Temporal dev server
+        run: |
+          docker run -d --name temporal -p 7233:7233 \
+            temporalio/temporal:1.9.1 server start-dev --ip 0.0.0.0
+          for i in $(seq 1 30); do
+            docker exec temporal temporal operator cluster health --address localhost:7233 && exit 0
+            sleep 2
+          done
+          docker logs temporal
+          exit 1
       - name: Migration chạy được từ đầu
         run: alembic upgrade head
         env:
@@ -93,6 +105,7 @@ jobs:
         env:
           AW_DATABASE_URL: postgresql+asyncpg://agentworkflow:agentworkflow@localhost:5432/agentworkflow
           AW_REDIS_URL: redis://localhost:6379/0
+          AW_TEMPORAL_HOST: localhost:7233
           # Hạ tầng ở đây luôn có sẵn, nên "thiếu hạ tầng" là lỗi cấu hình
           # pipeline chứ không phải lý do bỏ qua. Cờ này biến mọi lần bỏ qua
           # kiểu đó thành thất bại, để một nhóm test không thể tự vô hiệu hoá

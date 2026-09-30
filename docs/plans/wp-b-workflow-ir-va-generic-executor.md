@@ -823,9 +823,9 @@ Mỗi commit xanh độc lập — kiểm bằng cách stash phần còn lại r
     - Số đo: kịch bản 3 với ba lượt lặp là 24 activity, 149 sự kiện — khoảng sáu
       sự kiện một activity.
 
-    **11c. `ci: a Temporal server for the executor tests`**
+    **11c. ✅ `ci: a Temporal server for the executor tests`**
     - Job `test` chỉ có Postgres và Redis; với `AW_TEST_REQUIRE_INFRA=1` test
-      executor sẽ đỏ. Thêm bước `docker run temporalio/temporal server start-dev`
+      executor sẽ đỏ. Thêm bước `docker run temporalio/temporal:1.9.1 server start-dev`
       và chờ health — `services:` không truyền được lệnh cho container.
 12. `feat(api): start a workflow by hand, and see where it is`
     - `execution/infrastructure/temporal/client.py` — start bằng tên, `id =
