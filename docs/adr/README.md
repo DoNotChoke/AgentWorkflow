@@ -24,6 +24,8 @@ Những thay đổi thông thường không cần ADR. Việc lạm dụng ADR l
 | [0007](0007-so-idempotency-co-lease-va-trang-thai-khong-ro.md) | Sổ idempotency có lease, và `unknown` là một trạng thái riêng | Accepted |
 | [0008](0008-workflow-compiler-la-hybrid.md) | Workflow Compiler là hybrid: LLM quyết định tổng quát hoá, code tất định dựng IR | Accepted |
 | [0014](0014-connection-gan-theo-lan-chay.md) | Workflow không lưu connection; mỗi lần chạy chọn connection cho từng node | Accepted |
+| [0015](0015-compiler-xac-nhan-y-do-truoc-khi-dung-workflow.md) | Compiler xác nhận ý đồ với người dùng trước khi dựng workflow; ý đồ quyết định bước nào ở lại (mở rộng ADR-0008) | Accepted |
+| [0016](0016-llm-bien-dich-duoc-viet-node-transform.md) | LLM biên dịch được viết node `transform`; code phải tái tạo được lần chạy mẫu | Accepted |
 
 Số 0009–0013 đã được `docs/plans/wp-b-workflow-ir-va-generic-executor.md` giữ
 trước cho các quyết định của WP-B và WP-C, nên ADR tiếp theo ngoài danh sách đó
