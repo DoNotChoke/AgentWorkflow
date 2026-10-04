@@ -40,6 +40,7 @@ from app.domains.agent.domain.entities import (
     ConversationStatus,
     MessageRole,
 )
+from app.domains.agent.domain.platform_prompt import PLATFORM_PROMPT, PLATFORM_PROMPT_VERSION
 
 NOW = datetime(2026, 9, 4, 12, 0, tzinfo=UTC)
 
@@ -802,6 +803,11 @@ async def test_model_call_luu_prompt_da_gui_va_quyet_dinh_cua_model() -> None:
     request = trace.payloads[0]["input"]
     assert request["model"] == "claude-sonnet-5"
     assert request["system"] == "Bạn là trợ lý hữu ích."
+    assert request["platform_prompt_version"] == PLATFORM_PROMPT_VERSION
+    # Model nhận cả hai phần; trace chỉ chép phần riêng của Agent.
+    sent = models.calls[0]["system"]
+    assert sent.startswith(PLATFORM_PROMPT)
+    assert sent.endswith("Bạn là trợ lý hữu ích.")
     assert request["turns"][-1]["text"] == "gửi giúp mình"
 
     decision = trace.payloads[0]["output"]

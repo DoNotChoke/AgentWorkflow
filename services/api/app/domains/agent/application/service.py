@@ -41,6 +41,10 @@ from app.domains.agent.domain.entities import (
     ensure_not_archived,
     ensure_owns,
 )
+from app.domains.agent.domain.platform_prompt import (
+    PLATFORM_PROMPT_VERSION,
+    compose_system_prompt,
+)
 
 #: Domain cấm message ASSISTANT rỗng-và-không-tool_calls (`ensure_message_shape`).
 #: Model trả lời trống (hiếm, nhưng có thể xảy ra khi `stop_reason=max_tokens`
@@ -182,11 +186,13 @@ def _request_payload(
     """Thứ đã gửi cho model, ở dạng lưu được vào trace.
 
     Tool chỉ giữ tên và version: schema nằm trong catalog đã commit, tra ngược
-    được, còn chép nó vào mọi vòng là lặp lại ~10 KB mỗi lần.
+    được, còn chép nó vào mọi vòng là lặp lại ~10 KB mỗi lần. Prompt của nền tảng
+    cũng vậy: `system` là phần riêng của Agent, phần chung chỉ ghi version.
     """
     return {
         "model": agent.model,
         "system": agent.system_prompt,
+        "platform_prompt_version": PLATFORM_PROMPT_VERSION,
         "tools": [{"name": tool.name, "version": tool.version} for tool in tools],
         "turns": [_turn_payload(turn) for turn in turns],
     }
@@ -358,7 +364,10 @@ class AgentRuntime:
         started = datetime.now(UTC)
         try:
             response = await self._models.complete(
-                model=agent.model, system=agent.system_prompt, turns=turns, tools=tools
+                model=agent.model,
+                system=compose_system_prompt(agent.system_prompt),
+                turns=turns,
+                tools=tools,
             )
         except AppError as exc:
             await self._trace.append_step(
