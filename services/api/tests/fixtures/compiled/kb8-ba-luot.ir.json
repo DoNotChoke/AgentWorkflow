@@ -1,0 +1,95 @@
+{
+  "schema_version": "2.0",
+  "nodes": [
+    {
+      "id": "t",
+      "type": "trigger",
+      "trigger": "manual",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ten_trang"
+        ],
+        "properties": {
+          "ten_trang": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "tim",
+      "type": "tool",
+      "tool_id": "notion.search",
+      "tool_version": "1.1",
+      "input": {
+        "query": {
+          "from_input": "ten_trang"
+        }
+      }
+    },
+    {
+      "id": "khoi",
+      "type": "tool",
+      "tool_id": "notion.get_block_children",
+      "tool_version": "1.0",
+      "input": {
+        "block_id": {
+          "from_node": {
+            "node": "tim",
+            "path": [
+              "results",
+              "0",
+              "id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "moi_khoi",
+      "type": "loop",
+      "over": {
+        "from_node": {
+          "node": "khoi",
+          "path": [
+            "results"
+          ]
+        }
+      },
+      "max_items": 50,
+      "body": [
+        {
+          "id": "doc_khoi",
+          "type": "tool",
+          "tool_id": "notion.get_block_children",
+          "tool_version": "1.0",
+          "input": {
+            "block_id": {
+              "from_item": [
+                "id"
+              ]
+            }
+          }
+        }
+      ],
+      "collect": "doc_khoi"
+    }
+  ],
+  "edges": [
+    {
+      "from": "t",
+      "to": "tim"
+    },
+    {
+      "from": "tim",
+      "to": "khoi"
+    },
+    {
+      "from": "khoi",
+      "to": "moi_khoi"
+    }
+  ]
+}

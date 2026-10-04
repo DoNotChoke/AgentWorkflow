@@ -1,0 +1,18 @@
+{
+  "ten": "Đăng tin vào kênh Slack",
+  "buoc": {
+    "l1.b1": {
+      "chon": "giu",
+      "id": "dang"
+    }
+  },
+  "gia_tri": {
+    "N1": {
+      "chon": "workflow_input",
+      "ten": "noi_dung"
+    },
+    "N2": {
+      "chon": "const"
+    }
+  }
+}

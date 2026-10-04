@@ -1,0 +1,26 @@
+{
+  "ten": "Tin nhắn Slack thành block Notion",
+  "buoc": {
+    "l1.b1": {
+      "chon": "giu",
+      "id": "doc"
+    },
+    "l1.b2": {
+      "chon": "giu",
+      "id": "doi"
+    }
+  },
+  "gia_tri": {
+    "N1": {
+      "chon": "workflow_input",
+      "ten": "so_tin"
+    },
+    "N2": {
+      "chon": "const"
+    },
+    "N3": {
+      "chon": "from_step",
+      "ung_vien": 1
+    }
+  }
+}

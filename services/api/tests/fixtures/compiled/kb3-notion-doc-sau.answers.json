@@ -1,0 +1,46 @@
+{
+  "ten": "Đọc các trang con của một trang Notion",
+  "buoc": {
+    "l1.b1": {
+      "chon": "giu",
+      "id": "tim"
+    },
+    "l1.b2": {
+      "chon": "bo",
+      "ly_do": "Chỉ để xem trang; kết quả không được bước nào dùng."
+    },
+    "l1.b3": {
+      "chon": "giu",
+      "id": "con"
+    },
+    "l1.b4": {
+      "chon": "giu",
+      "id": "doc_trang"
+    },
+    "l1.b5": {
+      "chon": "giu"
+    },
+    "l1.b6": {
+      "chon": "giu"
+    },
+    "l1.b7": {
+      "chon": "giu"
+    }
+  },
+  "gia_tri": {
+    "N1": {
+      "chon": "workflow_input",
+      "ten": "ten_trang"
+    },
+    "N3": {
+      "chon": "from_step",
+      "ung_vien": 1
+    }
+  },
+  "vong_lap": {
+    "V1": {
+      "chon": "loop",
+      "id": "moi_trang"
+    }
+  }
+}

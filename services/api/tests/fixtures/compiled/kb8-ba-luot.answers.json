@@ -1,0 +1,124 @@
+{
+  "ten": "Đọc các câu hỏi trên một trang Notion",
+  "buoc": {
+    "l1.b1": {
+      "chon": "giu",
+      "id": "tim"
+    },
+    "l1.b2": {
+      "chon": "giu",
+      "id": "khoi"
+    },
+    "l1.b3": {
+      "chon": "giu",
+      "id": "doc_khoi"
+    },
+    "l1.b4": {
+      "chon": "giu"
+    },
+    "l1.b5": {
+      "chon": "giu"
+    },
+    "l1.b6": {
+      "chon": "giu"
+    },
+    "l1.b7": {
+      "chon": "giu"
+    },
+    "l1.b8": {
+      "chon": "giu"
+    },
+    "l2.b1": {
+      "chon": "bo",
+      "ly_do": "Chỉ phục vụ việc đăng tin ở lượt 2, phần chưa tổng quát hoá được."
+    },
+    "l2.b2": {
+      "chon": "bo",
+      "ly_do": "Nội dung do model soạn từ nhiều khối; chưa tổng quát hoá được thành một vòng lặp."
+    },
+    "l2.b3": {
+      "chon": "bo",
+      "ly_do": "Nội dung do model soạn từ nhiều khối; chưa tổng quát hoá được thành một vòng lặp."
+    },
+    "l2.b4": {
+      "chon": "bo",
+      "ly_do": "Nội dung do model soạn từ nhiều khối; chưa tổng quát hoá được thành một vòng lặp."
+    },
+    "l2.b5": {
+      "chon": "bo",
+      "ly_do": "Nội dung do model soạn từ nhiều khối; chưa tổng quát hoá được thành một vòng lặp."
+    },
+    "l2.b6": {
+      "chon": "bo",
+      "ly_do": "Nội dung do model soạn từ nhiều khối; chưa tổng quát hoá được thành một vòng lặp."
+    },
+    "l2.b7": {
+      "chon": "bo",
+      "ly_do": "Nội dung do model soạn từ nhiều khối; chưa tổng quát hoá được thành một vòng lặp."
+    },
+    "l3.b1": {
+      "chon": "bo",
+      "ly_do": "Đọc lại để soạn đáp án; đi cùng phần chưa tổng quát hoá được."
+    },
+    "l3.b2": {
+      "chon": "bo",
+      "ly_do": "Đọc lại để soạn đáp án; đi cùng phần chưa tổng quát hoá được."
+    },
+    "l3.b3": {
+      "chon": "bo",
+      "ly_do": "Đọc lại để soạn đáp án; đi cùng phần chưa tổng quát hoá được."
+    },
+    "l3.b4": {
+      "chon": "bo",
+      "ly_do": "Đọc lại để soạn đáp án; đi cùng phần chưa tổng quát hoá được."
+    },
+    "l3.b5": {
+      "chon": "bo",
+      "ly_do": "Đọc lại để soạn đáp án; đi cùng phần chưa tổng quát hoá được."
+    },
+    "l3.b6": {
+      "chon": "bo",
+      "ly_do": "Đọc lại để soạn đáp án; đi cùng phần chưa tổng quát hoá được."
+    },
+    "l3.b7": {
+      "chon": "bo",
+      "ly_do": "Mỗi tin trả lời vào một thread khác nhau với nội dung do model soạn; IR chưa biểu diễn được."
+    },
+    "l3.b8": {
+      "chon": "bo",
+      "ly_do": "Mỗi tin trả lời vào một thread khác nhau với nội dung do model soạn; IR chưa biểu diễn được."
+    },
+    "l3.b9": {
+      "chon": "bo",
+      "ly_do": "Mỗi tin trả lời vào một thread khác nhau với nội dung do model soạn; IR chưa biểu diễn được."
+    },
+    "l3.b10": {
+      "chon": "bo",
+      "ly_do": "Mỗi tin trả lời vào một thread khác nhau với nội dung do model soạn; IR chưa biểu diễn được."
+    },
+    "l3.b11": {
+      "chon": "bo",
+      "ly_do": "Mỗi tin trả lời vào một thread khác nhau với nội dung do model soạn; IR chưa biểu diễn được."
+    },
+    "l3.b12": {
+      "chon": "bo",
+      "ly_do": "Mỗi tin trả lời vào một thread khác nhau với nội dung do model soạn; IR chưa biểu diễn được."
+    }
+  },
+  "gia_tri": {
+    "N1": {
+      "chon": "workflow_input",
+      "ten": "ten_trang"
+    },
+    "N2": {
+      "chon": "from_step",
+      "ung_vien": 1
+    }
+  },
+  "vong_lap": {
+    "V1": {
+      "chon": "loop",
+      "id": "moi_khoi"
+    }
+  }
+}

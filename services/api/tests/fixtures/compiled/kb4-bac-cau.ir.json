@@ -1,0 +1,136 @@
+{
+  "schema_version": "2.0",
+  "nodes": [
+    {
+      "id": "t",
+      "type": "trigger",
+      "trigger": "manual",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {}
+      }
+    },
+    {
+      "id": "doc",
+      "type": "tool",
+      "tool_id": "slack.get_channel_history",
+      "tool_version": "1.0",
+      "input": {
+        "limit": {
+          "const": 10
+        },
+        "channel": {
+          "const": "C0VIDU00003"
+        }
+      }
+    },
+    {
+      "id": "tom_tat",
+      "type": "llm",
+      "model": "claude-sonnet-5",
+      "instructions": "Tóm tắt các tin nhắn Slack trong `messages` thành một tiêu đề cấp hai và một gạch đầu dòng cho mỗi tin nhắn. Giữ nguyên ngôn ngữ của tin nhắn.",
+      "input": {
+        "messages": {
+          "from_node": {
+            "node": "doc",
+            "path": [
+              "messages"
+            ]
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "blocks"
+        ],
+        "properties": {
+          "blocks": {
+            "type": "array",
+            "description": "Nội dung trang, theo đúng thứ tự. Bỏ trống thì tạo trang rỗng.",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/$defs/block"
+            }
+          }
+        },
+        "$defs": {
+          "block": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "text"
+            ],
+            "properties": {
+              "type": {
+                "description": "Kiểu khối. bulleted_list_item là gạch đầu dòng, numbered_list_item là danh sách đánh số, to_do là ô tích, toggle là khối gập được.",
+                "enum": [
+                  "paragraph",
+                  "heading_1",
+                  "heading_2",
+                  "heading_3",
+                  "bulleted_list_item",
+                  "numbered_list_item",
+                  "to_do",
+                  "toggle",
+                  "quote",
+                  "callout"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "description": "Nội dung khối. Xuống dòng trong cùng một khối thì dùng \n.",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "checked": {
+                "type": "boolean",
+                "description": "Chỉ có ý nghĩa với to_do. Bỏ trống thì ô chưa tích."
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "tao",
+      "type": "tool",
+      "tool_id": "notion.create_page",
+      "tool_version": "2.0",
+      "input": {
+        "title": {
+          "const": "[WP-B] Tổng hợp kênh test"
+        },
+        "blocks": {
+          "from_node": {
+            "node": "tom_tat",
+            "path": [
+              "blocks"
+            ]
+          }
+        },
+        "parent_page_id": {
+          "const": "00000000-0000-0000-0000-000000000002"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "t",
+      "to": "doc"
+    },
+    {
+      "from": "doc",
+      "to": "tom_tat"
+    },
+    {
+      "from": "tom_tat",
+      "to": "tao"
+    }
+  ]
+}

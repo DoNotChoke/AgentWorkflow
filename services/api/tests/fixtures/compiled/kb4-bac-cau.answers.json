@@ -1,0 +1,40 @@
+{
+  "ten": "Tổng hợp kênh Slack sang Notion",
+  "buoc": {
+    "l1.b1": {
+      "chon": "giu",
+      "id": "doc"
+    },
+    "l1.b2": {
+      "chon": "giu",
+      "id": "tao"
+    }
+  },
+  "gia_tri": {
+    "N1": {
+      "chon": "const"
+    },
+    "N2": {
+      "chon": "const"
+    },
+    "N3": {
+      "chon": "const"
+    },
+    "N4": {
+      "chon": "llm",
+      "node": "tom_tat"
+    },
+    "N5": {
+      "chon": "const"
+    }
+  },
+  "llm": [
+    {
+      "id": "tom_tat",
+      "instructions": "Tóm tắt các tin nhắn Slack trong `messages` thành một tiêu đề cấp hai và một gạch đầu dòng cho mỗi tin nhắn. Giữ nguyên ngôn ngữ của tin nhắn.",
+      "dau_vao": {
+        "messages": "l1.b1:messages"
+      }
+    }
+  ]
+}

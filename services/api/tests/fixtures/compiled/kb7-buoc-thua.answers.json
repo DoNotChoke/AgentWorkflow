@@ -1,0 +1,43 @@
+{
+  "ten": "Đăng link trang Notion vào Slack",
+  "buoc": {
+    "l1.b1": {
+      "chon": "giu",
+      "id": "kenh"
+    },
+    "l2.b1": {
+      "chon": "bo",
+      "ly_do": "Tin thử `ping`, không thuộc nhiệm vụ."
+    },
+    "l3.b1": {
+      "chon": "bo",
+      "ly_do": "Tìm nhầm trang EC2; người dùng đã sửa lại ở lượt sau."
+    },
+    "l4.b1": {
+      "chon": "giu",
+      "id": "tim"
+    },
+    "l4.b2": {
+      "chon": "giu",
+      "id": "dang"
+    }
+  },
+  "gia_tri": {
+    "N4": {
+      "chon": "workflow_input",
+      "ten": "ten_trang"
+    },
+    "N5": {
+      "chon": "from_step",
+      "ung_vien": 1
+    },
+    "N6": {
+      "chon": "from_step",
+      "ung_vien": 1,
+      "khoa": "name",
+      "nguon_khoa": {
+        "chon": "const"
+      }
+    }
+  }
+}

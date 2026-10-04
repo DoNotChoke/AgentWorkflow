@@ -1,0 +1,62 @@
+{
+  "schema_version": "2.1",
+  "nodes": [
+    {
+      "id": "t",
+      "type": "trigger",
+      "trigger": "manual",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kenh"
+        ],
+        "properties": {
+          "kenh": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "doc",
+      "type": "tool",
+      "tool_id": "slack.get_channel_history",
+      "tool_version": "1.0",
+      "input": {
+        "channel": {
+          "from_input": "kenh"
+        }
+      }
+    },
+    {
+      "id": "dem",
+      "type": "transform",
+      "code": "messages = args['messages']\ntotal = len(messages)\ncounts = {}\nfor m in messages:\n    u = m.get('user', 'unknown')\n    counts[u] = counts.get(u, 0) + 1\nreturn {'total': total, 'counts': counts}",
+      "args": {
+        "messages": {
+          "from_node": {
+            "node": "doc",
+            "path": [
+              "messages"
+            ]
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "t",
+      "to": "doc"
+    },
+    {
+      "from": "doc",
+      "to": "dem"
+    }
+  ]
+}

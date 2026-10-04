@@ -1,0 +1,28 @@
+{
+  "ten": "Đăng tin vào kênh theo tên",
+  "buoc": {
+    "l1.b1": {
+      "chon": "giu",
+      "id": "kenh"
+    },
+    "l1.b2": {
+      "chon": "giu",
+      "id": "dang"
+    }
+  },
+  "gia_tri": {
+    "N1": {
+      "chon": "workflow_input",
+      "ten": "noi_dung"
+    },
+    "N2": {
+      "chon": "from_step",
+      "ung_vien": 1,
+      "khoa": "name",
+      "nguon_khoa": {
+        "chon": "workflow_input",
+        "ten": "ten_kenh"
+      }
+    }
+  }
+}

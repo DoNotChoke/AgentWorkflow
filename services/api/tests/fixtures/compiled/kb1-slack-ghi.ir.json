@@ -1,0 +1,43 @@
+{
+  "schema_version": "2.0",
+  "nodes": [
+    {
+      "id": "t",
+      "type": "trigger",
+      "trigger": "manual",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "noi_dung"
+        ],
+        "properties": {
+          "noi_dung": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "dang",
+      "type": "tool",
+      "tool_id": "slack.post_message",
+      "tool_version": "1.0",
+      "input": {
+        "text": {
+          "from_input": "noi_dung"
+        },
+        "channel": {
+          "const": "C0VIDU00002"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "t",
+      "to": "dang"
+    }
+  ]
+}

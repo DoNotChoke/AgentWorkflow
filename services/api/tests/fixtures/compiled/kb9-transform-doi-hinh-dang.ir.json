@@ -1,0 +1,64 @@
+{
+  "schema_version": "2.1",
+  "nodes": [
+    {
+      "id": "t",
+      "type": "trigger",
+      "trigger": "manual",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "so_tin"
+        ],
+        "properties": {
+          "so_tin": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    {
+      "id": "doc",
+      "type": "tool",
+      "tool_id": "slack.get_channel_history",
+      "tool_version": "1.0",
+      "input": {
+        "limit": {
+          "from_input": "so_tin"
+        },
+        "channel": {
+          "const": "C0VIDU00002"
+        }
+      }
+    },
+    {
+      "id": "doi",
+      "type": "transform",
+      "code": "return [{\"type\": \"bulleted_list_item\", \"text\": m[\"text\"]} for m in args[\"messages\"]]",
+      "args": {
+        "messages": {
+          "from_node": {
+            "node": "doc",
+            "path": [
+              "messages"
+            ]
+          }
+        }
+      },
+      "output_schema": {
+        "type": "array"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "t",
+      "to": "doc"
+    },
+    {
+      "from": "doc",
+      "to": "doi"
+    }
+  ]
+}

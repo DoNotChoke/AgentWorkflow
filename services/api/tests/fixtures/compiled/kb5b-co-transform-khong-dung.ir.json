@@ -1,0 +1,98 @@
+{
+  "schema_version": "2.1",
+  "nodes": [
+    {
+      "id": "t",
+      "type": "trigger",
+      "trigger": "manual",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "nguong"
+        ],
+        "properties": {
+          "nguong": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    {
+      "id": "lich_su",
+      "type": "tool",
+      "tool_id": "slack.get_channel_history",
+      "tool_version": "1.0",
+      "input": {
+        "channel": {
+          "const": "C0VIDU00002"
+        }
+      }
+    },
+    {
+      "id": "dem",
+      "type": "transform",
+      "code": "return len(args['messages'])",
+      "args": {
+        "messages": {
+          "from_node": {
+            "node": "lich_su",
+            "path": [
+              "messages"
+            ]
+          }
+        }
+      },
+      "output_schema": {
+        "type": "integer"
+      }
+    },
+    {
+      "id": "du_nhieu",
+      "type": "condition",
+      "left": {
+        "from_node": {
+          "node": "dem",
+          "path": []
+        }
+      },
+      "op": "gt",
+      "right": {
+        "from_input": "nguong"
+      }
+    },
+    {
+      "id": "dang",
+      "type": "tool",
+      "tool_id": "slack.post_message",
+      "tool_version": "1.0",
+      "input": {
+        "text": {
+          "const": "[WP-D] kịch bản 5 — nhánh đúng"
+        },
+        "channel": {
+          "const": "C0VIDU00002"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "t",
+      "to": "lich_su"
+    },
+    {
+      "from": "lich_su",
+      "to": "dem"
+    },
+    {
+      "from": "dem",
+      "to": "du_nhieu"
+    },
+    {
+      "from": "du_nhieu",
+      "to": "dang",
+      "branch": "true"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "ten": "Đếm tin nhắn theo người gửi",
+  "buoc": {
+    "l1.b1": {
+      "chon": "giu",
+      "id": "doc"
+    },
+    "l1.b2": {
+      "chon": "giu",
+      "id": "dem"
+    }
+  },
+  "gia_tri": {
+    "N1": {
+      "chon": "workflow_input",
+      "ten": "kenh"
+    },
+    "N2": {
+      "chon": "from_step",
+      "ung_vien": 1
+    }
+  }
+}

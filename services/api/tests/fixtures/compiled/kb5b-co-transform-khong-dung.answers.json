@@ -1,0 +1,54 @@
+{
+  "ten": "Đăng tin khi kênh đủ nhiều tin nhắn",
+  "buoc": {
+    "l1.b1": {
+      "chon": "giu",
+      "id": "lich_su"
+    },
+    "l1.b2": {
+      "chon": "giu",
+      "id": "dang"
+    }
+  },
+  "gia_tri": {
+    "N1": {
+      "chon": "mac_dinh_cua_tool"
+    },
+    "N2": {
+      "chon": "const"
+    },
+    "N3": {
+      "chon": "const"
+    },
+    "N4": {
+      "chon": "const"
+    }
+  },
+  "tinh_toan": [
+    {
+      "id": "dem",
+      "sau_buoc": "l1.b1",
+      "code": "return len(args['messages'])",
+      "ket_qua": "integer",
+      "args": {
+        "messages": {
+          "chon": "du_lieu",
+          "nguon": "l1.b1:messages"
+        }
+      }
+    }
+  ],
+  "dieu_kien": [
+    {
+      "id": "du_nhieu",
+      "truoc_buoc": "l1.b2",
+      "trai": "dem",
+      "op": "gt",
+      "phai": {
+        "chon": "workflow_input",
+        "ten": "nguong",
+        "gia_tri": 5
+      }
+    }
+  ]
+}
