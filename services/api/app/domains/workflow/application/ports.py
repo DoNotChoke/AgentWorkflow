@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from app.domains.workflow.domain.entities import Workflow, WorkflowDraft, WorkflowVersion
 
@@ -161,3 +161,55 @@ class WorkflowRepository(Protocol):
     async def list_versions(self, *, tenant_id: str, workflow_id: str) -> list[WorkflowVersion]: ...
 
     async def latest_version_number(self, *, tenant_id: str, workflow_id: str) -> int | None: ...
+
+
+class TransformRunner(Protocol):
+    """Chạy code của một node `transform` trong sandbox. Hiện thực ở tiến trình được phép
+    nạp sandbox — Agent Runtime, worker — không bao giờ ở Control Plane (contract 8)."""
+
+    def run(self, code: str, args: Mapping[str, Any]) -> Any:
+        """Giá trị `code` trả về. Ném `AppError` khi code không chạy được."""
+
+
+@dataclass(frozen=True, slots=True)
+class DialogueTurn:
+    """Một lượt trong cửa sổ chat của phiên biên dịch."""
+
+    role: Literal["user", "assistant"]
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class IntentReply:
+    #: Đề xuất ý đồ ở dạng thô, hoặc `None` khi model chọn hỏi lại.
+    proposal: Mapping[str, Any] | None
+    text: str = ""
+
+
+class IntentAdvisor(Protocol):
+    """Model hiểu ý đồ. Chỉ thấy bản tóm tắt conversation, không thấy payload."""
+
+    async def propose(self, *, digest: str, dialogue: Sequence[DialogueTurn]) -> IntentReply: ...
+
+
+@dataclass(frozen=True, slots=True)
+class AnswerAttempt:
+    """Một lần trả lời đã bị ba tầng kiểm từ chối, kèm lý do theo từng câu hỏi."""
+
+    answers: Mapping[str, Any]
+    errors: Sequence[str]
+
+
+class AnswerAdvisor(Protocol):
+    """Model trả lời tập câu hỏi theo ý đồ đã chấp nhận."""
+
+    async def answer(
+        self,
+        *,
+        briefing: str,
+        schema: Mapping[str, Any],
+        attempts: Sequence[AnswerAttempt],
+        comment: str | None = None,
+        previous: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
+        """Câu trả lời thô. Rỗng khi model không nộp gì — tầng kiểm 1 sẽ báo."""
