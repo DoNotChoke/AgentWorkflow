@@ -24,6 +24,7 @@ from app.domains.workflow.domain.ir import (
     Node,
     Path,
     ToolNode,
+    TransformNode,
     TriggerNode,
     WorkflowIR,
 )
@@ -242,7 +243,7 @@ class _CatalogCheck:
             case ToolNode():
                 contract = self._contracts.get(node.id)
                 return None if contract is None else contract.output_schema
-            case LlmNode():
+            case LlmNode() | TransformNode():
                 return node.output_schema
             case LoopNode():
                 collected = self._output_schema(node.collect)

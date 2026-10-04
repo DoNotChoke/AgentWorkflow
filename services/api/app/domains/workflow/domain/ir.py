@@ -123,7 +123,19 @@ class LlmNode:
     label: str | None = None
 
 
-BodyNode = ToolNode | LlmNode
+@dataclass(frozen=True, slots=True)
+class TransformNode:
+    """Chạy `code` trong sandbox. Output của node là giá trị `code` trả về."""
+
+    id: str
+    #: Thân của một hàm nhận đúng một tham số `args`.
+    code: str
+    args: Mapping[str, Binding]
+    output_schema: Mapping[str, Any]
+    label: str | None = None
+
+
+BodyNode = ToolNode | LlmNode | TransformNode
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,7 +149,7 @@ class LoopNode:
     label: str | None = None
 
 
-Node = TriggerNode | ToolNode | ConditionNode | LlmNode | LoopNode
+Node = TriggerNode | ToolNode | ConditionNode | LlmNode | LoopNode | TransformNode
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,8 +178,10 @@ class WorkflowIR:
 
 # ─── Parse ───────────────────────────────────────────────────────────────────
 
-_KNOWN_TOP: Final = frozenset({"trigger", "tool", "condition", "llm", "loop"})
-_KNOWN_BODY: Final = frozenset({"tool", "llm"})
+_KNOWN_TOP: Final = frozenset({"trigger", "tool", "condition", "llm", "loop", "transform"})
+_KNOWN_BODY: Final = frozenset({"tool", "llm", "transform"})
+#: Loại node thêm vào sau `major.0`, kèm minor đầu tiên có nó.
+_SINCE_MINOR: Final = {"transform": 1}
 
 
 def parse(document: Mapping[str, Any]) -> WorkflowIR:
@@ -185,6 +199,7 @@ def parse(document: Mapping[str, Any]) -> WorkflowIR:
         document = upgrade_v1(document)
     _ensure_shape(document, CURRENT_MAJOR)
     _ensure_known_node_types(document)
+    _ensure_declared_minor(document)
 
     return WorkflowIR(
         schema_version=document["schema_version"],
@@ -274,6 +289,26 @@ def _ensure_known_node_types(document: Mapping[str, Any]) -> None:
                 _reject_unknown(inner, _KNOWN_BODY, f"/nodes/{index}/body/{inner_index}")
 
 
+def _ensure_declared_minor(document: Mapping[str, Any]) -> None:
+    """Tài liệu khai `2.0` thì không được chứa thứ chỉ có từ `2.1`: một trình đọc cũ tin
+    vào con số đó để biết nó hiểu được tài liệu hay không (§41)."""
+    minor = int(document["schema_version"].partition(".")[2])
+    for raw in document["nodes"]:
+        for inner in (raw, *raw.get("body", ())):
+            since = _SINCE_MINOR.get(inner["type"], 0)
+            if since > minor:
+                raise WorkflowDefinitionError(
+                    f"Node loại {inner['type']!r} (node {inner['id']!r}) có từ IR "
+                    f"{CURRENT_MAJOR}.{since}, mà tài liệu khai {document['schema_version']}.",
+                    details={
+                        "node": inner["id"],
+                        "type": inner["type"],
+                        "schema_version": document["schema_version"],
+                        "since": f"{CURRENT_MAJOR}.{since}",
+                    },
+                )
+
+
 def _reject_unknown(raw: Mapping[str, Any], known: frozenset[str], where: str) -> None:
     if raw["type"] not in known:
         raise WorkflowDefinitionError(
@@ -324,6 +359,14 @@ def _body_node(raw: Mapping[str, Any]) -> BodyNode:
             tool_id=raw["tool_id"],
             tool_version=raw["tool_version"],
             input=_binding_map(raw["input"]),
+            label=label,
+        )
+    if kind == "transform":
+        return TransformNode(
+            id=raw["id"],
+            code=raw["code"],
+            args=_binding_map(raw["args"]),
+            output_schema=raw["output_schema"],
             label=label,
         )
     return LlmNode(
@@ -414,6 +457,13 @@ def _node_document(node: Node) -> dict[str, Any]:
                 "model": node.model,
                 "instructions": node.instructions,
                 "input": _binding_map_document(node.input),
+                "output_schema": node.output_schema,
+            }
+        case TransformNode():
+            raw |= {
+                "type": "transform",
+                "code": node.code,
+                "args": _binding_map_document(node.args),
                 "output_schema": node.output_schema,
             }
         case LoopNode():

@@ -9,13 +9,15 @@ và compiler (ADR-0008) cần biết draft nó sinh ra hỏng ở đâu.
 
 from __future__ import annotations
 
+import ast
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from typing import Any, Final
 
 import jsonschema
 
+from app.core import codeguard
 from app.core.errors import WorkflowDefinitionError
 from app.domains.workflow.domain.ir import (
     Binding,
@@ -30,9 +32,17 @@ from app.domains.workflow.domain.ir import (
     Node,
     Path,
     ToolNode,
+    TransformNode,
     TriggerNode,
     WorkflowIR,
 )
+
+#: Cùng trần với `Limits.code_bytes` của sandbox: code dài hơn thì lúc chạy cũng bị từ chối.
+MAX_CODE_BYTES: Final = 4096
+#: Chuỗi dài hơn thế này trong code nhiều khả năng là nội dung nghiệp vụ, không phải tên trường.
+_LONG_STRING: Final = 32
+#: Số mà code nào cũng dùng. Số khác — một ngưỡng, một giới hạn — nên đi qua `args`.
+_PLAIN_NUMBERS: Final = frozenset({0, 1})
 
 
 class Severity(StrEnum):
@@ -134,6 +144,9 @@ def bindings_of(node: Node) -> Iterator[tuple[Path, Binding]]:
             yield ("left",), node.left
             if node.right is not None:
                 yield ("right",), node.right
+        case TransformNode():
+            for key, binding in node.args.items():
+                yield ("args", key), binding
         case LoopNode():
             yield ("over",), node.over
             for key, binding in (node.filter or {}).items():
@@ -153,6 +166,7 @@ def validate_structure(ir: WorkflowIR) -> ValidationReport:
     issues += graph_issues
     issues += _loops(ir)
     issues += _schemas(ir)
+    issues += _code(ir)
     if acyclic:
         issues += _bindings(ir)
     return ValidationReport(tuple(issues))
@@ -328,7 +342,7 @@ def _schemas(ir: WorkflowIR) -> Iterator[Issue]:
     for _, node in ir.walk():
         if isinstance(node, TriggerNode):
             yield from _check_schema(node.id, ("input_schema",), node.input_schema)
-        elif isinstance(node, LlmNode):
+        elif isinstance(node, LlmNode | TransformNode):
             yield from _check_schema(node.id, ("output_schema",), node.output_schema)
 
 
@@ -342,6 +356,64 @@ def _check_schema(node_id: str, field: Path, schema: Mapping[str, Any]) -> Itera
             node=node_id,
             field=field,
         )
+
+
+# ─── Code ────────────────────────────────────────────────────────────────────
+
+
+def _code(ir: WorkflowIR) -> Iterator[Issue]:
+    """Chỉ đọc code, không chạy nó: sandbox không bao giờ được nạp ở chỗ publish."""
+    for _, node in ir.walk():
+        if not isinstance(node, TransformNode):
+            continue
+        size = len(node.code.encode("utf-8"))
+        if size > MAX_CODE_BYTES:
+            yield Issue(
+                "code_qua_dai",
+                f"Code của {node.id} dài {size} byte, trần là {MAX_CODE_BYTES} byte.",
+                node=node.id,
+                field=("code",),
+            )
+            continue
+        try:
+            tree = codeguard.parse(node.code)
+        except codeguard.UnsafeCodeError as exc:
+            # Dòng 1 là dòng `def` bọc ngoài.
+            line = "" if exc.line is None else f" (dòng {max(exc.line - 1, 1)})"
+            yield Issue(
+                "code_khong_an_toan",
+                f"Code của {node.id} không chạy được trong sandbox{line}: {exc.reason}",
+                node=node.id,
+                field=("code",),
+            )
+            continue
+        hard_coded = _hard_coded(tree)
+        if hard_coded:
+            yield Issue(
+                "hang_viet_cung",
+                f"Code của {node.id} viết cứng {', '.join(hard_coded)}. Giá trị nghiệp vụ nên "
+                "đi vào qua `args`, để đổi được mà không sửa code.",
+                severity=Severity.WARNING,
+                node=node.id,
+                field=("code",),
+            )
+
+
+def _hard_coded(tree: ast.AST) -> list[str]:
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Constant):
+            continue
+        value = node.value
+        if isinstance(value, str) and len(value) > _LONG_STRING:
+            found.append(repr(value[:_LONG_STRING] + "…"))
+        elif (
+            isinstance(value, int | float)
+            and not isinstance(value, bool)
+            and value not in _PLAIN_NUMBERS
+        ):
+            found.append(repr(value))
+    return found
 
 
 # ─── Binding ─────────────────────────────────────────────────────────────────

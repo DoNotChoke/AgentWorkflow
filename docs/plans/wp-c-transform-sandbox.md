@@ -208,11 +208,15 @@ không. Bù bằng ba thứ, theo thứ tự mạnh dần:
 
 **Nhóm B — workflow** (sau GĐ 5 của WP-B, khi node `tool` đã chạy thật)
 
-3. `feat(schemas): transform, the only node that runs code` — IR lên `1.1`:
-   node `transform`, luật validate (code qua whitelist, `args` là binding,
-   `output_schema` hợp lệ, trần độ dài, cảnh báo hằng viết cứng). Viết lại kb5
-   bằng `transform` + `condition`, thêm kb7: chép nguyên tin nhắn Slack sang
-   Notion không dùng `llm`.
+3. ✅ `feat(schemas): transform, the only node that runs code` — IR lên **`2.1`**
+   (v2 đã ra trong lúc chờ, ADR-0014): node `transform` ở tầng ngoài và trong thân
+   loop, luật validate (code qua whitelist, `args` là binding, `output_schema` hợp
+   lệ, trần 4096 byte, cảnh báo `hang_viet_cung`). kb5 viết lại bằng `transform` +
+   `condition gt`. Làm **trước** GĐ 5 của WP-B, vì compiler (WP-D) cần đích đến này;
+   executor vẫn từ chối node cho tới commit 4. Ví dụ chép nguyên tin nhắn Slack sang
+   Notion chưa thêm — tên kb7 đã thuộc về WP-D.
+
+   Ba điều lộ ra khi làm, xem §6c.
 4. `feat(api): the executor runs a transform node` — activity gọi sandbox, queue
    `data-processing`, ghi `node_executions` và bước trace.
 5. `feat(api): publishing a transform checks it against the run that created it`
@@ -320,6 +324,51 @@ whitelist thật — một danh sách sai ở đây dạy model sai theo cách k
 **P1 đã được sửa, quan sát được trong trace thật**: bước `system.transform` là
 bước gốc, không có bước Gateway bên dưới, và tự mang cả `input` lẫn `output`
 payload — cả ở đường hỏng.
+
+---
+
+## 6c. Ghi chép khi hiện thực commit 3 (2026-10-01)
+
+**Vòng duyệt AST rời khỏi gói sandbox.** §5 đòi publish kiểm code qua whitelist, mà
+publish chạy trong Control Plane — nơi contract 8 cấm nạp `app.core.sandbox`. Hai
+đòi hỏi đó mâu thuẫn chừng nào bộ duyệt còn nằm trong gói chạy code. Nên `guard.py`
+thành `app/core/codeguard.py`: chỉ đọc AST, chỉ thư viện chuẩn, Control Plane nạp
+được. `core/sandbox` giữ phần chạy và vẫn bị contract 8 cấm. Tiến trình con nạp
+`codeguard.py` bằng `importlib` theo đường dẫn, **không** thêm `app/core` vào
+`sys.path` — chặt hơn trước, khi nó thêm thư mục `sandbox/`.
+
+**Version khai trong tài liệu được canh.** Tài liệu `2.0` chứa `transform` bị `parse`
+từ chối với `since: "2.1"`. Không có luật này thì con số minor không nói được gì.
+
+**Có `system.transform` không có nghĩa là model dùng nó.** Chạy lại kb5 hai lần với
+Agent bật đủ 12 tool cộng `system.transform` — lần hai có cả prompt hệ thống dặn
+*"khi đếm, luôn gọi system.transform"*. Cả hai lần model không gọi nó. Lần hai nó
+xin `limit: 6`: nhận đủ 6 tin nghĩa là *nhiều hơn 5*, không cần đếm. Đúng, rẻ, và
+không để lại phép so nào trong trace. Fixture: `kb5b-co-transform-khong-dung`.
+
+Hệ quả: câu ở commit 2 — *"chạy lại sáu kịch bản sẽ thấy Agent dùng code thay vì tự
+nhẩm"* — **không đúng với kb5**. Model chỉ dùng `transform` khi phép tính không
+nhẩm nổi (đếm 52 tin theo từng người, kb10) hoặc khi phải chép nguyên văn (kb9).
+Compiler vì vậy không thể trông vào trace để có node `transform` cho một điều kiện;
+xem WP-D.
+
+**Model chép dữ liệu vào `args` bằng tay, và chỉ chép trường nó cần.** Ở kb9,
+`get_channel_history` trả mỗi tin nhắn năm trường; `args.messages` model gửi cho
+`transform` chỉ còn `{"text": …}`. Dữ liệu đi **qua ngữ cảnh của model** rồi mới vào
+sandbox — nó có thể chép sai, và binding của node `transform` không thể tìm bằng cách
+so nguyên cây con. Điểm 3 của §5 (chạy lại code trên output thật rồi so kết quả) vì
+thế không còn là tuỳ chọn: nó là cách duy nhất biết binding `args` đã đúng.
+
+**`system.transform` thành tool dựng sẵn của mọi Agent.** Commit 2 để nó đi qua
+whitelist như mọi tool khác. Nhưng màn hình tạo Agent chỉ liệt kê tool của catalog, và
+tool này cố ý không nằm trong catalog (§4.1) — nên qua giao diện không Agent nào bật
+được nó; trong dev DB chỉ có ba Agent tạo bằng API là có. Giờ `BUILT_IN_TOOL_IDS` ở
+`agent/domain/entities.py` khai nó là dựng sẵn: `TransformTool.list_tools` luôn gửi nó
+cho model, `Agent.allows_tool` luôn cho gọi. Nó không chạm ra ngoài và không dùng
+connection, nên whitelist không có gì để canh. Kiểm trên "Notion-Slack Agent" gốc
+(không bật gì thêm): hỏi *"mỗi người gửi bao nhiêu tin"*, model gọi
+`get_channel_history` rồi `system.transform` — một lần bị guard chặn, tự sửa, rồi ra
+kết quả.
 
 ---
 

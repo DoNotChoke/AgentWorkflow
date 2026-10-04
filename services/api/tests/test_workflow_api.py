@@ -160,7 +160,7 @@ def test_canh_bao_khong_chan_publish(client: TestClient) -> None:
     """`chi_so_tho` là cảnh báo: chạy được, nhưng gần như chắc không đúng ý."""
     nguoi = Nguoi(client)
     workflow_id = _create(nguoi)
-    ir = _example("kb5-re-nhanh")
+    ir = _example("kb3-notion-doc-sau")
 
     saved = nguoi.put(f"/v1/workflows/{workflow_id}/draft", json={"ir": ir}).json()
 

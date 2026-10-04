@@ -147,13 +147,35 @@ def test_than_loop_khong_chua_node_dieu_khien(kind: str) -> None:
     assert list(VALIDATOR.iter_errors(document))
 
 
-def test_transform_la_mot_loai_chua_biet() -> None:
-    """`transform` chạy code là node của WP-C. Hiện nó chưa tồn tại, nên schema
-    đối xử với nó như mọi loại chưa biết — cho qua, để `parse` từ chối."""
-    document = _broken(
-        lambda d: d["nodes"].append({"id": "doi", "type": "transform", "code": "return 1"})
-    )
+def _transform(**overrides: Any) -> dict[str, Any]:
+    return {
+        "id": "doi",
+        "type": "transform",
+        "code": "return 1",
+        "args": {},
+        "output_schema": {"type": "integer"},
+    } | overrides
+
+
+def test_transform_la_mot_loai_da_biet() -> None:
+    document = _broken(lambda d: d["nodes"].append(_transform()))
     assert list(VALIDATOR.iter_errors(document)) == []
+
+
+@pytest.mark.parametrize(
+    "hong",
+    [
+        {"id": "doi", "type": "transform", "code": "return 1"},
+        _transform(code=""),
+        _transform(code="x" * 4097),
+        _transform(model="claude-sonnet-5"),
+    ],
+    ids=["thieu_args_va_output_schema", "code_rong", "code_qua_dai", "truong_la"],
+)
+def test_transform_sai_hinh_dang_khong_lot_qua_cua_node_chua_biet(hong: dict[str, Any]) -> None:
+    """Đã là loại biết rồi thì không còn được đi cửa `unknownNode`."""
+    document = _broken(lambda d: d["nodes"].append(hong))
+    assert list(VALIDATOR.iter_errors(document))
 
 
 def test_node_chua_biet_van_qua_schema() -> None:

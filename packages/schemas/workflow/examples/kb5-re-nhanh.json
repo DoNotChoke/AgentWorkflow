@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.0",
+  "schema_version": "2.1",
   "nodes": [
     {
       "id": "t",
@@ -24,18 +24,37 @@
       }
     },
     {
+      "id": "dem",
+      "type": "transform",
+      "code": "return len(args['messages'])",
+      "args": {
+        "messages": {
+          "from_node": {
+            "node": "lich_su",
+            "path": [
+              "messages"
+            ]
+          }
+        }
+      },
+      "output_schema": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    {
       "id": "du_nhieu",
       "type": "condition",
       "left": {
         "from_node": {
-          "node": "lich_su",
-          "path": [
-            "messages",
-            "5"
-          ]
+          "node": "dem",
+          "path": []
         }
       },
-      "op": "exists"
+      "op": "gt",
+      "right": {
+        "const": 5
+      }
     },
     {
       "id": "dang",
@@ -59,6 +78,10 @@
     },
     {
       "from": "lich_su",
+      "to": "dem"
+    },
+    {
+      "from": "dem",
       "to": "du_nhieu"
     },
     {

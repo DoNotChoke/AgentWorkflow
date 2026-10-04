@@ -113,7 +113,7 @@ def _from(node: str, *path: str, **extra: Any) -> dict[str, Any]:
         ("kb2-slack-doc-roi-ghi", []),
         ("kb3-notion-doc-sau", ["chi_so_tho"]),
         ("kb4-bac-cau", []),
-        ("kb5-re-nhanh", ["chi_so_tho"]),
+        ("kb5-re-nhanh", []),
         ("kb6-hong-giua-chung", []),
     ],
 )
@@ -460,3 +460,116 @@ def test_duong_vao_output_cua_loop() -> None:
     )
     document["edges"].append({"from": "moi_trang", "to": "gom"})
     assert [(i.node, i.field) for i in _full(document).errors] == [("gom", ("input", "sai"))]
+
+
+# ─── Transform (WP-C) ────────────────────────────────────────────────────────
+
+
+def _transform(node_id: str, code: str, **overrides: Any) -> dict[str, Any]:
+    return {
+        "id": node_id,
+        "type": "transform",
+        "code": code,
+        "args": {"x": {"const": 1}},
+        "output_schema": {"type": "integer"},
+    } | overrides
+
+
+def _v21(*nodes: dict[str, Any]) -> dict[str, Any]:
+    return _flow(*nodes) | {"schema_version": "2.1"}
+
+
+def test_kich_ban_5_dem_bang_code_khong_con_canh_bao_chi_so() -> None:
+    """Trước WP-C, *"nhiều hơn 5 tin nhắn"* phải viết thành `exists` trên `messages.5`."""
+    report = _full(_example("kb5-re-nhanh"))
+    assert report.issues == ()
+
+
+@pytest.mark.parametrize(
+    ("code", "vi_sao"),
+    [
+        ("import os\nreturn 1", "Import"),
+        ("while True:\n    pass", "While"),
+        ("return ().__class__", "__class__"),
+        ("return open('x')", "open"),
+        ("return (", "parse"),
+    ],
+)
+def test_code_khong_qua_duoc_vong_duyet_la_loi_luc_publish(code: str, vi_sao: str) -> None:
+    (issue,) = _structure(_v21(_transform("a", code))).errors
+
+    assert issue.code == "code_khong_an_toan"
+    assert (issue.node, issue.field) == ("a", ("code",))
+    assert vi_sao in issue.message
+
+
+def test_dong_bao_loi_la_dong_trong_code_cua_nguoi_viet() -> None:
+    (issue,) = _structure(_v21(_transform("a", "y = 1\nimport os\nreturn y"))).errors
+
+    assert "(dòng 2)" in issue.message
+
+
+def test_tran_do_dai_code_tinh_bang_byte() -> None:
+    """Schema chặn theo ký tự; sandbox chặn theo byte, và tiếng Việt tốn ba byte một chữ."""
+    code = "return '" + "ế" * 1500 + "'"
+
+    assert len(code) < 4096
+    assert _codes(_structure(_v21(_transform("a", code)))) == ["code_qua_dai"]
+
+
+@pytest.mark.parametrize(
+    ("code", "viet_cung"),
+    [
+        ("return len(args['messages'])", False),
+        ("return args['items'][0]", False),
+        ("return len(args['messages']) > 5", True),
+        ("return [m for m in args['messages'] if m['channel'] == 'C0VIDU0001']", False),
+        ("return 'Kính gửi quý khách hàng, chúng tôi xin thông báo: ' + args['x']", True),
+    ],
+)
+def test_gia_tri_nghiep_vu_viet_cung_trong_code_la_canh_bao(code: str, viet_cung: bool) -> None:
+    """Ngưỡng nằm trong chuỗi code thì compiler không hỏi về nó được (ADR-0008, QĐ 3)."""
+    report = _structure(_v21(_transform("a", code)))
+
+    assert _codes(report) == []
+    assert _codes(report, Severity.WARNING) == (["hang_viet_cung"] if viet_cung else [])
+
+
+def test_args_la_binding_thuong_va_duoc_kiem_nhu_moi_binding() -> None:
+    document = _v21(_transform("a", "return 1", args={"x": _from("khong_co", "y")}))
+
+    (issue,) = _structure(document).errors
+
+    assert issue.code == "binding_node_khong_ton_tai"
+    assert issue.field == ("args", "x")
+
+
+def test_hang_trong_args_la_literal_dia_chi_hoa_duoc() -> None:
+    document = _v21(_transform("a", "return args['nguong']", args={"nguong": {"const": 5}}))
+
+    assert literals(parse(document)) == (
+        LiteralSite(node=("a",), field=("args", "nguong"), value=5),
+    )
+
+
+def test_output_schema_cua_transform_phai_la_json_schema() -> None:
+    document = _v21(_transform("a", "return 1", output_schema={"type": "so_nguyen"}))
+
+    assert _codes(_structure(document)) == ["json_schema_sai"]
+
+
+def test_duong_vao_output_cua_transform_doi_chieu_voi_output_schema() -> None:
+    dem = _transform(
+        "dem",
+        "return {'tong': len(args['x'])}",
+        output_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"tong": {"type": "integer"}},
+        },
+    )
+    document = _v21(dem, _llm("doc", dung=_from("dem", "tong"), sai=_from("dem", "so_luong")))
+
+    assert [(i.code, i.field) for i in _full(document).errors] == [
+        ("duong_khong_ton_tai", ("input", "sai"))
+    ]

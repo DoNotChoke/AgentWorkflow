@@ -22,6 +22,7 @@ from app.domains.workflow.domain.ir import (
     LlmNode,
     LoopNode,
     ToolNode,
+    TransformNode,
     TriggerNode,
     parse,
     to_document,
@@ -69,10 +70,11 @@ def test_loop_mang_than_filter_va_from_item() -> None:
 
 def test_node_llm_va_condition() -> None:
     assert isinstance(parse(_example("kb4-bac-cau")).nodes[2], LlmNode)
-    condition = parse(_example("kb5-re-nhanh")).nodes[2]
+    condition = parse(_example("kb5-re-nhanh")).nodes[3]
     assert isinstance(condition, ConditionNode)
-    assert condition.op is ConditionOp.EXISTS
-    assert condition.right is None
+    assert condition.op is ConditionOp.GT
+    assert condition.left == FromNode(node="dem", path=())
+    assert condition.right == Const(5)
     assert isinstance(parse(_example("kb1-slack-ghi")).nodes[0], TriggerNode)
 
 
@@ -141,14 +143,49 @@ def test_node_chua_ho_tro_bi_tu_choi_va_goi_dung_ten() -> None:
     assert caught.value.details == {"path": "/nodes/2", "node": "cho", "type": "wait"}
 
 
-def test_transform_bi_tu_choi_o_v1() -> None:
-    """Node `transform` chạy code thuộc WP-C. Cho tới lúc đó, mở một tài liệu có
-    nó phải nói rõ là chưa chạy được, không phải im lặng bỏ qua."""
-    document = copy.deepcopy(_example("kb1-slack-ghi"))
-    document["nodes"].append({"id": "doi", "type": "transform", "code": "return 1"})
+def _transform(node_id: str = "doi", **overrides: Any) -> dict[str, Any]:
+    return {
+        "id": node_id,
+        "type": "transform",
+        "code": "return len(args['messages'])",
+        "args": {"messages": {"from_node": {"node": "lich_su", "path": ["messages"]}}},
+        "output_schema": {"type": "integer"},
+    } | overrides
+
+
+def test_node_transform_thanh_kieu() -> None:
+    node = parse(_example("kb5-re-nhanh")).nodes[2]
+
+    assert node == TransformNode(
+        id="dem",
+        code="return len(args['messages'])",
+        args={"messages": FromNode(node="lich_su", path=("messages",))},
+        output_schema={"type": "integer", "minimum": 0},
+    )
+
+
+def test_transform_nam_duoc_trong_than_loop() -> None:
+    document = copy.deepcopy(_example("kb3-notion-doc-sau")) | {"schema_version": "2.1"}
+    document["nodes"][3]["body"].append(
+        _transform("rut", args={"trang": {"from_node": {"node": "doc_trang", "path": []}}})
+    )
+
+    loop = parse(document).nodes[3]
+
+    assert isinstance(loop, LoopNode)
+    assert isinstance(loop.body[1], TransformNode)
+
+
+@pytest.mark.parametrize("version", ["2.0", "1.0"])
+def test_transform_trong_tai_lieu_khai_version_cu_bi_tu_choi(version: str) -> None:
+    """Trình đọc chỉ hiểu 2.0 tin vào con số đó; một tài liệu 2.0 không được chứa thứ
+    chỉ có từ 2.1 (§41)."""
+    document = copy.deepcopy(_example("kb1-slack-ghi")) | {"schema_version": version}
+    document["nodes"].append(_transform())
     with pytest.raises(WorkflowDefinitionError) as caught:
         parse(document)
     assert caught.value.details["type"] == "transform"
+    assert caught.value.details["since"] == "2.1"
 
 
 def test_sai_hinh_dang_bao_duong_tro_toi_cho_sai() -> None:

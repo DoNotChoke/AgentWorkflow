@@ -265,18 +265,24 @@ IR_SCHEMA: Final[dict[str, Any]] = {
                     "$ref": "#/$defs/loopNode",
                 },
                 {
+                    "$ref": "#/$defs/transformNode",
+                },
+                {
                     "$ref": "#/$defs/unknownNode",
                 },
             ],
         },
         "bodyNode": {
-            "description": "Thân loop v1 là một dãy thẳng: không trigger, không condition, không loop lồng. Node `transform` chạy code đến ở WP-C.",
+            "description": "Thân loop là một dãy thẳng: không trigger, không condition, không loop lồng.",
             "oneOf": [
                 {
                     "$ref": "#/$defs/toolNode",
                 },
                 {
                     "$ref": "#/$defs/llmNode",
+                },
+                {
+                    "$ref": "#/$defs/transformNode",
                 },
                 {
                     "$ref": "#/$defs/unknownNode",
@@ -304,6 +310,7 @@ IR_SCHEMA: Final[dict[str, Any]] = {
                             "condition",
                             "llm",
                             "loop",
+                            "transform",
                         ],
                     },
                 },
@@ -467,6 +474,42 @@ IR_SCHEMA: Final[dict[str, Any]] = {
                     "maxLength": 20000,
                 },
                 "input": {
+                    "$ref": "#/$defs/bindingMap",
+                },
+                "output_schema": {
+                    "$ref": "#/$defs/jsonSchema",
+                },
+            },
+        },
+        "transformNode": {
+            "description": "Chạy một đoạn code thuần trong sandbox (WP-C). Có từ 2.1. `code` là thân của một hàm nhận đúng một tham số `args` và `return` một giá trị JSON; output của node là chính giá trị đó. Dữ liệu vào qua `args`, không viết cứng trong code.",
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "id",
+                "type",
+                "code",
+                "args",
+                "output_schema",
+            ],
+            "properties": {
+                "id": {
+                    "$ref": "#/$defs/nodeId",
+                },
+                "type": {
+                    "const": "transform",
+                },
+                "label": {
+                    "type": "string",
+                    "maxLength": 200,
+                },
+                "code": {
+                    "description": "Trần 4096 byte được validator kiểm; ở đây chỉ chặn theo ký tự.",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096,
+                },
+                "args": {
                     "$ref": "#/$defs/bindingMap",
                 },
                 "output_schema": {

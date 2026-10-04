@@ -51,7 +51,7 @@ def _graph(nodes: list[str], edges: list[tuple[str, str]]) -> dict[str, Any]:
         ("kb2-slack-doc-roi-ghi", ("t", "kenh", "dang")),
         ("kb3-notion-doc-sau", ("t", "tim", "con", "moi_trang")),
         ("kb4-bac-cau", ("t", "doc", "tom_tat", "tao")),
-        ("kb5-re-nhanh", ("t", "lich_su", "du_nhieu", "dang")),
+        ("kb5-re-nhanh", ("t", "lich_su", "dem", "du_nhieu", "dang")),
         ("kb6-hong-giua-chung", ("t", "doc")),
     ],
 )

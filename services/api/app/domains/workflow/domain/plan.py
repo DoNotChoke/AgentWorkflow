@@ -14,6 +14,7 @@ from app.domains.workflow.domain.ir import (
     LlmNode,
     LoopNode,
     Node,
+    TransformNode,
     WorkflowIR,
 )
 from app.domains.workflow.domain.validation import ensure_valid, validate_structure
@@ -24,7 +25,7 @@ _PATH: Final = re.compile(
 
 
 #: Loại node mà executor bản này chưa chạy được.
-_UNSUPPORTED: Final = (ConditionNode, LlmNode)
+_UNSUPPORTED: Final = (ConditionNode, LlmNode, TransformNode)
 
 
 def unsupported_nodes(ir: WorkflowIR) -> list[str]:

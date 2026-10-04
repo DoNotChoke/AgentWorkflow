@@ -9,7 +9,7 @@ workflow/
 ├── ir.v2.schema.json     hình dạng của IR v2 — major hiện hành
 ├── ir.v1.schema.json     IR v1, đóng băng: version đã publish vẫn phải đọc được
 ├── build_ir_schema.py    sinh bản Python của schema
-└── examples/             sáu kịch bản GĐ 0, viết tay thành IR
+└── examples/             sáu kịch bản GĐ 0, viết tay thành IR (kb5 ở 2.1, dùng `transform`)
 ```
 
 ## Sinh code
@@ -35,17 +35,30 @@ Schema **để node loại lạ đi qua** (`unknownNode`): editor và compiler p
 được một tài liệu có node mà định dạng này chưa biết. `parse` mới là chỗ từ chối,
 với thông báo nói đúng loại nào.
 
-## Năm node
+## Sáu node
 
-`trigger` · `tool` · `condition` · `llm` · `loop`. `parallel`, `wait`,
+`trigger` · `tool` · `condition` · `llm` · `loop` · `transform`. `parallel`, `wait`,
 `human_approval`, `subworkflow` hoãn — điều kiện mở khoá ở Q2 của plan.
 
-Thân `loop` là một dãy thẳng chỉ gồm `tool` và `llm`: không lồng loop, không rẽ
-nhánh (Q13).
+Thân `loop` là một dãy thẳng chỉ gồm `tool`, `llm` và `transform`: không lồng loop,
+không rẽ nhánh (Q13).
 
-`transform` — node duy nhất chạy code, trong sandbox — đến ở
-[WP-C](../../../docs/plans/wp-c-transform-sandbox.md). Hiện nó là một loại **chưa
-biết**: schema cho tài liệu chứa nó đi qua, `parse` từ chối.
+`transform` — node duy nhất chạy code, trong sandbox — **có từ 2.1**
+([WP-C](../../../docs/plans/wp-c-transform-sandbox.md)). `code` là thân của một hàm nhận
+`args` và `return` một giá trị JSON; output của node là chính giá trị đó, nên node sau
+đọc nó bằng `{"from_node": {"node": "dem", "path": []}}`.
+
+```json
+{ "id": "dem", "type": "transform",
+  "code": "return len(args['messages'])",
+  "args": { "messages": { "from_node": { "node": "lich_su", "path": ["messages"] } } },
+  "output_schema": { "type": "integer" } }
+```
+
+Một tài liệu khai `2.0` mà chứa `transform` bị `parse` từ chối: trình đọc cũ tin vào
+con số đó. Lúc publish, code chỉ được **đọc** — qua vòng duyệt AST, trần 4096 byte,
+và một cảnh báo `hang_viet_cung` khi thấy ngưỡng hay chuỗi dài nằm ngay trong code
+thay vì đi qua `args`. Executor chưa chạy được node này (commit 4 của WP-C).
 
 ## Năm dạng binding
 

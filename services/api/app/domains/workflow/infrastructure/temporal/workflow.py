@@ -31,6 +31,7 @@ with workflow.unsafe.imports_passed_through():
         LoopNode,
         Node,
         ToolNode,
+        TransformNode,
         TriggerNode,
         parse,
     )
@@ -97,6 +98,7 @@ def _ref(path: NodePath, node: Node) -> NodeRefMessage:
         LoopNode: "loop",
         ConditionNode: "condition",
         LlmNode: "llm",
+        TransformNode: "transform",
     }[type(node)]
     return NodeRefMessage(node_path=str(path), node_id=node.id, node_type=kind)
 
