@@ -22,6 +22,10 @@ MIN_MAX_TOOL_CALLS_PER_TURN = 1
 
 MAX_MAX_TOOL_CALLS_PER_TURN = 50
 
+#: Tool dựng sẵn của Agent Runtime: mọi agent đều có, không cần bật. Chúng không chạm ra
+#: ngoài và không dùng connection, nên whitelist không có gì để canh ở đây.
+BUILT_IN_TOOL_IDS: frozenset[str] = frozenset({"system.transform"})
+
 
 @dataclass(frozen=True, slots=True)
 class Agent:
@@ -36,7 +40,7 @@ class Agent:
     created_by: str
     created_at: datetime
     updated_at: datetime
-    #: Whitelist tường minh. Rỗng nghĩa là agent này không gọi được tool nào
+    #: Whitelist tường minh cho tool của provider. Rỗng thì agent chỉ còn tool dựng sẵn.
     enabled_tool_ids: frozenset[str] = frozenset()
     max_tool_calls_per_turn: int = DEFAULT_MAX_TOOL_CALLS_PER_TURN
     archived_at: datetime | None = None
@@ -46,7 +50,7 @@ class Agent:
         return self.archived_at is not None
 
     def allows_tool(self, tool_id: str) -> bool:
-        return tool_id in self.enabled_tool_ids
+        return tool_id in self.enabled_tool_ids or tool_id in BUILT_IN_TOOL_IDS
 
 
 def normalize_name(raw: str) -> str:

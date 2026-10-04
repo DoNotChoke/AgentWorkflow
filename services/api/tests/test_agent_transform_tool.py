@@ -11,13 +11,14 @@ from typing import Any
 
 import pytest
 
+from app.core.codeguard import SAFE_BUILTINS
 from app.core.sandbox import Limits, SandboxError
-from app.core.sandbox.guard import SAFE_BUILTINS
 from app.domains.agent.application.ports import (
     ModelToolSpec,
     ToolCallContext,
     ToolInvocationResult,
 )
+from app.domains.agent.domain.entities import BUILT_IN_TOOL_IDS
 from app.domains.agent.infrastructure.transform_tool import TOOL_ID, TransformTool, spec
 
 ENABLED = frozenset({TOOL_ID, "slack.post_message"})
@@ -109,16 +110,24 @@ def test_mo_ta_liet_ke_dung_nhung_builtin_sandbox_cho_phep() -> None:
         assert name in description, name
 
 
-async def test_agent_khong_bat_thi_khong_thay() -> None:
-    """Cùng luật whitelist với mọi tool khác — không có ngoại lệ cho tool dựng sẵn."""
+@pytest.mark.parametrize("allowed", [frozenset({"slack.post_message"}), frozenset()])
+async def test_agent_khong_bat_van_thay(allowed: frozenset[str]) -> None:
+    """Tool dựng sẵn không qua whitelist: giao diện tạo Agent chỉ liệt kê tool của catalog,
+    nên bắt người dùng bật nó là bắt họ bật một thứ họ không nhìn thấy."""
     tool = _tool()
     specs = await tool.list_tools(
         authorization="Bearer token",
         organization_id="org_1",
         workspace_id="ws_1",
-        allowed_tool_ids=frozenset({"slack.post_message"}),
+        allowed_tool_ids=allowed,
     )
-    assert [spec.name for spec in specs] == ["slack__post_message"]
+    assert specs[-1].name == "system__transform"
+    assert len(specs) == 2
+
+
+def test_ten_tool_khop_voi_danh_sach_dung_san_cua_domain() -> None:
+    """Hai chỗ phải nói cùng một tên: chỗ gửi tool cho model, và chỗ cho phép gọi nó."""
+    assert TOOL_ID in BUILT_IN_TOOL_IDS
 
 
 # ─── Chạy ────────────────────────────────────────────────────────────────────

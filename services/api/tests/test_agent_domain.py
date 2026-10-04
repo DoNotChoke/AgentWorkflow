@@ -131,9 +131,13 @@ def test_so_lan_goi_tool_ngoai_khoang_bi_tu_choi(value: int) -> None:
 # ─── Agent.allows_tool ───────────────────────────────────────────────────────
 
 
-def test_agent_rong_khong_goi_duoc_tool_nao() -> None:
+def test_agent_rong_khong_goi_duoc_tool_nao_cua_provider() -> None:
     agent = make_agent()
     assert agent.allows_tool("slack.post_message") is False
+
+
+def test_tool_dung_san_khong_can_bat() -> None:
+    assert make_agent().allows_tool("system.transform") is True
 
 
 def test_agent_chi_goi_duoc_tool_trong_whitelist() -> None:

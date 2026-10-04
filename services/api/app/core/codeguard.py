@@ -1,9 +1,19 @@
-"""Duyệt AST trước khi chạy: chặn thứ code *viết ra được*."""
+"""Duyệt AST của một đoạn code: chặn thứ code *viết ra được*.
+
+Chỉ đọc, không chạy — nên Control Plane dùng được nó lúc publish, khác với
+`core/sandbox` là thứ chạy code và bị contract 8 cấm ở đó.
+
+**Chỉ dùng thư viện chuẩn.** Tiến trình con của sandbox nạp file này theo đường dẫn,
+không qua package `app`.
+"""
 
 from __future__ import annotations
 
 import ast
 from typing import Final
+
+#: Tên hàm bọc quanh code, để `return` là hợp lệ.
+ENTRY: Final = "entrypoint"
 
 #: Builtin mà code được gọi. Danh sách đóng — không có `open`, `eval`, `getattr`.
 SAFE_BUILTINS: Final[frozenset[str]] = frozenset(
@@ -51,6 +61,18 @@ class UnsafeCodeError(Exception):
         super().__init__(reason)
         self.reason = reason
         self.line = line
+
+
+def parse(code: str) -> ast.Module:
+    """Bọc `code` thành thân của một hàm nhận `args`, rồi duyệt. Ném `UnsafeCodeError`."""
+    indented = "\n".join(f"    {line}" for line in code.splitlines()) or "    pass"
+    source = f"def {ENTRY}(args):\n{indented}\n"
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        raise UnsafeCodeError(f"Code không parse được: {exc.msg}.", exc.lineno) from exc
+    check(tree)
+    return tree
 
 
 def check(tree: ast.AST) -> None:

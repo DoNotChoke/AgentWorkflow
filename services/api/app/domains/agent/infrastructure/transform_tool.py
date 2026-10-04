@@ -6,10 +6,10 @@ import asyncio
 from collections.abc import Mapping, Sequence
 from typing import Any, Final, Protocol
 
+from app.core.codeguard import SAFE_BUILTINS
 from app.core.ids import ResourceKind, new_id
 from app.core.logging import get_logger
 from app.core.sandbox import DEFAULT_LIMITS, Limits, run
-from app.core.sandbox.guard import SAFE_BUILTINS
 from app.domains.agent.application.ports import (
     ModelToolSpec,
     ToolCallContext,
@@ -92,9 +92,7 @@ class TransformTool:
             workspace_id=workspace_id,
             allowed_tool_ids=allowed_tool_ids,
         )
-        # Cùng luật whitelist với mọi tool khác: Agent phải bật nó lên.
-        if TOOL_ID not in allowed_tool_ids:
-            return tools
+        # Tool dựng sẵn: agent nào cũng có, không qua whitelist.
         return (*tools, self._spec)
 
     async def invoke(

@@ -9,8 +9,8 @@ Không bao giờ gọi trực tiếp; `runner.py` là người gọi.
 
 from __future__ import annotations
 
-import ast
 import builtins
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -24,12 +24,20 @@ for _stream in (sys.stdin, sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import guard  # type: ignore[import-not-found]  # noqa: E402 — nạp theo đường dẫn
+def _load_guard() -> Any:
+    """Nạp đúng một file theo đường dẫn. Không thêm gì vào `sys.path`: thư mục chứa nó
+    là `app/core`, và code trong sandbox không được thấy thứ gì ở đó."""
+    spec = importlib.util.spec_from_file_location(
+        "guard", Path(__file__).resolve().parents[1] / "codeguard.py"
+    )
+    assert spec is not None and spec.loader is not None  # noqa: S101
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
-#: Tên hàm bọc quanh code người dùng, để `return` là hợp lệ.
-ENTRY = "entrypoint"
+
+guard = _load_guard()
 
 
 def limit_memory(limit_bytes: int) -> bool:
@@ -49,20 +57,13 @@ def limit_memory(limit_bytes: int) -> bool:
 
 def build(code: str) -> Any:
     """Bọc code thành một hàm, duyệt AST, rồi biên dịch."""
-    indented = "\n".join(f"    {line}" for line in code.splitlines()) or "    pass"
-    source = f"def {ENTRY}(args):\n{indented}\n"
-    try:
-        tree = ast.parse(source)
-    except SyntaxError as exc:
-        raise guard.UnsafeCodeError(f"Code không parse được: {exc.msg}.", exc.lineno) from exc
-
-    guard.check(tree)
+    tree = guard.parse(code)
 
     scope: dict[str, Any] = {
         "__builtins__": {name: getattr(builtins, name) for name in guard.SAFE_BUILTINS}
     }
     exec(compile(tree, "<transform>", "exec"), scope)  # noqa: S102 — đã duyệt ở trên
-    return scope[ENTRY]
+    return scope[guard.ENTRY]
 
 
 def main() -> int:

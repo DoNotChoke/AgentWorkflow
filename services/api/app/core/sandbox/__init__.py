@@ -1,6 +1,6 @@
 """Chạy một đoạn code nhỏ, thuần, do LLM viết — §11.2.
 
-Hai lớp phòng thủ, cần cả hai: `guard.py` duyệt AST trước khi chạy, và mỗi lần
+Hai lớp phòng thủ, cần cả hai: `core/codeguard.py` duyệt AST trước khi chạy, và mỗi lần
 chạy nằm trong một **tiến trình con** có trần thời gian, bộ nhớ và kích thước kết
 quả. Lớp một chặn thứ viết ra được, lớp hai chặn thứ làm được.
 
