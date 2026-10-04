@@ -420,7 +420,26 @@ def _loops(skeleton: Skeleton, found: Sequence[Sources]) -> tuple[LoopCandidate,
         else:
             loops.append(best)
             start += len(best.steps)
-    return _with_lanes(skeleton, loops, by_step)
+
+    # Bước so le: `đọc 1, đăng 1, đọc 2, đăng 2`. Nhóm đầu tiên của chu kỳ lặp trên một
+    # mảng là vòng lặp gốc; các nhóm còn lại để phần làn xét.
+    based = {ref for loop in loops for ref in loop.steps}
+    blocks = list(_blocks(steps))
+    for at, block in enumerate(blocks):
+        if len(block) < 2 or any(step.ref in based for group in block for step in group):
+            continue
+        for split in _strides(block):
+            base = next(
+                (loop for group in split if (loop := _loop(skeleton, group, by_step)) is not None),
+                None,
+            )
+            if base is not None:
+                loops.append(base)
+                blocks[at] = split
+                break
+    order = {step.ref: position for position, step in enumerate(steps)}
+    loops.sort(key=lambda loop: order[loop.steps[0]])
+    return _with_lanes(skeleton, loops, blocks, by_step)
 
 
 def _same_call(first: SkeletonStep, other: SkeletonStep) -> bool:
@@ -497,6 +516,7 @@ def _filter(elements: Sequence[Any], used: set[int]) -> tuple[tuple[str, Any], .
 def _with_lanes(
     skeleton: Skeleton,
     loops: Sequence[LoopCandidate],
+    blocks: Sequence[tuple[_Group, ...]],
     by_step: Mapping[str, Mapping[Path, Sources]],
 ) -> tuple[LoopCandidate, ...]:
     """Gắn vào mỗi vòng lặp những nhóm bước khác chạy một lần cho mỗi vòng của nó."""
@@ -504,14 +524,17 @@ def _with_lanes(
     based = {ref for loop in loops for ref in loop.steps}
     lanes: dict[int, list[Lane]] = {number: [] for number in range(len(loops))}
 
-    for run in _runs(skeleton.steps):
+    for run in (group for block in blocks for group in block):
         if run[0].ref in based:
             continue
-        # Vòng lặp đứng trước nhóm này và có đúng chừng ấy vòng.
+        # Cùng số vòng, và ở mỗi vòng bước của nhóm này chạy sau bước của vòng lặp.
         fitting = [
             number
             for number, loop in enumerate(loops)
-            if len(loop.steps) == len(run) and order[loop.steps[-1]] < order[run[0].ref]
+            if len(loop.steps) == len(run)
+            and all(
+                order[base] < order[step.ref] for base, step in zip(loop.steps, run, strict=True)
+            )
         ]
         placed = False
         for number in fitting:
@@ -531,15 +554,58 @@ def _with_lanes(
     return tuple(replace(loop, lanes=tuple(lanes[number])) for number, loop in enumerate(loops))
 
 
-def _runs(steps: Sequence[SkeletonStep]) -> Iterator[tuple[SkeletonStep, ...]]:
-    """Các nhóm bước liền nhau gọi cùng một tool trong cùng một lượt, dài hết mức."""
+_Group = tuple[SkeletonStep, ...]
+
+
+def _blocks(steps: Sequence[SkeletonStep]) -> Iterator[tuple[_Group, ...]]:
+    """Cắt các bước thành từng khối, mỗi khối là những nhóm bước ứng với nhau theo vòng.
+
+    Khối một nhóm: các bước liền nhau gọi cùng một tool (`A A A`), hoặc một bước lẻ.
+    Khối nhiều nhóm: một chu kỳ lặp lại (`A B A B A B`), mỗi vị trí trong chu kỳ là một nhóm.
+    """
     start = 0
     while start < len(steps):
-        end = start + 1
-        while end < len(steps) and _same_call(steps[start], steps[end]):
-            end += 1
-        yield tuple(steps[start:end])
-        start = end
+        run = 1
+        while start + run < len(steps) and _same_call(steps[start], steps[start + run]):
+            run += 1
+        period, times = _cycle(steps, start)
+        # Chu kỳ chỉ thắng khi nó phủ nhiều bước hơn dãy liền nhau.
+        if period * times > run:
+            yield tuple(
+                tuple(steps[start + offset + period * turn] for turn in range(times))
+                for offset in range(period)
+            )
+            start += period * times
+        else:
+            yield (tuple(steps[start : start + run]),)
+            start += run
+
+
+def _same_shape(first: SkeletonStep, other: SkeletonStep) -> bool:
+    return _same_call(first, other) and list(first.fields) == list(other.fields)
+
+
+def _strides(block: tuple[_Group, ...]) -> Iterator[tuple[_Group, ...]]:
+    """`block`, rồi các cách đọc nó với chu kỳ dài gấp đôi, gấp ba…: một vòng có thể gọi
+    cùng một tool hai lần (`đọc câu hỏi, đăng, đọc đáp án, đăng`)."""
+    times = len(block[0])
+    for stride in range(1, times // 2 + 1):
+        if times % stride == 0:
+            yield tuple(group[offset::stride] for offset in range(stride) for group in block)
+
+
+def _cycle(steps: Sequence[SkeletonStep], start: int) -> tuple[int, int]:
+    """Chu kỳ ngắn nhất bắt đầu ở `start` lặp lại ít nhất hai lần: `(độ dài, số lần)`."""
+    for period in range(2, (len(steps) - start) // 2 + 1):
+        times = 1
+        while start + period * (times + 1) <= len(steps) and all(
+            _same_shape(steps[start + offset], steps[start + period * times + offset])
+            for offset in range(period)
+        ):
+            times += 1
+        if times >= 2:
+            return period, times
+    return 0, 0
 
 
 def _lane(

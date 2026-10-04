@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -459,6 +460,79 @@ def _hai_trang(*sau: SourceStep) -> SourceReport:
             )
         )
     )
+
+
+def _so_le(*, thread: bool = True) -> SourceMaterial:
+    """kb8 xếp lại thành một lượt, mỗi câu hỏi làm đủ bốn việc rồi mới sang câu sau: đọc
+    câu hỏi, đăng, đọc đáp án, trả lời vào thread."""
+    document = json.loads((SOURCES / "kb8-ba-luot.json").read_text(encoding="utf-8"))
+    source = read_source(document)
+    by_ref = {step.ref: step for turn in source.turns for step in turn.steps}
+    order = ["l1.b1", "l1.b2", "l2.b1"]
+    for k in range(6):
+        order += [f"l1.b{3 + k}", f"l2.b{2 + k}", f"l3.b{1 + k}", f"l3.b{7 + k}"]
+    steps = []
+    for number, ref in enumerate(order, start=1):
+        step = replace(by_ref[ref], ref=f"l1.b{number}")
+        if not thread:
+            sent = {name: value for name, value in step.input.items() if name != "thread_ts"}
+            step = replace(step, input=sent)
+        steps.append(step)
+    request = " ".join(turn.request or "" for turn in source.turns)
+    turn = replace(source.turns[0], request=request, steps=tuple(steps))
+    return SourceMaterial(conversation_id=source.conversation_id, turns=(turn,))
+
+
+def test_cac_buoc_so_le_theo_chu_ky_van_la_mot_vong_lap_va_cac_lan() -> None:
+    """`đọc 1, đăng 1, đọc đáp án 1, trả lời 1, đọc 2, …`: không hai bước cùng tool nào
+    đứng liền nhau, nhưng vẫn là sáu vòng của cùng một việc."""
+    (loop,) = find_sources(build_skeleton(_so_le())).loops
+
+    assert loop.steps == tuple(f"l1.b{n}" for n in range(4, 28, 4))
+    assert loop.source == "l1.b2"
+    assert [lane.steps[:2] for lane in loop.lanes] == [
+        ("l1.b5", "l1.b9"),
+        ("l1.b6", "l1.b10"),
+        ("l1.b7", "l1.b11"),
+    ]
+
+
+def test_buoc_so_le_cho_cung_cac_moi_noi_voi_buoc_lien_nhau() -> None:
+    (so_le,) = find_sources(build_skeleton(_so_le())).loops
+    (lien_nhau,) = _report("kb8-ba-luot").loops
+
+    assert [(lane.links, lane.written) for lane in so_le.lanes] == [
+        (lane.links, lane.written) for lane in lien_nhau.lanes
+    ]
+
+
+def test_mot_vong_goi_cung_mot_tool_hai_lan_thi_chu_ky_dai_gap_doi() -> None:
+    """Bỏ `thread_ts` thì hai lần đăng tin của một vòng trông giống hệt nhau, và chu kỳ
+    ngắn nhất là `đọc, đăng`. Đọc theo chu kỳ đó thì không nhóm nào lặp trên một mảng."""
+    (loop,) = find_sources(build_skeleton(_so_le(thread=False))).loops
+
+    assert loop.steps == tuple(f"l1.b{n}" for n in range(4, 28, 4))
+    assert [lane.steps[0] for lane in loop.lanes] == ["l1.b5", "l1.b6", "l1.b7"]
+    assert loop.lanes[2].evidence is LaneEvidence.POSITION
+
+
+def test_chu_ky_khong_lap_tren_mang_nao_thi_khong_phai_vong_lap() -> None:
+    post = {"tool": "slack.post_message"}
+    report = find_sources(
+        _made(
+            (
+                "đọc trang rồi báo, hai lần",
+                [
+                    _call("l1.b1", {"page_id": "blk_aaa"}, {"title": "Trang A"}),
+                    _call("l1.b2", {"text": "Xong trang đầu"}, **post),
+                    _call("l1.b3", {"page_id": "blk_bbb"}, {"title": "Trang B"}),
+                    _call("l1.b4", {"text": "Xong trang sau"}, **post),
+                ],
+            )
+        )
+    )
+
+    assert report.loops == ()
 
 
 def test_so_buoc_khac_so_vong_thi_khong_phai_lan() -> None:

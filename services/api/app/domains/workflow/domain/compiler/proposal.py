@@ -139,7 +139,7 @@ def build_proposal(
         linked=tuple(linked),
         defaults=tuple(defaults),
         dropped=tuple(dropped),
-        loops=tuple(_loops(questions, answers)),
+        loops=tuple(_loops(skeleton, questions, answers)),
         written=tuple(_written(skeleton, answers)),
         conditions=tuple(_conditions(answers)),
         warnings=tuple(f"{issue.question}: {issue.message}" for issue in report.warnings),
@@ -186,7 +186,7 @@ def _link(question: SourceQuestion, chosen: SourceAnswer, answers: Answers) -> s
     return f"lấy từ {source}: phần tử của `{array}` có `{key.field}` = {wanted}"
 
 
-def _loops(questions: QuestionSet, answers: Answers) -> list[str]:
+def _loops(skeleton: Skeleton, questions: QuestionSet, answers: Answers) -> list[str]:
     lines: list[str] = []
     for question in questions.loops:
         answer = answers.loops.get(question.id)
@@ -197,7 +197,7 @@ def _loops(questions: QuestionSet, answers: Answers) -> list[str]:
             lines.append(
                 f"`{loop_id(question.id, answers)}`: lặp trên từng phần tử của {source} "
                 f"(lần chạy mẫu: {len(question.loop.steps)} phần tử)"
-                + "".join(f"\n  - {line}" for line in _lanes(question, answers))
+                + "".join(f"\n  - {line}" for line in _lanes(skeleton, question, answers))
             )
         else:
             lines.append(
@@ -207,17 +207,22 @@ def _loops(questions: QuestionSet, answers: Answers) -> list[str]:
     return lines
 
 
-def _lanes(question: LoopQuestion, answers: Answers) -> list[str]:
+def _lanes(skeleton: Skeleton, question: LoopQuestion, answers: Answers) -> list[str]:
     """Thân vòng lặp nhiều bước: thứ tự chạy, và mỗi mối nối suy ra từ lần chạy mẫu."""
     loop = question.loop
     lanes = included_lanes(question, answers)
     if len(lanes) < 2:
         return []
     names = {lane: f"`{answers.node_id(loop.lane_steps(lane)[0])}`" for lane in lanes}
-    lines = [
-        f"mỗi vòng chạy lần lượt {' → '.join(names[lane] for lane in lanes)}. Lần chạy mẫu thì "
-        f"làm xong từng việc cho cả {len(loop.steps)} phần tử rồi mới sang việc sau"
-    ]
+    running = f"mỗi vòng chạy lần lượt {' → '.join(names[lane] for lane in lanes)}"
+    order = {step.ref: position for position, step in enumerate(skeleton.steps)}
+    # Lần chạy mẫu đã sang vòng hai của làn gốc trước khi một làn khác bắt đầu.
+    if any(order[loop.lane_steps(lane)[0]] > order[loop.steps[1]] for lane in lanes[1:]):
+        running += (
+            f". Lần chạy mẫu thì làm xong từng việc cho cả {len(loop.steps)} phần tử rồi mới "
+            "sang việc sau"
+        )
+    lines = [running]
     for lane in lanes[1:]:
         found = loop.lanes[lane - 1]
         lines += [

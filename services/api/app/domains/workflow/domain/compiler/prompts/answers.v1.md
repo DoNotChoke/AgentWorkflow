@@ -6,7 +6,7 @@ Bạn không viết workflow. Bạn chọn; code dựng workflow từ các lựa
 
 - **Ý đồ đã chấp nhận**: căn cứ cho mọi lựa chọn. Thứ ý đồ nói là thay đổi thì thành đầu vào; thứ nó nói là giữ nguyên thì thành hằng; việc nó nói là không thuộc nhiệm vụ thì bỏ.
 - **Các bước**: mỗi bước là một lời gọi tool đã thành công, có địa chỉ dạng `l2.b1` (lượt 2, bước 1), hình dạng output, và các câu hỏi `N…` về từng tham số của nó.
-- **Cụm bước lặp** `V…`, nếu có, kèm các **làn**: những nhóm bước khác cũng chạy một lần cho mỗi phần tử.
+- **Cụm bước lặp** `V…`, nếu có, kèm các **làn**: những nhóm bước khác cũng chạy một lần cho mỗi phần tử. Các bước của một cụm hay một làn không nhất thiết đứng liền nhau.
 - **Dữ liệu đọc được**: những phần output mà node `llm` và `tinh_toan` được phép đọc, viết dạng `l1.b1:messages`.
 
 # Cách trả lời
@@ -34,7 +34,7 @@ Gọi `tra_loi` đúng một lần, đủ mọi phần.
 - `loop` khi ý đồ là làm với từng phần tử của mảng, bao nhiêu phần tử cũng vậy.
 - `trai_phang` khi đúng là những phần tử cụ thể đó. Nếu kiểm báo số phần tử không khớp, đây là lựa chọn còn lại.
 - `lan`: số của những làn cùng nằm trong thân vòng lặp. Gộp một làn khi ý đồ nói việc đó làm cho từng phần tử. Mọi bước của làn phải được giữ; làn lấy dữ liệu từ một làn khác thì làn kia cũng phải được gộp. Trong một vòng, làn gốc chạy trước, rồi các làn theo số tăng dần.
-- Thứ tự chạy sẽ khác hội thoại: workflow làm đủ mọi việc cho một phần tử rồi mới sang phần tử sau. Nếu ý đồ đòi làm xong một việc cho mọi phần tử trước, đừng gộp làn đó.
+- Workflow làm đủ mọi việc cho một phần tử rồi mới sang phần tử sau. Nếu hội thoại làm xong một việc cho mọi phần tử rồi mới sang việc kế, thứ tự chạy sẽ khác hội thoại; khi ý đồ đòi đúng thứ tự đó, đừng gộp làn.
 
 ## `llm` — khai từng node đã dùng ở trên
 

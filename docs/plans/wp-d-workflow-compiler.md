@@ -642,10 +642,36 @@ viết tay — model tự chọn gộp cả ba làn và khai đúng hai node `ll
 `V1:phan_tu` lẫn output của làn đứng trước. 2 lời gọi model, 20,5 nghìn token vào và
 1,5 nghìn token ra (lần trải phẳng: 2 vòng, câu trả lời từng vượt trần token).
 
+**Bước so le, 2026-10-04.** Agent làm từng phần tử một (`đọc 1, đăng 1, trả lời 1, đọc 2,
+…`) thì không hai bước cùng tool nào đứng liền nhau, và cả vòng lặp gốc lẫn các làn đều
+không được nhận ra.
+
+- Bộ dò cắt các bước thành *khối*. Khối một nhóm là dãy liền nhau như cũ. Khối nhiều
+  nhóm là một chu kỳ lặp lại ít nhất hai lần — cùng tool, cùng tên trường ở từng vị trí
+  — và mỗi vị trí trong chu kỳ là một nhóm. Chu kỳ chỉ thắng khi phủ nhiều bước hơn dãy
+  liền nhau.
+- Nhóm đầu tiên của chu kỳ lặp trên một mảng thành vòng lặp gốc; các nhóm còn lại qua
+  đúng phép kiểm làn cũ. Điều kiện *"làn đứng sau vòng lặp"* thành *"ở mỗi vòng, bước
+  của làn chạy sau bước của vòng lặp"*.
+- Một vòng gọi cùng một tool hai lần với cùng tên trường thì chu kỳ ngắn nhất là sai
+  (`đọc, đăng` thay vì `đọc, đăng, đọc, đăng`). Khi không nhóm nào lặp trên mảng, bộ dò
+  thử chu kỳ dài gấp đôi, gấp ba.
+- Mọi thứ sau bộ dò không đổi: kb8 xếp lại so le lắp ra **đúng IR của kb8**. Bảng giả
+  định chỉ báo thứ tự chạy đổi khi nó đổi thật.
+
+Fixture so le dựng từ kb8 bằng cách xếp lại các bước; chưa có conversation thật nào mà
+Agent tự làm so le.
+
+Chạy thật bản so le với `gpt-6.1-sol`: **1 vòng**, qua ba tầng, cùng hình dạng với đáp
+án của kb8 — một `loop` bốn bước, hai node `llm`, một cảnh báo `chi_so_tho`. 2 lời gọi
+model, 20,3 nghìn token vào và 1,6 nghìn token ra.
+
 **Chưa làm trong đợt này:**
 
-- làn phải là các bước *liền nhau*. Model gọi xen kẽ (đăng–trả lời–đăng–trả lời) thì
-  không có làn nào, và conversation đó vẫn trải phẳng;
+- chu kỳ phải đều. Một phần tử thiếu một bước (câu hỏi không có đáp án) hay nhóm đứng
+  *trước* vòng lặp gốc trong chu kỳ thì phần đó vẫn trải phẳng;
+- dãy liền nhau gọi cùng tool hai lần mỗi vòng mà không có gì chen giữa (`đọc câu hỏi 1,
+  đọc đáp án 1, đọc câu hỏi 2, …`);
 - `tinh_toan` và `dieu_kien` chưa đặt được vào thân vòng lặp;
 - vòng lặp lồng nhau;
 - executor (Phase 4) chưa chạy node `llm` trong thân `loop`.

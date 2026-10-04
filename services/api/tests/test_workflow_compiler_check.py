@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import json
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,9 @@ from app.domains.workflow.application.compile_check import Checked, check_answer
 from app.domains.workflow.domain.bindings import Scope
 from app.domains.workflow.domain.compiler.answers import read_answers
 from app.domains.workflow.domain.compiler.assemble import Assembled, assemble
+from app.domains.workflow.domain.compiler.intent import Intent
 from app.domains.workflow.domain.compiler.normalize import read_source
+from app.domains.workflow.domain.compiler.proposal import build_proposal
 from app.domains.workflow.domain.compiler.provenance import find_sources
 from app.domains.workflow.domain.compiler.questions import QuestionSet, build_questions
 from app.domains.workflow.domain.compiler.replay import replay
@@ -340,6 +343,79 @@ def test_lan_theo_vi_tri_van_duoc_doi_chieu_tung_vong() -> None:
         }
 
     assert _replayed(KB8, kenh_dau) == [("N10", "khong_tai_tao_duoc", "dang_cau_hoi")] * 6
+
+
+def _so_le(*, thread: bool = True) -> SourceMaterial:
+    """kb8 xếp lại thành một lượt, mỗi câu hỏi làm đủ bốn việc rồi mới sang câu sau: đọc
+    câu hỏi, đăng, đọc đáp án, trả lời vào thread."""
+    source = read_source(_json(FIXTURES / "sources" / "kb8-ba-luot.json"))
+    by_ref = {step.ref: step for turn in source.turns for step in turn.steps}
+    order = ["l1.b1", "l1.b2", "l2.b1"]
+    for k in range(6):
+        order += [f"l1.b{3 + k}", f"l2.b{2 + k}", f"l3.b{1 + k}", f"l3.b{7 + k}"]
+    steps = []
+    for number, ref in enumerate(order, start=1):
+        step = replace(by_ref[ref], ref=f"l1.b{number}")
+        if not thread:
+            sent = {name: value for name, value in step.input.items() if name != "thread_ts"}
+            step = replace(step, input=sent)
+        steps.append(step)
+    request = " ".join(turn.request or "" for turn in source.turns)
+    turn = replace(source.turns[0], request=request, steps=tuple(steps))
+    return SourceMaterial(conversation_id=source.conversation_id, turns=(turn,))
+
+
+def test_kb8_so_le_lap_ra_dung_ir_cua_kb8() -> None:
+    """Cùng một việc, Agent làm theo thứ tự khác: workflow phải là một."""
+    skeleton = build_skeleton(_so_le())
+    questions = build_questions(skeleton, find_sources(skeleton), TOOLS)
+    kenh = {"chon": "from_step", "ung_vien": 1, "khoa": "name", "nguon_khoa": {"chon": "const"}}
+    ids = {
+        "l1.b1": "tim",
+        "l1.b2": "khoi",
+        "l1.b3": "kenh",
+        "l1.b4": "doc_khoi",
+        "l1.b5": "dang_cau_hoi",
+        "l1.b6": "doc_dap_an",
+        "l1.b7": "tra_loi",
+    }
+    golden = _raw(KB8)
+    raw = {
+        "ten": golden["ten"],
+        "buoc": {
+            step.ref: {"chon": "giu"} | ({"id": ids[step.ref]} if step.ref in ids else {})
+            for step in skeleton.steps
+        },
+        "gia_tri": {
+            "N1": {"chon": "workflow_input", "ten": "ten_trang"},
+            "N2": {"chon": "from_step", "ung_vien": 1},
+            "N4": {"chon": "llm", "node": "soan_cau_hoi"},
+            "N5": kenh,
+            "N7": {"chon": "llm", "node": "soan_dap_an"},
+            "N8": kenh,
+        },
+        "vong_lap": {"V1": {"chon": "loop", "id": "moi_cau", "lan": [1, 2, 3]}},
+        "llm": [
+            golden["llm"][0] | {"dau_vao": {"khoi": "l1.b4:results"}},
+            golden["llm"][1] | {"dau_vao": {"dap_an": "l1.b6:results"}},
+        ],
+    }
+
+    checked = _check(skeleton, questions, raw)
+
+    assert _errors(checked) == []
+    assert checked.assembled is not None
+    assert checked.assembled.document == _json(FIXTURES / "compiled" / f"{KB8}.ir.json")
+
+    # Lần chạy mẫu đã làm từng câu một: bảng giả định không báo thứ tự chạy đổi.
+    assert checked.answers is not None
+    intent = Intent(task="Đăng từng câu hỏi kèm đáp án.", varies=(), fixed=(), excluded=())
+    proposal = build_proposal(
+        skeleton, questions, intent, checked.answers, checked.assembled, checked.report
+    )
+    (loop,) = proposal.loops
+    assert "mỗi vòng chạy lần lượt `doc_khoi` → `dang_cau_hoi`" in loop
+    assert "Lần chạy mẫu thì" not in loop
 
 
 # ─── Tầng 3 trên nguyên liệu viết tay ────────────────────────────────────────
