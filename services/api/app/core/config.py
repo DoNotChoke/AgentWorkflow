@@ -129,6 +129,15 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr = SecretStr("")
     openai_default_model: str = "gpt-5.4-mini"
 
+    # ─── Workflow Compiler ────────────────────────────────────────────
+    #: Model hiểu ý đồ: chỉ đọc conversation và tên tool.
+    compiler_intent_model: str = "gpt-6.1-sol"
+    #: Model trả lời tập câu hỏi: đọc ý đồ đã chấp nhận và dữ liệu trace đã cắt ngắn.
+    compiler_answer_model: str = "gpt-6.1-sol"
+    #: Số lần model được trả lời lại sau khi ba tầng kiểm báo lỗi, kể cả lần đầu.
+    compiler_max_rounds: int = 3
+    compiler_max_briefing_chars: int = 60000
+
     # ─── Agent Runtime ──────────────────────────────────────────────────
     #: Nơi Agent Runtime gọi tool — luôn là Control Plane.
     control_plane_internal_base_url: str = "http://localhost:8000"
