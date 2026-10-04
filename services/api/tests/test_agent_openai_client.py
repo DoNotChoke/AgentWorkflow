@@ -271,3 +271,114 @@ async def test_timeout_thanh_platform_timeout_error() -> None:
     client = make_client(FakeCompletions(error=error))
     with pytest.raises(PlatformTimeoutError):
         await client.complete(model="gpt-5.4-mini", system="", turns=[])
+
+
+# ─── Responses API ───────────────────────────────────────────────────────────
+
+
+class FakeResponses:
+    def __init__(self, response: Any) -> None:
+        self._response = response
+        self.last_kwargs: dict[str, Any] | None = None
+
+    async def create(self, **kwargs: Any) -> Any:
+        self.last_kwargs = kwargs
+        return self._response
+
+
+def _responses_client(response: Any) -> tuple[OpenAIModelClient, FakeResponses]:
+    responses = FakeResponses(response)
+    sdk = SimpleNamespace(responses=responses, chat=SimpleNamespace(completions=None))
+    return OpenAIModelClient(sdk), responses  # type: ignore[arg-type]
+
+
+def _output(*items: SimpleNamespace, status: str = "completed", reason: str | None = None) -> Any:
+    return SimpleNamespace(
+        output=list(items),
+        status=status,
+        incomplete_details=SimpleNamespace(reason=reason) if reason else None,
+        usage=SimpleNamespace(input_tokens=12, output_tokens=7),
+        model="gpt-6.1-sol",
+    )
+
+
+def _function_call(call_id: str, name: str, arguments: str) -> SimpleNamespace:
+    return SimpleNamespace(type="function_call", call_id=call_id, name=name, arguments=arguments)
+
+
+async def test_model_chi_goi_tool_qua_responses_thi_di_duong_responses() -> None:
+    """`gpt-6.1-sol` từ chối function tool ở Chat Completions khi đang suy luận."""
+    client, responses = _responses_client(
+        _output(
+            SimpleNamespace(type="reasoning"),
+            _function_call("call_1", "slack__post_message", '{"text": "xin chào"}'),
+        )
+    )
+    turns = [
+        ModelTurn(role="user", text="đăng giúp"),
+        ModelTurn(
+            role="assistant",
+            text="Để tôi đăng.",
+            tool_calls=(ModelToolCall("call_0", "slack__list_channels", {}),),
+        ),
+        ModelTurn(role="user", tool_results=(ModelToolResult("call_0", '{"channels": []}'),)),
+    ]
+    tool = ModelToolSpec(
+        name="slack__post_message", description="Gửi", input_schema={"type": "object"}, version="1"
+    )
+
+    response = await client.complete(
+        model="gpt-6.1-sol", system="Bạn là trợ lý.", turns=turns, tools=(tool,), max_tokens=500
+    )
+
+    assert response.stop_reason is StopReason.TOOL_USE
+    assert response.tool_calls == (
+        ModelToolCall("call_1", "slack__post_message", {"text": "xin chào"}),
+    )
+    assert (response.usage.input_tokens, response.usage.output_tokens) == (12, 7)
+    sent = responses.last_kwargs
+    assert sent is not None
+    assert (sent["instructions"], sent["max_output_tokens"]) == ("Bạn là trợ lý.", 500)
+    assert sent["input"] == [
+        {"role": "user", "content": "đăng giúp"},
+        {"role": "assistant", "content": "Để tôi đăng."},
+        {
+            "type": "function_call",
+            "call_id": "call_0",
+            "name": "slack__list_channels",
+            "arguments": "{}",
+        },
+        {"type": "function_call_output", "call_id": "call_0", "output": '{"channels": []}'},
+    ]
+    assert sent["tools"][0]["name"] == "slack__post_message"
+    assert sent["tools"][0]["parameters"] == {"type": "object"}
+
+
+async def test_responses_tra_loi_bang_loi() -> None:
+    message = SimpleNamespace(
+        type="message", content=[SimpleNamespace(type="output_text", text="Xong rồi.")]
+    )
+    client, _ = _responses_client(_output(message))
+
+    response = await client.complete(
+        model="gpt-6.1-sol", system="", turns=[ModelTurn(role="user", text="xin chào")]
+    )
+
+    assert (response.text, response.stop_reason) == ("Xong rồi.", StopReason.END_TURN)
+
+
+async def test_responses_bi_cat_o_tran_token_thi_khong_doc_json_cut() -> None:
+    client, _ = _responses_client(
+        _output(
+            _function_call("call_1", "tra_loi", '{"ten": "Đăng t'),
+            status="incomplete",
+            reason="max_output_tokens",
+        )
+    )
+
+    response = await client.complete(
+        model="gpt-6.1-sol", system="", turns=[ModelTurn(role="user", text="…")]
+    )
+
+    assert response.stop_reason is StopReason.MAX_TOKENS
+    assert response.tool_calls[0].input == {}

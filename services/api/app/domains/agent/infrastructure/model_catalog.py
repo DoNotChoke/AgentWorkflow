@@ -27,7 +27,13 @@ MODEL_CATALOG: Final[dict[str, ModelProvider]] = {
     "gpt-5.4-mini": ModelProvider.OPENAI,
     "gpt-5.6-sol": ModelProvider.OPENAI,
     "gpt-5.6-terra": ModelProvider.OPENAI,
+    "gpt-6.1-sol": ModelProvider.OPENAI,
 }
+
+
+#: Model OpenAI chỉ gọi được tool qua `/v1/responses`: Chat Completions từ chối function
+#: tool khi model đang suy luận.
+RESPONSES_API_MODELS: Final[frozenset[str]] = frozenset({"gpt-6.1-sol"})
 
 
 def resolve_provider(model: str) -> ModelProvider:
