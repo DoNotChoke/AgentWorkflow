@@ -1,0 +1,305 @@
+{
+  "conversation_id": "cnv_00000000000000000000000000000001",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Đọc lịch sử tin nhắn của kênh Slack có id C0VIDU00002",
+      "created_at": "2026-09-17T09:44:59.775185+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Không thể đọc được lịch sử của kênh này. Slack trả về lỗi **channel_not_found**, nghĩa là id kênh `C0VIDU00002` không tồn tại hoặc không hợp lệ trong workspace hiện tại.\n\nBạn có thể kiểm tra lại bằng cách:\n- Xác nhận lại id kênh (có thể bị gõ sai/thiếu ký tự).\n- Để mình liệt kê danh sách các kênh hiện có trong workspace, từ đó tìm đúng id kênh bạn cần — bạn chỉ cần cho biết tên kênh (hoặc mình liệt kê tất cả để bạn chọn).\n\nBạn muốn mình liệt kê danh sách kênh không?",
+      "created_at": "2026-09-17T09:45:08.290292+00:00"
+    }
+  ],
+  "traces": [
+    {
+      "id": "trc_00000000000000000000000000000003",
+      "status": "succeeded",
+      "started_at": "2026-09-17T09:44:59.766101+00:00",
+      "steps": [
+        {
+          "id": "stp_00000000000000000000000000000004",
+          "kind": "model_call",
+          "status": "succeeded",
+          "parent_step_id": null,
+          "started_at": "2026-09-17T09:45:00.435910+00:00",
+          "attributes": {
+            "model": "claude-sonnet-5",
+            "stop_reason": "tool_use",
+            "input_tokens": 5167,
+            "output_tokens": 66
+          },
+          "error_category": null,
+          "input": {
+            "state": "available",
+            "payload": {
+              "model": "claude-sonnet-5",
+              "tools": [
+                {
+                  "name": "notion__append_blocks",
+                  "version": "2.0"
+                },
+                {
+                  "name": "notion__create_comment",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__create_page",
+                  "version": "2.0"
+                },
+                {
+                  "name": "notion__get_block_children",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__get_page",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__list_users",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__query_database",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__search",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__get_channel_history",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__list_channels",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__list_users",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__post_message",
+                  "version": "1.0"
+                }
+              ],
+              "turns": [
+                {
+                  "role": "user",
+                  "text": "Đọc lịch sử tin nhắn của kênh Slack có id C0VIDU00002",
+                  "tool_calls": [],
+                  "tool_results": []
+                }
+              ],
+              "system": ""
+            }
+          },
+          "output": {
+            "state": "available",
+            "payload": {
+              "text": "",
+              "model": "claude-sonnet-5",
+              "usage": {
+                "input_tokens": 5167,
+                "output_tokens": 66
+              },
+              "tool_calls": [
+                {
+                  "name": "slack__get_channel_history",
+                  "input": {
+                    "channel": "C0VIDU00002"
+                  },
+                  "call_id": "toolu_01EkfYZx5RTFqMYZjjsfm6oi"
+                }
+              ],
+              "stop_reason": "tool_use"
+            }
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000005",
+          "kind": "tool_call",
+          "status": "failed",
+          "parent_step_id": null,
+          "started_at": "2026-09-17T09:45:02.337927+00:00",
+          "attributes": {
+            "tool_id": "slack.get_channel_history"
+          },
+          "error_category": "ValidationError",
+          "input": {
+            "state": "not_stored",
+            "payload": null
+          },
+          "output": {
+            "state": "not_stored",
+            "payload": null
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000006",
+          "kind": "tool_call",
+          "status": "failed",
+          "parent_step_id": "stp_00000000000000000000000000000005",
+          "started_at": "2026-09-17T09:45:03.117511+00:00",
+          "attributes": {
+            "attempt": 1,
+            "tool_id": "slack.get_channel_history",
+            "provider": "slack",
+            "tool_version": "1.0",
+            "connection_id": "conn_00000000000000000000000000000007",
+            "invocation_id": "ti_00000000000000000000000000000008",
+            "idempotency_key": "msg_00000000000000000000000000000009:slack.get_channel_history:558b7b5c2e7c7aed275cf8bc70976dc99c880c22b88f9fd925f811225ce4c86a"
+          },
+          "error_category": "ValidationError",
+          "input": {
+            "state": "available",
+            "payload": {
+              "channel": "C0VIDU00002"
+            }
+          },
+          "output": {
+            "state": "available",
+            "payload": {}
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000010",
+          "kind": "model_call",
+          "status": "succeeded",
+          "parent_step_id": null,
+          "started_at": "2026-09-17T09:45:03.906588+00:00",
+          "attributes": {
+            "model": "claude-sonnet-5",
+            "stop_reason": "end_turn",
+            "input_tokens": 5259,
+            "output_tokens": 265
+          },
+          "error_category": null,
+          "input": {
+            "state": "available",
+            "payload": {
+              "model": "claude-sonnet-5",
+              "tools": [
+                {
+                  "name": "notion__append_blocks",
+                  "version": "2.0"
+                },
+                {
+                  "name": "notion__create_comment",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__create_page",
+                  "version": "2.0"
+                },
+                {
+                  "name": "notion__get_block_children",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__get_page",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__list_users",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__query_database",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__search",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__get_channel_history",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__list_channels",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__list_users",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__post_message",
+                  "version": "1.0"
+                }
+              ],
+              "turns": [
+                {
+                  "role": "user",
+                  "text": "Đọc lịch sử tin nhắn của kênh Slack có id C0VIDU00002",
+                  "tool_calls": [],
+                  "tool_results": []
+                },
+                {
+                  "role": "assistant",
+                  "text": "",
+                  "tool_calls": [
+                    {
+                      "name": "slack__get_channel_history",
+                      "input": {
+                        "channel": "C0VIDU00002"
+                      },
+                      "call_id": "toolu_01EkfYZx5RTFqMYZjjsfm6oi"
+                    }
+                  ],
+                  "tool_results": []
+                },
+                {
+                  "role": "user",
+                  "text": "",
+                  "tool_calls": [],
+                  "tool_results": [
+                    {
+                      "call_id": "toolu_01EkfYZx5RTFqMYZjjsfm6oi",
+                      "content": "Lỗi: Slack từ chối: channel_not_found.",
+                      "is_error": false
+                    }
+                  ]
+                }
+              ],
+              "system": ""
+            }
+          },
+          "output": {
+            "state": "available",
+            "payload": {
+              "text": "Không thể đọc được lịch sử của kênh này. Slack trả về lỗi **channel_not_found**, nghĩa là id kênh `C0VIDU00002` không tồn tại hoặc không hợp lệ trong workspace hiện tại.\n\nBạn có thể kiểm tra lại bằng cách:\n- Xác nhận lại id kênh (có thể bị gõ sai/thiếu ký tự).\n- Để mình liệt kê danh sách các kênh hiện có trong workspace, từ đó tìm đúng id kênh bạn cần — bạn chỉ cần cho biết tên kênh (hoặc mình liệt kê tất cả để bạn chọn).\n\nBạn muốn mình liệt kê danh sách kênh không?",
+              "model": "claude-sonnet-5",
+              "usage": {
+                "input_tokens": 5259,
+                "output_tokens": 265
+              },
+              "tool_calls": [],
+              "stop_reason": "end_turn"
+            }
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000011",
+          "kind": "final_response",
+          "status": "succeeded",
+          "parent_step_id": null,
+          "started_at": "2026-09-17T09:45:08.290309+00:00",
+          "attributes": {},
+          "error_category": null,
+          "input": {
+            "state": "not_stored",
+            "payload": null
+          },
+          "output": {
+            "state": "not_stored",
+            "payload": null
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,312 @@
+{
+  "conversation_id": "cnv_00000000000000000000000000000001",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Đăng vào kênh Slack có id C0VIDU00002 một tin nhắn với nội dung đúng như sau: [WP-B] kịch bản 1 — một bước ghi",
+      "created_at": "2026-09-17T09:42:17.852309+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Đã gửi tin nhắn \"[WP-B] kịch bản 1 — một bước ghi\" vào kênh C0VIDU00002 thành công.",
+      "created_at": "2026-09-17T09:42:25.503512+00:00"
+    }
+  ],
+  "traces": [
+    {
+      "id": "trc_00000000000000000000000000000003",
+      "status": "succeeded",
+      "started_at": "2026-09-17T09:42:17.838105+00:00",
+      "steps": [
+        {
+          "id": "stp_00000000000000000000000000000004",
+          "kind": "model_call",
+          "status": "succeeded",
+          "parent_step_id": null,
+          "started_at": "2026-09-17T09:42:18.494981+00:00",
+          "attributes": {
+            "model": "claude-sonnet-5",
+            "stop_reason": "tool_use",
+            "input_tokens": 5195,
+            "output_tokens": 190
+          },
+          "error_category": null,
+          "input": {
+            "state": "available",
+            "payload": {
+              "model": "claude-sonnet-5",
+              "tools": [
+                {
+                  "name": "notion__append_blocks",
+                  "version": "2.0"
+                },
+                {
+                  "name": "notion__create_comment",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__create_page",
+                  "version": "2.0"
+                },
+                {
+                  "name": "notion__get_block_children",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__get_page",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__list_users",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__query_database",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__search",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__get_channel_history",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__list_channels",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__list_users",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__post_message",
+                  "version": "1.0"
+                }
+              ],
+              "turns": [
+                {
+                  "role": "user",
+                  "text": "Đăng vào kênh Slack có id C0VIDU00002 một tin nhắn với nội dung đúng như sau: [WP-B] kịch bản 1 — một bước ghi",
+                  "tool_calls": [],
+                  "tool_results": []
+                }
+              ],
+              "system": ""
+            }
+          },
+          "output": {
+            "state": "available",
+            "payload": {
+              "text": "",
+              "model": "claude-sonnet-5",
+              "usage": {
+                "input_tokens": 5195,
+                "output_tokens": 190
+              },
+              "tool_calls": [
+                {
+                  "name": "slack__post_message",
+                  "input": {
+                    "text": "[WP-B] kịch bản 1 — một bước ghi",
+                    "channel": "C0VIDU00002"
+                  },
+                  "call_id": "toolu_01FgNAAKuwdzvrnixQjDuYpX"
+                }
+              ],
+              "stop_reason": "tool_use"
+            }
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000005",
+          "kind": "tool_call",
+          "status": "succeeded",
+          "parent_step_id": null,
+          "started_at": "2026-09-17T09:42:22.181569+00:00",
+          "attributes": {
+            "tool_id": "slack.post_message",
+            "invocation_id": "ti_00000000000000000000000000000006"
+          },
+          "error_category": null,
+          "input": {
+            "state": "not_stored",
+            "payload": null
+          },
+          "output": {
+            "state": "not_stored",
+            "payload": null
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000007",
+          "kind": "tool_call",
+          "status": "succeeded",
+          "parent_step_id": "stp_00000000000000000000000000000005",
+          "started_at": "2026-09-17T09:42:22.919260+00:00",
+          "attributes": {
+            "attempt": 1,
+            "tool_id": "slack.post_message",
+            "provider": "slack",
+            "tool_version": "1.0",
+            "connection_id": "conn_00000000000000000000000000000008",
+            "invocation_id": "ti_00000000000000000000000000000006",
+            "idempotency_key": "msg_00000000000000000000000000000009:slack.post_message:e252e523d83639088c2414ca21898ff346bac935ae642804dd061637d7ebb275"
+          },
+          "error_category": null,
+          "input": {
+            "state": "available",
+            "payload": {
+              "text": "[WP-B] kịch bản 1 — một bước ghi",
+              "channel": "C0VIDU00002"
+            }
+          },
+          "output": {
+            "state": "available",
+            "payload": {
+              "channel_id": "C0VIDU00002",
+              "message_ts": "1789638143.788179"
+            }
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000010",
+          "kind": "model_call",
+          "status": "succeeded",
+          "parent_step_id": null,
+          "started_at": "2026-09-17T09:42:23.896143+00:00",
+          "attributes": {
+            "model": "claude-sonnet-5",
+            "stop_reason": "end_turn",
+            "input_tokens": 5338,
+            "output_tokens": 57
+          },
+          "error_category": null,
+          "input": {
+            "state": "available",
+            "payload": {
+              "model": "claude-sonnet-5",
+              "tools": [
+                {
+                  "name": "notion__append_blocks",
+                  "version": "2.0"
+                },
+                {
+                  "name": "notion__create_comment",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__create_page",
+                  "version": "2.0"
+                },
+                {
+                  "name": "notion__get_block_children",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__get_page",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__list_users",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__query_database",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__search",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__get_channel_history",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__list_channels",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__list_users",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__post_message",
+                  "version": "1.0"
+                }
+              ],
+              "turns": [
+                {
+                  "role": "user",
+                  "text": "Đăng vào kênh Slack có id C0VIDU00002 một tin nhắn với nội dung đúng như sau: [WP-B] kịch bản 1 — một bước ghi",
+                  "tool_calls": [],
+                  "tool_results": []
+                },
+                {
+                  "role": "assistant",
+                  "text": "",
+                  "tool_calls": [
+                    {
+                      "name": "slack__post_message",
+                      "input": {
+                        "text": "[WP-B] kịch bản 1 — một bước ghi",
+                        "channel": "C0VIDU00002"
+                      },
+                      "call_id": "toolu_01FgNAAKuwdzvrnixQjDuYpX"
+                    }
+                  ],
+                  "tool_results": []
+                },
+                {
+                  "role": "user",
+                  "text": "",
+                  "tool_calls": [],
+                  "tool_results": [
+                    {
+                      "call_id": "toolu_01FgNAAKuwdzvrnixQjDuYpX",
+                      "content": "{\"channel_id\": \"C0VIDU00002\", \"message_ts\": \"1789638143.788179\"}",
+                      "is_error": false
+                    }
+                  ]
+                }
+              ],
+              "system": ""
+            }
+          },
+          "output": {
+            "state": "available",
+            "payload": {
+              "text": "Đã gửi tin nhắn \"[WP-B] kịch bản 1 — một bước ghi\" vào kênh C0VIDU00002 thành công.",
+              "model": "claude-sonnet-5",
+              "usage": {
+                "input_tokens": 5338,
+                "output_tokens": 57
+              },
+              "tool_calls": [],
+              "stop_reason": "end_turn"
+            }
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000011",
+          "kind": "final_response",
+          "status": "succeeded",
+          "parent_step_id": null,
+          "started_at": "2026-09-17T09:42:25.503520+00:00",
+          "attributes": {},
+          "error_category": null,
+          "input": {
+            "state": "not_stored",
+            "payload": null
+          },
+          "output": {
+            "state": "not_stored",
+            "payload": null
+          }
+        }
+      ]
+    }
+  ]
+}

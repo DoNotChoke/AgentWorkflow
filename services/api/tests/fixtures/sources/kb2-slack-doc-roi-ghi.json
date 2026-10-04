@@ -1,0 +1,549 @@
+{
+  "conversation_id": "cnv_00000000000000000000000000000001",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Tìm id của kênh Slack tên là test, rồi đăng vào đúng kênh đó tin nhắn với nội dung: [WP-B] kịch bản 2 — đọc rồi ghi",
+      "created_at": "2026-09-17T09:43:11.533632+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Đã gửi tin nhắn \"[WP-B] kịch bản 2 — đọc rồi ghi\" vào kênh **test** (id: C0VIDU00002) thành công.",
+      "created_at": "2026-09-17T09:43:22.748832+00:00"
+    }
+  ],
+  "traces": [
+    {
+      "id": "trc_00000000000000000000000000000003",
+      "status": "succeeded",
+      "started_at": "2026-09-17T09:43:11.519621+00:00",
+      "steps": [
+        {
+          "id": "stp_00000000000000000000000000000004",
+          "kind": "model_call",
+          "status": "succeeded",
+          "parent_step_id": null,
+          "started_at": "2026-09-17T09:43:12.186429+00:00",
+          "attributes": {
+            "model": "claude-sonnet-5",
+            "stop_reason": "tool_use",
+            "input_tokens": 5199,
+            "output_tokens": 30
+          },
+          "error_category": null,
+          "input": {
+            "state": "available",
+            "payload": {
+              "model": "claude-sonnet-5",
+              "tools": [
+                {
+                  "name": "notion__append_blocks",
+                  "version": "2.0"
+                },
+                {
+                  "name": "notion__create_comment",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__create_page",
+                  "version": "2.0"
+                },
+                {
+                  "name": "notion__get_block_children",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__get_page",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__list_users",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__query_database",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__search",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__get_channel_history",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__list_channels",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__list_users",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__post_message",
+                  "version": "1.0"
+                }
+              ],
+              "turns": [
+                {
+                  "role": "user",
+                  "text": "Tìm id của kênh Slack tên là test, rồi đăng vào đúng kênh đó tin nhắn với nội dung: [WP-B] kịch bản 2 — đọc rồi ghi",
+                  "tool_calls": [],
+                  "tool_results": []
+                }
+              ],
+              "system": ""
+            }
+          },
+          "output": {
+            "state": "available",
+            "payload": {
+              "text": "",
+              "model": "claude-sonnet-5",
+              "usage": {
+                "input_tokens": 5199,
+                "output_tokens": 30
+              },
+              "tool_calls": [
+                {
+                  "name": "slack__list_channels",
+                  "input": {},
+                  "call_id": "toolu_01Aa9P2Fhbjj7UbShEAiDpYx"
+                }
+              ],
+              "stop_reason": "tool_use"
+            }
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000005",
+          "kind": "tool_call",
+          "status": "succeeded",
+          "parent_step_id": null,
+          "started_at": "2026-09-17T09:43:14.517946+00:00",
+          "attributes": {
+            "tool_id": "slack.list_channels",
+            "invocation_id": "ti_00000000000000000000000000000006"
+          },
+          "error_category": null,
+          "input": {
+            "state": "not_stored",
+            "payload": null
+          },
+          "output": {
+            "state": "not_stored",
+            "payload": null
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000007",
+          "kind": "tool_call",
+          "status": "succeeded",
+          "parent_step_id": "stp_00000000000000000000000000000005",
+          "started_at": "2026-09-17T09:43:15.165800+00:00",
+          "attributes": {
+            "attempt": 1,
+            "tool_id": "slack.list_channels",
+            "provider": "slack",
+            "tool_version": "1.0",
+            "connection_id": "conn_00000000000000000000000000000008",
+            "invocation_id": "ti_00000000000000000000000000000006",
+            "idempotency_key": "msg_00000000000000000000000000000009:slack.list_channels:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          "error_category": null,
+          "input": {
+            "state": "available",
+            "payload": {}
+          },
+          "output": {
+            "state": "available",
+            "payload": {
+              "channels": [
+                {
+                  "id": "C0VIDU00010",
+                  "name": "social",
+                  "is_private": false,
+                  "is_archived": false,
+                  "num_members": 1
+                },
+                {
+                  "id": "C0VIDU00011",
+                  "name": "all-tuannghia",
+                  "is_private": false,
+                  "is_archived": false,
+                  "num_members": 1
+                },
+                {
+                  "id": "C0VIDU00012",
+                  "name": "new-channel",
+                  "is_private": false,
+                  "is_archived": false,
+                  "num_members": 1
+                },
+                {
+                  "id": "C0VIDU00013",
+                  "name": "help",
+                  "is_private": false,
+                  "is_archived": false,
+                  "num_members": 2
+                },
+                {
+                  "id": "C0VIDU00002",
+                  "name": "test",
+                  "is_private": false,
+                  "is_archived": false,
+                  "num_members": 3
+                },
+                {
+                  "id": "C0VIDU00014",
+                  "name": "aws",
+                  "is_private": false,
+                  "is_archived": false,
+                  "num_members": 2
+                }
+              ],
+              "next_cursor": ""
+            }
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000015",
+          "kind": "model_call",
+          "status": "succeeded",
+          "parent_step_id": null,
+          "started_at": "2026-09-17T09:43:16.048411+00:00",
+          "attributes": {
+            "model": "claude-sonnet-5",
+            "stop_reason": "tool_use",
+            "input_tokens": 5541,
+            "output_tokens": 149
+          },
+          "error_category": null,
+          "input": {
+            "state": "available",
+            "payload": {
+              "model": "claude-sonnet-5",
+              "tools": [
+                {
+                  "name": "notion__append_blocks",
+                  "version": "2.0"
+                },
+                {
+                  "name": "notion__create_comment",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__create_page",
+                  "version": "2.0"
+                },
+                {
+                  "name": "notion__get_block_children",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__get_page",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__list_users",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__query_database",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__search",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__get_channel_history",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__list_channels",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__list_users",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__post_message",
+                  "version": "1.0"
+                }
+              ],
+              "turns": [
+                {
+                  "role": "user",
+                  "text": "Tìm id của kênh Slack tên là test, rồi đăng vào đúng kênh đó tin nhắn với nội dung: [WP-B] kịch bản 2 — đọc rồi ghi",
+                  "tool_calls": [],
+                  "tool_results": []
+                },
+                {
+                  "role": "assistant",
+                  "text": "",
+                  "tool_calls": [
+                    {
+                      "name": "slack__list_channels",
+                      "input": {},
+                      "call_id": "toolu_01Aa9P2Fhbjj7UbShEAiDpYx"
+                    }
+                  ],
+                  "tool_results": []
+                },
+                {
+                  "role": "user",
+                  "text": "",
+                  "tool_calls": [],
+                  "tool_results": [
+                    {
+                      "call_id": "toolu_01Aa9P2Fhbjj7UbShEAiDpYx",
+                      "content": "{\"channels\": [{\"id\": \"C0VIDU00010\", \"name\": \"social\", \"is_private\": false, \"is_archived\": false, \"num_members\": 1}, {\"id\": \"C0VIDU00011\", \"name\": \"all-tuannghia\", \"is_private\": false, \"is_archived\": false, \"num_members\": 1}, {\"id\": \"C0VIDU00012\", \"name\": \"new-channel\", \"is_private\": false, \"is_archived\": false, \"num_members\": 1}, {\"id\": \"C0VIDU00013\", \"name\": \"help\", \"is_private\": false, \"is_archived\": false, \"num_members\": 2}, {\"id\": \"C0VIDU00002\", \"name\": \"test\", \"is_private\": false, \"is_archived\": false, \"num_members\": 3}, {\"id\": \"C0VIDU00014\", \"name\": \"aws\", \"is_private\": false, \"is_archived\": false, \"num_members\": 2}], \"next_cursor\": \"\"}",
+                      "is_error": false
+                    }
+                  ]
+                }
+              ],
+              "system": ""
+            }
+          },
+          "output": {
+            "state": "available",
+            "payload": {
+              "text": "Đã tìm thấy kênh \"test\" với id C0VIDU00002. Giờ gửi tin nhắn.",
+              "model": "claude-sonnet-5",
+              "usage": {
+                "input_tokens": 5541,
+                "output_tokens": 149
+              },
+              "tool_calls": [
+                {
+                  "name": "slack__post_message",
+                  "input": {
+                    "text": "[WP-B] kịch bản 2 — đọc rồi ghi",
+                    "channel": "C0VIDU00002"
+                  },
+                  "call_id": "toolu_01L8RMEXnvbwsB2wXy9UzTgU"
+                }
+              ],
+              "stop_reason": "tool_use"
+            }
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000016",
+          "kind": "tool_call",
+          "status": "succeeded",
+          "parent_step_id": null,
+          "started_at": "2026-09-17T09:43:19.111428+00:00",
+          "attributes": {
+            "tool_id": "slack.post_message",
+            "invocation_id": "ti_00000000000000000000000000000017"
+          },
+          "error_category": null,
+          "input": {
+            "state": "not_stored",
+            "payload": null
+          },
+          "output": {
+            "state": "not_stored",
+            "payload": null
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000018",
+          "kind": "tool_call",
+          "status": "succeeded",
+          "parent_step_id": "stp_00000000000000000000000000000016",
+          "started_at": "2026-09-17T09:43:19.794174+00:00",
+          "attributes": {
+            "attempt": 1,
+            "tool_id": "slack.post_message",
+            "provider": "slack",
+            "tool_version": "1.0",
+            "connection_id": "conn_00000000000000000000000000000008",
+            "invocation_id": "ti_00000000000000000000000000000017",
+            "idempotency_key": "msg_00000000000000000000000000000009:slack.post_message:8cf65f938918aadf19d140c985fa5f4f18afe6da132c3589d9c8be363cddebbf"
+          },
+          "error_category": null,
+          "input": {
+            "state": "available",
+            "payload": {
+              "text": "[WP-B] kịch bản 2 — đọc rồi ghi",
+              "channel": "C0VIDU00002"
+            }
+          },
+          "output": {
+            "state": "available",
+            "payload": {
+              "channel_id": "C0VIDU00002",
+              "message_ts": "1789638200.709979"
+            }
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000019",
+          "kind": "model_call",
+          "status": "succeeded",
+          "parent_step_id": null,
+          "started_at": "2026-09-17T09:43:20.751139+00:00",
+          "attributes": {
+            "model": "claude-sonnet-5",
+            "stop_reason": "end_turn",
+            "input_tokens": 5731,
+            "output_tokens": 67
+          },
+          "error_category": null,
+          "input": {
+            "state": "available",
+            "payload": {
+              "model": "claude-sonnet-5",
+              "tools": [
+                {
+                  "name": "notion__append_blocks",
+                  "version": "2.0"
+                },
+                {
+                  "name": "notion__create_comment",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__create_page",
+                  "version": "2.0"
+                },
+                {
+                  "name": "notion__get_block_children",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__get_page",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__list_users",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__query_database",
+                  "version": "1.0"
+                },
+                {
+                  "name": "notion__search",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__get_channel_history",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__list_channels",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__list_users",
+                  "version": "1.0"
+                },
+                {
+                  "name": "slack__post_message",
+                  "version": "1.0"
+                }
+              ],
+              "turns": [
+                {
+                  "role": "user",
+                  "text": "Tìm id của kênh Slack tên là test, rồi đăng vào đúng kênh đó tin nhắn với nội dung: [WP-B] kịch bản 2 — đọc rồi ghi",
+                  "tool_calls": [],
+                  "tool_results": []
+                },
+                {
+                  "role": "assistant",
+                  "text": "",
+                  "tool_calls": [
+                    {
+                      "name": "slack__list_channels",
+                      "input": {},
+                      "call_id": "toolu_01Aa9P2Fhbjj7UbShEAiDpYx"
+                    }
+                  ],
+                  "tool_results": []
+                },
+                {
+                  "role": "user",
+                  "text": "",
+                  "tool_calls": [],
+                  "tool_results": [
+                    {
+                      "call_id": "toolu_01Aa9P2Fhbjj7UbShEAiDpYx",
+                      "content": "{\"channels\": [{\"id\": \"C0VIDU00010\", \"name\": \"social\", \"is_private\": false, \"is_archived\": false, \"num_members\": 1}, {\"id\": \"C0VIDU00011\", \"name\": \"all-tuannghia\", \"is_private\": false, \"is_archived\": false, \"num_members\": 1}, {\"id\": \"C0VIDU00012\", \"name\": \"new-channel\", \"is_private\": false, \"is_archived\": false, \"num_members\": 1}, {\"id\": \"C0VIDU00013\", \"name\": \"help\", \"is_private\": false, \"is_archived\": false, \"num_members\": 2}, {\"id\": \"C0VIDU00002\", \"name\": \"test\", \"is_private\": false, \"is_archived\": false, \"num_members\": 3}, {\"id\": \"C0VIDU00014\", \"name\": \"aws\", \"is_private\": false, \"is_archived\": false, \"num_members\": 2}], \"next_cursor\": \"\"}",
+                      "is_error": false
+                    }
+                  ]
+                },
+                {
+                  "role": "assistant",
+                  "text": "Đã tìm thấy kênh \"test\" với id C0VIDU00002. Giờ gửi tin nhắn.",
+                  "tool_calls": [
+                    {
+                      "name": "slack__post_message",
+                      "input": {
+                        "text": "[WP-B] kịch bản 2 — đọc rồi ghi",
+                        "channel": "C0VIDU00002"
+                      },
+                      "call_id": "toolu_01L8RMEXnvbwsB2wXy9UzTgU"
+                    }
+                  ],
+                  "tool_results": []
+                },
+                {
+                  "role": "user",
+                  "text": "",
+                  "tool_calls": [],
+                  "tool_results": [
+                    {
+                      "call_id": "toolu_01L8RMEXnvbwsB2wXy9UzTgU",
+                      "content": "{\"channel_id\": \"C0VIDU00002\", \"message_ts\": \"1789638200.709979\"}",
+                      "is_error": false
+                    }
+                  ]
+                }
+              ],
+              "system": ""
+            }
+          },
+          "output": {
+            "state": "available",
+            "payload": {
+              "text": "Đã gửi tin nhắn \"[WP-B] kịch bản 2 — đọc rồi ghi\" vào kênh **test** (id: C0VIDU00002) thành công.",
+              "model": "claude-sonnet-5",
+              "usage": {
+                "input_tokens": 5731,
+                "output_tokens": 67
+              },
+              "tool_calls": [],
+              "stop_reason": "end_turn"
+            }
+          }
+        },
+        {
+          "id": "stp_00000000000000000000000000000020",
+          "kind": "final_response",
+          "status": "succeeded",
+          "parent_step_id": null,
+          "started_at": "2026-09-17T09:43:22.748845+00:00",
+          "attributes": {},
+          "error_category": null,
+          "input": {
+            "state": "not_stored",
+            "payload": null
+          },
+          "output": {
+            "state": "not_stored",
+            "payload": null
+          }
+        }
+      ]
+    }
+  ]
+}
