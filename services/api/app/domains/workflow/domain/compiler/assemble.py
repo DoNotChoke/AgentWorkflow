@@ -11,10 +11,14 @@ from app.domains.workflow.domain.compiler.answers import (
     Answers,
     SourceAnswer,
     ValueAnswer,
+    included_lanes,
     is_loop_item,
+    lane_link,
     loop_id,
+    membership,
     subsumed,
 )
+from app.domains.workflow.domain.compiler.provenance import LaneLink
 from app.domains.workflow.domain.compiler.questions import (
     Candidate,
     Choice,
@@ -57,6 +61,8 @@ class Assembled:
     llm_samples: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
     #: Node `transform` mà trace không có, do người trả lời viết (ADR-0016).
     written: frozenset[str] = frozenset()
+    #: Node llm trong thân vòng lặp → thứ nó đã "sinh ra" ở từng vòng của lần chạy mẫu.
+    llm_iterations: Mapping[str, tuple[Mapping[str, Any], ...]] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -77,6 +83,7 @@ class _Build:
     traced: dict[str, tuple[str, ...]] = field(default_factory=dict)
     llm_samples: dict[str, dict[str, Any]] = field(default_factory=dict)
     written: set[str] = field(default_factory=set)
+    llm_iterations: dict[str, tuple[Mapping[str, Any], ...]] = field(default_factory=dict)
     #: Node llm → bước đầu tiên đọc nó.
     first_reader: dict[str, str] = field(default_factory=dict)
 
@@ -95,6 +102,8 @@ class _Build:
     def data(self, key: str) -> dict[str, Any]:
         ref = self.questions.ref(key)
         assert isinstance(ref, DataRef)  # tầng kiểm 1 và schema bảo đảm
+        if self.questions.loop(ref.step) is not None:
+            return {"from_item": []}
         return _from_node(self.node_of(ref.step), self.output_path(ref.step, ref.path))
 
     # ─── Binding ─────────────────────────────────────────────────────────────
@@ -103,11 +112,12 @@ class _Build:
         bucket = _BUCKET[step.kind]
         found: dict[str, Any] = {}
         for question in self.questions.of(step.ref):
-            if is_loop_item(self.questions, self.answers, question):
-                loop = self.questions.loop_of(step.ref)
-                assert isinstance(loop, LoopQuestion)
-                found[question.field] = {"from_item": list(loop.loop.pick)}
-                self.origin[(node_id, (bucket, question.field))] = loop.id
+            link = lane_link(self.questions, self.answers, question)
+            if link is not None:
+                owner = self.questions.lane_of(step.ref)
+                assert owner is not None
+                found[question.field] = self.linked(owner[0], link)
+                self.origin[(node_id, (bucket, question.field))] = owner[0].id
                 continue
             answer = self.answers.sources[question.id]
             binding = self.binding(question, answer)
@@ -115,6 +125,24 @@ class _Build:
                 found[question.field] = binding
                 self.origin[(node_id, (bucket, question.field))] = question.id
         return found
+
+    def linked(self, question: LoopQuestion, link: LaneLink) -> dict[str, Any]:
+        """Giá trị lấy từ dữ liệu của chính vòng đang chạy."""
+        if link.lane is None:
+            return {"from_item": list(link.path)}
+        source = question.loop.lane_steps(link.lane)[0]
+        path = self.output_path(source, link.path)
+        if link.key is None:
+            return _from_node(self.node_of(source), path)
+        name, value = link.key
+        return {
+            "from_node": {
+                "node": self.node_of(source),
+                "path": path,
+                "where": {name: {"const": value}},
+                "pick": list(link.pick),
+            }
+        }
 
     def binding(self, question: SourceQuestion, answer: SourceAnswer) -> dict[str, Any] | None:
         match answer.choice:
@@ -204,7 +232,22 @@ class _Build:
     def loop_node(self, question: LoopQuestion, first: SkeletonStep) -> dict[str, Any]:
         loop = question.loop
         node_id = loop_id(question.id, self.answers)
-        body = self.step_node(first)
+        body: list[dict[str, Any]] = []
+        for lane in included_lanes(question, self.answers):
+            members = loop.lane_steps(lane)
+            step = first if lane == 0 else self.skeleton.step(members[0])
+            inner = self.step_node(step)
+            for llm in self.llm_nodes(step.ref):
+                body.append(llm)
+                self.llm_iterations[llm["id"]] = tuple(
+                    {
+                        name: self.skeleton.step(ref).fields.get(name)
+                        for name in llm["output_schema"]["properties"]
+                    }
+                    for ref in members
+                )
+            body.append(inner)
+            self.traced[inner["id"]] = members
         node: dict[str, Any] = {
             "id": node_id,
             "type": "loop",
@@ -214,10 +257,10 @@ class _Build:
         }
         if loop.filter:
             node["filter"] = {name: {"const": value} for name, value in loop.filter}
-        node |= {"max_items": self.loop_max_items, "body": [body], "collect": body["id"]}
+        node |= {"max_items": self.loop_max_items, "body": body, "collect": body[-1]["id"]}
         self.origin[(node_id, ("over",))] = question.id
         self.owners[node_id] = question.id
-        self.traced[node_id] = self.traced[body["id"]] = loop.steps
+        self.traced[node_id] = loop.steps
         return node
 
     def plan_llms(self) -> None:
@@ -325,20 +368,21 @@ def assemble(
         if not answer.keep:
             dropped.append(Dropped(step.ref, step.tool_id, answer.reason))
             continue
-        if subsumed(questions, answers, step.ref):
+        member = membership(questions, answers, step.ref)
+        # Trong thân một vòng lặp, chỉ bước đầu của làn gốc là chỗ phát ra node loop.
+        if member is not None and (member.position > 0 or member.lane > 0):
             continue
 
-        loop = questions.loop_of(step.ref)
-        chosen = answers.loops.get(loop.id) if loop is not None else None
-        if loop is not None and chosen is not None and chosen.as_loop:
-            node = build.loop_node(loop, step)
+        nodes += build.conditions(step.ref)
+        if member is not None:
+            nodes.append(build.loop_node(member.question, step))
         else:
             node = build.step_node(step)
-
-        nodes += build.conditions(step.ref)
-        nodes += build.llm_nodes(step.ref)
-        nodes.append(node)
+            nodes += build.llm_nodes(step.ref)
+            nodes.append(node)
         nodes += build.computed(step.ref)
+
+    _place_loops(nodes)
 
     trigger = {
         "id": TRIGGER_ID,
@@ -376,7 +420,35 @@ def assemble(
         samples=build.inputs,
         llm_samples=build.llm_samples,
         written=frozenset(build.written),
+        llm_iterations=build.llm_iterations,
     )
+
+
+def _place_loops(nodes: list[dict[str, Any]]) -> None:
+    """Thân vòng lặp gom bước từ nhiều chỗ của trace, nên nó có thể đọc một node mà trace
+    chạy sau làn gốc. Đẩy node loop xuống sau node cuối cùng mà nó đọc."""
+    for node in [node for node in nodes if node["type"] == "loop"]:
+        inside = {inner["id"] for inner in node["body"]}
+        read = _reads(node) - inside
+        here = nodes.index(node)
+        last = max((at for at, other in enumerate(nodes) if other["id"] in read), default=here)
+        if last > here:
+            nodes.remove(node)
+            nodes.insert(last, node)
+
+
+def _reads(value: Any) -> set[str]:
+    if isinstance(value, list):
+        return set().union(*(_reads(item) for item in value)) if value else set()
+    if not isinstance(value, Mapping):
+        return set()
+    found: set[str] = set()
+    source = value.get("from_node")
+    if isinstance(source, Mapping) and isinstance(source.get("node"), str):
+        found.add(source["node"])
+    for inner in value.values():
+        found |= _reads(inner)
+    return found
 
 
 def _from_node(node: str, path: list[str]) -> dict[str, Any]:

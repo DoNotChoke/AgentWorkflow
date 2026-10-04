@@ -12,6 +12,8 @@ from app.domains.workflow.domain.compiler.normalize import read_source
 from app.domains.workflow.domain.compiler.provenance import (
     Element,
     FromRequest,
+    LaneEvidence,
+    LaneLink,
     SourceReport,
     WhereKey,
     find_sources,
@@ -406,6 +408,92 @@ def test_hai_truong_cung_doi_thi_khong_phai_vong_lap_tren_mot_mang() -> None:
 
     assert loop.steps == tuple(f"l1.b{n}" for n in range(3, 9))
     assert loop.source == "l1.b2"
+
+
+def test_nhom_buoc_chay_mot_lan_cho_moi_vong_la_mot_lan_cua_vong_lap() -> None:
+    """kb8: sáu tin đăng, sáu lần đọc đáp án, sáu tin trả lời — mỗi nhóm ứng với sáu khối
+    của vòng lặp ở lượt 1."""
+    (loop,) = _report("kb8-ba-luot").loops
+    dang, doc_dap_an, tra_loi = loop.lanes
+
+    assert dang.steps == tuple(f"l2.b{n}" for n in range(2, 8))
+    assert doc_dap_an.steps == tuple(f"l3.b{n}" for n in range(1, 7))
+    assert tra_loi.steps == tuple(f"l3.b{n}" for n in range(7, 13))
+    assert loop.lane_steps(0) == loop.steps
+    assert loop.lane_steps(3) == tra_loi.steps
+
+
+def test_lan_doc_du_lieu_cua_dung_vong_cua_no() -> None:
+    (loop,) = _report("kb8-ba-luot").loops
+    _, doc_dap_an, tra_loi = loop.lanes
+
+    # Khối đáp án đứng ở vị trí 5, 7 hay 6 tuỳ câu; thứ không đổi là nó là khối `toggle`.
+    assert doc_dap_an.links == (
+        LaneLink("block_id", lane=0, path=("results",), key=("type", "toggle"), pick=("id",)),
+    )
+    assert doc_dap_an.evidence is LaneEvidence.DATA
+    assert tra_loi.links == (LaneLink("thread_ts", lane=1, path=("message_ts",)),)
+    assert tra_loi.written == ("text",)
+
+
+def test_lan_chi_co_so_buoc_bang_so_vong_thi_noi_ro_la_theo_vi_tri() -> None:
+    (loop,) = _report("kb8-ba-luot").loops
+    dang = loop.lanes[0]
+
+    assert dang.links == ()
+    assert dang.written == ("text",)
+    assert dang.evidence is LaneEvidence.POSITION
+
+
+def _hai_trang(*sau: SourceStep) -> SourceReport:
+    return find_sources(
+        _made(
+            (
+                "đọc hai trang rồi báo lên kênh",
+                [
+                    _call("l1.b1", {}, {"results": [{"id": "blk_aaa"}, {"id": "blk_bbb"}]}),
+                    _call("l1.b2", {"page_id": "blk_aaa"}, {"title": "Trang A"}),
+                    _call("l1.b3", {"page_id": "blk_bbb"}, {"title": "Trang B"}),
+                    *sau,
+                ],
+            )
+        )
+    )
+
+
+def test_so_buoc_khac_so_vong_thi_khong_phai_lan() -> None:
+    post = {"tool": "slack.post_message"}
+    report = _hai_trang(
+        _call("l1.b4", {"text": "Tin thứ nhất"}, **post),
+        _call("l1.b5", {"text": "Tin thứ hai"}, **post),
+        _call("l1.b6", {"text": "Tin thứ ba"}, **post),
+    )
+
+    (loop,) = report.loops
+    assert loop.lanes == ()
+
+
+def test_cac_buoc_giong_het_nhau_khong_phai_lan() -> None:
+    post = {"tool": "slack.post_message"}
+    report = _hai_trang(
+        _call("l1.b4", {"text": "Đã đọc xong"}, **post),
+        _call("l1.b5", {"text": "Đã đọc xong"}, **post),
+    )
+
+    (loop,) = report.loops
+    assert loop.lanes == ()
+
+
+def test_lan_lay_thang_tu_output_cua_buoc_cung_vong() -> None:
+    post = {"tool": "slack.post_message"}
+    report = _hai_trang(
+        _call("l1.b4", {"text": "Trang A"}, **post),
+        _call("l1.b5", {"text": "Trang B"}, **post),
+    )
+
+    (loop,) = report.loops
+    (lane,) = loop.lanes
+    assert lane.links == (LaneLink("text", lane=0, path=("title",)),)
 
 
 def test_cac_buoc_giong_het_nhau_khong_phai_vong_lap() -> None:

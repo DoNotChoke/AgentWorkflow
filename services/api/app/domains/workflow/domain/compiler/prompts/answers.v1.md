@@ -6,7 +6,7 @@ Bạn không viết workflow. Bạn chọn; code dựng workflow từ các lựa
 
 - **Ý đồ đã chấp nhận**: căn cứ cho mọi lựa chọn. Thứ ý đồ nói là thay đổi thì thành đầu vào; thứ nó nói là giữ nguyên thì thành hằng; việc nó nói là không thuộc nhiệm vụ thì bỏ.
 - **Các bước**: mỗi bước là một lời gọi tool đã thành công, có địa chỉ dạng `l2.b1` (lượt 2, bước 1), hình dạng output, và các câu hỏi `N…` về từng tham số của nó.
-- **Cụm bước lặp** `V…`, nếu có.
+- **Cụm bước lặp** `V…`, nếu có, kèm các **làn**: những nhóm bước khác cũng chạy một lần cho mỗi phần tử.
 - **Dữ liệu đọc được**: những phần output mà node `llm` và `tinh_toan` được phép đọc, viết dạng `l1.b1:messages`.
 
 # Cách trả lời
@@ -27,17 +27,20 @@ Gọi `tra_loi` đúng một lần, đủ mọi phần.
 - `mac_dinh_cua_tool`: giá trị người dùng không nói ra mà Agent tự chọn về mặt kỹ thuật, như một giới hạn số lượng. Nhất là khi Agent đã nắn con số đó theo một ngưỡng mà nay thành đầu vào.
 - `llm`: nội dung Agent tự soạn ra từ dữ liệu — tóm tắt, viết lại. Nêu `node` và khai node đó trong phần `llm`.
 - Mỗi câu trả lời kèm `ly_do`: một câu ngắn cho người dùng đọc.
-- Không trả lời câu hỏi của bước đã bỏ. Không trả lời câu hỏi của bước thứ hai trở đi trong một cụm đã gộp thành vòng lặp.
+- Không trả lời câu hỏi của bước đã bỏ. Trong một cụm đã gộp thành vòng lặp, và trong mỗi làn đã gộp vào nó, chỉ trả lời câu hỏi của bước đầu tiên: bước đó nói thay cho mọi vòng. Trường mà tài liệu đã ghi là lấy từ phần tử đang lặp hay từ một làn của cùng vòng thì không cần trả lời.
 
 ## `vong_lap` — một câu trả lời cho mỗi cụm `V…` có bước được giữ
 
 - `loop` khi ý đồ là làm với từng phần tử của mảng, bao nhiêu phần tử cũng vậy.
 - `trai_phang` khi đúng là những phần tử cụ thể đó. Nếu kiểm báo số phần tử không khớp, đây là lựa chọn còn lại.
+- `lan`: số của những làn cùng nằm trong thân vòng lặp. Gộp một làn khi ý đồ nói việc đó làm cho từng phần tử. Mọi bước của làn phải được giữ; làn lấy dữ liệu từ một làn khác thì làn kia cũng phải được gộp. Trong một vòng, làn gốc chạy trước, rồi các làn theo số tăng dần.
+- Thứ tự chạy sẽ khác hội thoại: workflow làm đủ mọi việc cho một phần tử rồi mới sang phần tử sau. Nếu ý đồ đòi làm xong một việc cho mọi phần tử trước, đừng gộp làn đó.
 
 ## `llm` — khai từng node đã dùng ở trên
 
 - `instructions` nói rõ dữ liệu vào là gì và cần sinh ra gì. Không chép dữ liệu của lần chạy này vào đó.
 - `dau_vao`: tên do bạn đặt → một khoá trong danh sách dữ liệu đọc được.
+- Nội dung Agent soạn riêng cho từng phần tử của vòng lặp thì chỉ cần **một** node, dùng ở bước đầu của làn: nó chạy lại ở mỗi vòng. Cho nó đọc dữ liệu của bước đầu một làn chạy trước trong cùng vòng (`l1.b3:results`), hoặc chính phần tử đang lặp (`V1:phan_tu`). Đừng khai một node cho mỗi phần tử.
 
 ## `tinh_toan` và `dieu_kien` — khi ý đồ có điều kiện mà không bước nào trong hội thoại làm phép so đó
 

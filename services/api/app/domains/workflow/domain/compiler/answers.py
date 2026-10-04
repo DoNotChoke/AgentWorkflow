@@ -9,9 +9,11 @@ from typing import Any, Final
 
 import jsonschema
 
+from app.domains.workflow.domain.compiler.provenance import LaneLink
 from app.domains.workflow.domain.compiler.questions import (
     INPUT_NAME,
     Choice,
+    LoopQuestion,
     QuestionSet,
     SourceQuestion,
     answer_schema,
@@ -62,6 +64,8 @@ class LoopAnswer:
     as_loop: bool
     id: str | None = None
     reason: str | None = None
+    #: Những làn khác được gộp vào thân vòng lặp, theo số thứ tự từ 1.
+    lanes: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,7 +169,10 @@ def _parse(raw: Mapping[str, Any]) -> Answers:
         sources={qid: _source(item) for qid, item in raw["gia_tri"].items()},
         loops={
             qid: LoopAnswer(
-                as_loop=item["chon"] == "loop", id=item.get("id"), reason=item.get("ly_do")
+                as_loop=item["chon"] == "loop",
+                id=item.get("id"),
+                reason=item.get("ly_do"),
+                lanes=tuple(sorted(item.get("lan", ()))),
             )
             for qid, item in raw.get("vong_lap", {}).items()
         },
@@ -219,22 +226,61 @@ def _value(item: Mapping[str, Any]) -> ValueAnswer:
 # ─── Kiểm ────────────────────────────────────────────────────────────────────
 
 
+@dataclass(frozen=True, slots=True)
+class Membership:
+    """Chỗ của một bước trong thân một vòng lặp đã chọn."""
+
+    question: LoopQuestion
+    #: 0 là làn gốc.
+    lane: int
+    #: Vòng thứ mấy, từ 0. Bước của vòng 0 đứng thay cả làn trong thân vòng lặp.
+    position: int
+
+
+def included_lanes(question: LoopQuestion, answers: Answers) -> tuple[int, ...]:
+    """Các làn nằm trong thân vòng lặp, theo thứ tự chạy. Rỗng khi không gộp."""
+    answer = answers.loops.get(question.id)
+    if answer is None or not answer.as_loop:
+        return ()
+    return (0, *answer.lanes)
+
+
+def membership(questions: QuestionSet, answers: Answers, step: str) -> Membership | None:
+    found = questions.lane_of(step)
+    if found is None:
+        return None
+    question, lane = found
+    if lane not in included_lanes(question, answers):
+        return None
+    return Membership(question, lane, question.loop.lane_steps(lane).index(step))
+
+
 def subsumed(questions: QuestionSet, answers: Answers, step: str) -> bool:
-    """Bước là phần tử thứ hai trở đi của một vòng lặp đã chọn: phần tử đầu nói thay nó."""
-    loop = questions.loop_of(step)
-    if loop is None or step == loop.loop.steps[0]:
-        return False
-    answer = answers.loops.get(loop.id)
-    return answer is not None and answer.as_loop
+    """Bước thuộc vòng thứ hai trở đi của một vòng lặp đã chọn: bước của vòng đầu nói thay nó."""
+    member = membership(questions, answers, step)
+    return member is not None and member.position > 0
+
+
+def lane_link(
+    questions: QuestionSet, answers: Answers, question: SourceQuestion
+) -> LaneLink | None:
+    """Trường này lấy giá trị từ dữ liệu của chính vòng đang chạy: không cần hỏi."""
+    member = membership(questions, answers, question.step)
+    if member is None:
+        return None
+    loop = member.question.loop
+    if member.lane == 0:
+        if question.path != loop.field:
+            return None
+        return LaneLink(field=question.field, lane=None, path=loop.pick)
+    return next(
+        (link for link in loop.lanes[member.lane - 1].links if link.field == question.field),
+        None,
+    )
 
 
 def is_loop_item(questions: QuestionSet, answers: Answers, question: SourceQuestion) -> bool:
-    """Trường này là thứ thay đổi qua từng vòng: nó lấy từ phần tử đang lặp, không cần hỏi."""
-    loop = questions.loop_of(question.step)
-    if loop is None or question.path != loop.loop.field:
-        return False
-    answer = answers.loops.get(loop.id)
-    return answer is not None and answer.as_loop
+    return lane_link(questions, answers, question) is not None
 
 
 def _check(questions: QuestionSet, skeleton: Skeleton, answers: Answers) -> Iterator[AnswerIssue]:
@@ -297,6 +343,22 @@ def _check_loops(questions: QuestionSet, answers: Answers) -> Iterator[AnswerIss
                 "nguon_la_buoc_da_bo",
                 f"Vòng lặp lấy mảng từ {question.loop.source}, mà bước đó đã bị bỏ.",
             )
+        for number in answer.lanes:
+            lane = question.loop.lanes[number - 1]
+            if not all(answers.keeps(step) for step in lane.steps):
+                yield AnswerIssue(
+                    question.id,
+                    "vong_lap_thieu_buoc",
+                    f"Làn {number} nằm trong vòng lặp thì mọi bước của nó phải được giữ.",
+                )
+            for link in lane.links:
+                if link.lane and link.lane not in answer.lanes:
+                    yield AnswerIssue(
+                        question.id,
+                        "lan_thieu_nguon",
+                        f"Làn {number} lấy `{link.field}` từ làn {link.lane} trong cùng vòng, "
+                        f"nên làn {link.lane} cũng phải nằm trong vòng lặp.",
+                    )
 
 
 def _check_source(
@@ -323,11 +385,30 @@ def _check_source(
         else:
             for name, key in node.inputs.items():
                 ref = questions.ref(key)
-                if ref is not None and order[ref.step] >= order[question.step]:
+                if ref is None:
+                    continue
+                if ref.step not in order:
+                    # Phần tử đang lặp: chỉ có nghĩa với node llm nằm trong đúng vòng lặp đó.
+                    member = membership(questions, answers, question.step)
+                    if member is None or member.question.id != ref.step:
+                        yield AnswerIssue(
+                            f"llm:{node.id}",
+                            "phan_tu_ngoai_vong_lap",
+                            f"Input {name!r} đọc phần tử đang lặp của {ref.step}, mà chỗ dùng "
+                            "node llm không nằm trong vòng lặp đó.",
+                        )
+                elif order[ref.step] >= order[question.step]:
                     yield AnswerIssue(
                         f"llm:{node.id}",
                         "doc_buoc_chua_chay",
                         f"Input {name!r} đọc {ref.step}, mà bước đó chạy sau chỗ dùng node llm.",
+                    )
+                elif _reads_into_loop(questions, answers, reader=question.step, source=ref.step):
+                    yield AnswerIssue(
+                        f"llm:{node.id}",
+                        "nguon_trong_vong_lap",
+                        f"Input {name!r} đọc {ref.step}, bước nằm trong một vòng lặp mà chỗ "
+                        "dùng node llm thì không.",
                     )
 
     elif answer.choice is Choice.FROM_STEP:
@@ -369,12 +450,16 @@ def _check_source(
 
 
 def _reads_into_loop(questions: QuestionSet, answers: Answers, *, reader: str, source: str) -> bool:
-    """`source` nằm trong thân một vòng lặp đã chọn, còn `reader` thì ở ngoài."""
-    loop = questions.loop_of(source)
-    if loop is None or reader in loop.loop.steps:
+    """`source` nằm trong thân một vòng lặp đã chọn mà `reader` không đọc được nó: `reader`
+    ở ngoài vòng lặp, hoặc ở trong nhưng `source` thuộc một vòng khác hay một làn chạy sau."""
+    inside = membership(questions, answers, source)
+    if inside is None:
         return False
-    chosen = answers.loops.get(loop.id)
-    return chosen is not None and chosen.as_loop
+    here = membership(questions, answers, reader)
+    if here is None or here.question.id != inside.question.id:
+        return True
+    lanes = included_lanes(here.question, answers)
+    return inside.position != here.position or lanes.index(inside.lane) >= lanes.index(here.lane)
 
 
 def _check_input(
@@ -400,7 +485,9 @@ def _check_llms(questions: QuestionSet, answers: Answers) -> Iterator[AnswerIssu
             yield AnswerIssue(owner, "llm_khong_ai_dung", f"Không trường nào lấy từ {node.id}.")
         for name, key in node.inputs.items():
             ref = questions.ref(key)
-            if ref is not None and not answers.keeps(ref.step):
+            if ref is None or questions.loop(ref.step) is not None:
+                continue
+            if not answers.keeps(ref.step):
                 yield AnswerIssue(
                     owner,
                     "nguon_la_buoc_da_bo",
@@ -427,7 +514,13 @@ def _check_computes(
         for name, value in compute.args.items():
             yield from _check_value(owner, name, value, questions, answers, inputs)
             ref = questions.ref(value.ref) if value.ref else None
-            if ref is not None and order[ref.step] > order[compute.after]:
+            if ref is not None and ref.step not in order:
+                yield AnswerIssue(
+                    owner,
+                    "phan_tu_ngoai_vong_lap",
+                    f"Tham số {name!r} đọc phần tử đang lặp; phép tính đứng ngoài vòng lặp.",
+                )
+            elif ref is not None and order[ref.step] > order[compute.after]:
                 yield AnswerIssue(
                     owner,
                     "doc_buoc_chua_chay",
@@ -490,7 +583,7 @@ def _check_value(
         yield from _check_input(owner, value.name, value.value, inputs)
     elif value.kind == "du_lieu":
         ref = questions.ref(value.ref or "")
-        if ref is not None and not answers.keeps(ref.step):
+        if ref is not None and questions.loop(ref.step) is None and not answers.keeps(ref.step):
             yield AnswerIssue(
                 owner, "nguon_la_buoc_da_bo", f"Tham số {name!r} đọc {ref.step}, bước đã bỏ."
             )

@@ -15,13 +15,20 @@ from app.domains.workflow.domain.compiler.answers import (
     Answers,
     SourceAnswer,
     ValueAnswer,
+    included_lanes,
     is_loop_item,
     loop_id,
     subsumed,
 )
 from app.domains.workflow.domain.compiler.assemble import Assembled
 from app.domains.workflow.domain.compiler.intent import Intent, render_intent
-from app.domains.workflow.domain.compiler.questions import Choice, QuestionSet, SourceQuestion
+from app.domains.workflow.domain.compiler.provenance import LaneLink, LoopCandidate
+from app.domains.workflow.domain.compiler.questions import (
+    Choice,
+    LoopQuestion,
+    QuestionSet,
+    SourceQuestion,
+)
 from app.domains.workflow.domain.compiler.report import CompileReport
 from app.domains.workflow.domain.compiler.skeleton import Skeleton, StepKind
 
@@ -190,6 +197,7 @@ def _loops(questions: QuestionSet, answers: Answers) -> list[str]:
             lines.append(
                 f"`{loop_id(question.id, answers)}`: lặp trên từng phần tử của {source} "
                 f"(lần chạy mẫu: {len(question.loop.steps)} phần tử)"
+                + "".join(f"\n  - {line}" for line in _lanes(question, answers))
             )
         else:
             lines.append(
@@ -197,6 +205,43 @@ def _loops(questions: QuestionSet, answers: Answers) -> list[str]:
                 "mỗi bước một phần tử cố định"
             )
     return lines
+
+
+def _lanes(question: LoopQuestion, answers: Answers) -> list[str]:
+    """Thân vòng lặp nhiều bước: thứ tự chạy, và mỗi mối nối suy ra từ lần chạy mẫu."""
+    loop = question.loop
+    lanes = included_lanes(question, answers)
+    if len(lanes) < 2:
+        return []
+    names = {lane: f"`{answers.node_id(loop.lane_steps(lane)[0])}`" for lane in lanes}
+    lines = [
+        f"mỗi vòng chạy lần lượt {' → '.join(names[lane] for lane in lanes)}. Lần chạy mẫu thì "
+        f"làm xong từng việc cho cả {len(loop.steps)} phần tử rồi mới sang việc sau"
+    ]
+    for lane in lanes[1:]:
+        found = loop.lanes[lane - 1]
+        lines += [
+            f"{names[lane]}.{link.field}: {_lane_source(loop, link, names)}" for link in found.links
+        ]
+        if not found.links:
+            lines.append(
+                f"{names[lane]} nằm trong vòng lặp vì nó chạy đúng {len(found.steps)} lần; không "
+                "dữ liệu nào nối nó với từng phần tử"
+            )
+    return lines
+
+
+def _lane_source(loop: LoopCandidate, link: LaneLink, names: dict[int, str]) -> str:
+    if link.lane is None:
+        return f"lấy từ phần tử đang lặp → `{'.'.join(link.path)}`"
+    source = f"lấy từ {names[link.lane]} của cùng vòng"
+    if link.key is None:
+        return f"{source} → `{'.'.join(link.path)}`"
+    name, value = link.key
+    return (
+        f"{source}: phần tử của `{'.'.join(link.path)}` có `{name}` = {_cut(value)} (khoá suy "
+        f"ra từ lần chạy mẫu: cả {len(loop.steps)} vòng đều chọn đúng phần tử đó)"
+    )
 
 
 def _written(skeleton: Skeleton, answers: Answers) -> list[WrittenText]:

@@ -17,7 +17,7 @@ from app.core.errors import AppError
 from app.domains.workflow.domain.bindings import Missing, Scope, lookup, loop_items
 from app.domains.workflow.domain.compiler.assemble import Assembled
 from app.domains.workflow.domain.compiler.provenance import projects
-from app.domains.workflow.domain.compiler.skeleton import Skeleton, SkeletonStep
+from app.domains.workflow.domain.compiler.skeleton import Skeleton, SkeletonStep, StepKind
 from app.domains.workflow.domain.conditions import holds
 from app.domains.workflow.domain.ir import (
     Binding,
@@ -224,7 +224,9 @@ class _Replay:
 
     def _loop(self, node: LoopNode, scope: Scope) -> Iterator[Issue]:
         members = self._assembled.traced[node.id]
-        self._outputs[node.id] = [self._skeleton.step(ref).output for ref in members]
+        self._outputs[node.id] = [
+            _recorded(self._skeleton.step(ref)) for ref in self._assembled.traced[node.collect]
+        ]
         try:
             items = loop_items(node, scope)
         except AppError as exc:
@@ -245,18 +247,33 @@ class _Replay:
                 field=("over",),
             )
             return
-        (body,) = node.body
-        bucket, bindings = (
-            ("args", body.args)
-            if isinstance(body, TransformNode)
-            else (
-                "input",
-                body.input,
-            )
-        )
-        for item, ref in zip(items, members, strict=True):
-            inner = scope.with_item(item, self._outputs)
-            yield from self._same_input(body.id, bucket, bindings, self._skeleton.step(ref), inner)
+        for position, item in enumerate(items):
+            # Mỗi vòng có output riêng của các node trong thân.
+            local = dict(self._outputs)
+            inner = scope.with_item(item, local)
+            for body in node.body:
+                if isinstance(body, LlmNode):
+                    yield from self._resolvable(body.id, "input", body.input, inner)
+                    iterations = self._assembled.llm_iterations.get(body.id)
+                    local[body.id] = (
+                        iterations[position]
+                        if iterations
+                        else self._assembled.llm_samples.get(body.id, {})
+                    )
+                    continue
+                step = self._skeleton.step(self._assembled.traced[body.id][position])
+                bucket, bindings = (
+                    ("args", body.args)
+                    if isinstance(body, TransformNode)
+                    else ("input", body.input)
+                )
+                yield from self._same_input(body.id, bucket, bindings, step, inner)
+                local[body.id] = _recorded(step)
+
+
+def _recorded(step: SkeletonStep) -> Any:
+    """Output của node đứng thay bước này: node `transform` trả thẳng kết quả."""
+    return step.output.get("result") if step.kind is StepKind.TRANSFORM else step.output
 
 
 def _show(value: Any) -> str:

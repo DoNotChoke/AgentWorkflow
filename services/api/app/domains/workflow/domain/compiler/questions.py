@@ -21,9 +21,11 @@ NODE_ID: Final = "^[a-z][a-z0-9_]{0,31}$"
 INPUT_NAME: Final = "^[a-z][a-z0-9_]{0,63}$"
 #: Kiểu kết quả mà một node `transform` do LLM viết được khai.
 RESULT_TYPES: Final = ("integer", "number", "boolean", "string", "array", "object")
-#: Trần số node llm trong một câu trả lời. Một conversation trải phẳng có thể cần mỗi
-#: tin nhắn một node; quá con số này thì nó không còn là một workflow đọc được.
-MAX_LLM_NODES: Final = 20
+#: Trần số node llm trong một câu trả lời. Cần nhiều hơn thế thường là dấu hiệu một
+#: vòng lặp đang bị trải phẳng.
+MAX_LLM_NODES: Final = 10
+#: Tên phần dữ liệu "phần tử đang lặp" của một vòng lặp: `V1:phan_tu`.
+LOOP_ITEM: Final = "phan_tu"
 #: Một câu ngắn vì sao chọn vậy. Hiện cho người dùng, không ảnh hưởng thực thi.
 REASON: Final = {"type": "string", "maxLength": 300}
 
@@ -111,6 +113,17 @@ class QuestionSet:
     def loop_of(self, step: str) -> LoopQuestion | None:
         return next((q for q in self.loops if step in q.loop.steps), None)
 
+    def lane_of(self, step: str) -> tuple[LoopQuestion, int] | None:
+        """Vòng lặp và làn mà `step` có thể thuộc về. Làn 0 là làn gốc."""
+        for question in self.loops:
+            for lane in range(len(question.loop.lanes) + 1):
+                if step in question.loop.lane_steps(lane):
+                    return question, lane
+        return None
+
+    def loop(self, question_id: str) -> LoopQuestion | None:
+        return next((q for q in self.loops if q.id == question_id), None)
+
     def ref(self, key: str) -> DataRef | None:
         return next((ref for ref in self.data if ref.key == key), None)
 
@@ -135,7 +148,10 @@ def build_questions(skeleton: Skeleton, report: SourceReport, tools: ToolShapes)
         keeps=tuple(KeepQuestion(step.ref) for step in skeleton.steps),
         sources=tuple(sources),
         loops=tuple(LoopQuestion(f"V{n}", loop) for n, loop in enumerate(loops, start=1)),
-        data=tuple(data),
+        data=(
+            *data,
+            *(DataRef(f"V{n}", (LOOP_ITEM,)) for n in range(1, len(loops) + 1)),
+        ),
     )
 
 
@@ -255,13 +271,7 @@ def answer_schema(questions: QuestionSet) -> dict[str, Any]:
                 {question.id: _source_schema(question) for question in questions.sources}, []
             ),
             "vong_lap": _object(
-                {
-                    question.id: _object(
-                        {"chon": {"enum": ["loop", "trai_phang"]}, "id": node_id, "ly_do": REASON},
-                        ["chon"],
-                    )
-                    for question in questions.loops
-                },
+                {question.id: _loop_schema(question, node_id) for question in questions.loops},
                 [],
             ),
             "llm": {
@@ -315,6 +325,22 @@ def answer_schema(questions: QuestionSet) -> dict[str, Any]:
         },
         ["ten", "buoc", "gia_tri"],
     )
+
+
+def _loop_schema(question: LoopQuestion, node_id: Mapping[str, Any]) -> dict[str, Any]:
+    properties: dict[str, Any] = {
+        "chon": {"enum": ["loop", "trai_phang"]},
+        "id": node_id,
+        "ly_do": REASON,
+    }
+    if question.loop.lanes:
+        properties["lan"] = {
+            "type": "array",
+            "uniqueItems": True,
+            "items": {"enum": list(range(1, len(question.loop.lanes) + 1))},
+            "description": "Chỉ khi chon = loop: những làn khác cùng chạy trong mỗi vòng.",
+        }
+    return _object(properties, ["chon"])
 
 
 def _source_schema(question: SourceQuestion) -> dict[str, Any]:

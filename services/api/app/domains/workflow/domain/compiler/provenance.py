@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from enum import StrEnum
 from typing import Any, Final
 
 from app.domains.workflow.domain.compiler.skeleton import (
@@ -83,6 +84,42 @@ class Sources:
 
 
 @dataclass(frozen=True, slots=True)
+class LaneLink:
+    """Một trường của làn lấy giá trị từ đâu, trong cùng một vòng."""
+
+    field: str
+    #: Làn nguồn: 0 là làn gốc. `None` là chính phần tử đang lặp.
+    lane: int | None
+    #: Đường trong output của bước nguồn, hoặc trong phần tử đang lặp.
+    path: Path
+    #: Có thì `path` trỏ vào một mảng, và phần tử được chọn là phần tử đầu tiên có trường
+    #: này mang giá trị này. Suy ra từ dữ liệu: mọi vòng đều chọn đúng phần tử như vậy.
+    key: tuple[str, Any] | None = None
+    pick: Path = ()
+
+
+class LaneEvidence(StrEnum):
+    #: Bước thứ k đọc dữ liệu của đúng vòng thứ k.
+    DATA = "du_lieu"
+    #: Chỉ có số bước bằng số vòng; thứ thay đổi là nội dung model tự soạn.
+    POSITION = "vi_tri"
+
+
+@dataclass(frozen=True, slots=True)
+class Lane:
+    """Một nhóm bước cùng tool, mỗi bước ứng với một vòng của vòng lặp."""
+
+    steps: tuple[str, ...]
+    links: tuple[LaneLink, ...] = ()
+    #: Trường thay đổi qua từng vòng mà không có nguồn: model đã tự soạn.
+    written: tuple[str, ...] = ()
+
+    @property
+    def evidence(self) -> LaneEvidence:
+        return LaneEvidence.DATA if self.links else LaneEvidence.POSITION
+
+
+@dataclass(frozen=True, slots=True)
 class LoopCandidate:
     """Các bước liền nhau gọi cùng một tool, mỗi bước cho một phần tử của cùng một mảng."""
 
@@ -97,6 +134,11 @@ class LoopCandidate:
     covers_all: bool
     #: Trường mà mọi phần tử được dùng có chung giá trị, và không phần tử bị bỏ nào có.
     filter: tuple[tuple[str, Any], ...] = ()
+    #: Những nhóm bước khác chạy một lần cho mỗi vòng. `steps` ở trên là làn 0.
+    lanes: tuple[Lane, ...] = ()
+
+    def lane_steps(self, lane: int) -> tuple[str, ...]:
+        return self.steps if lane == 0 else self.lanes[lane - 1].steps
 
 
 @dataclass(frozen=True, slots=True)
@@ -378,7 +420,7 @@ def _loops(skeleton: Skeleton, found: Sequence[Sources]) -> tuple[LoopCandidate,
         else:
             loops.append(best)
             start += len(best.steps)
-    return tuple(loops)
+    return _with_lanes(skeleton, loops, by_step)
 
 
 def _same_call(first: SkeletonStep, other: SkeletonStep) -> bool:
@@ -447,3 +489,171 @@ def _filter(elements: Sequence[Any], used: set[int]) -> tuple[tuple[str, Any], .
         and all(element.get(field) == value for element in kept)
         and not any(element.get(field) == value for element in dropped)
     )
+
+
+# ─── Làn ─────────────────────────────────────────────────────────────────────
+
+
+def _with_lanes(
+    skeleton: Skeleton,
+    loops: Sequence[LoopCandidate],
+    by_step: Mapping[str, Mapping[Path, Sources]],
+) -> tuple[LoopCandidate, ...]:
+    """Gắn vào mỗi vòng lặp những nhóm bước khác chạy một lần cho mỗi vòng của nó."""
+    order = {step.ref: position for position, step in enumerate(skeleton.steps)}
+    based = {ref for loop in loops for ref in loop.steps}
+    lanes: dict[int, list[Lane]] = {number: [] for number in range(len(loops))}
+
+    for run in _runs(skeleton.steps):
+        if run[0].ref in based:
+            continue
+        # Vòng lặp đứng trước nhóm này và có đúng chừng ấy vòng.
+        fitting = [
+            number
+            for number, loop in enumerate(loops)
+            if len(loop.steps) == len(run) and order[loop.steps[-1]] < order[run[0].ref]
+        ]
+        placed = False
+        for number in fitting:
+            lane = _lane(skeleton, loops[number], lanes[number], run, by_step)
+            if lane is not None and lane.links:
+                lanes[number].append(lane)
+                placed = True
+                break
+        if placed or not fitting:
+            continue
+        # Không có dấu vết dữ liệu: gắn vào vòng lặp gần nhất, để người trả lời quyết.
+        nearest = fitting[-1]
+        lane = _lane(skeleton, loops[nearest], lanes[nearest], run, by_step)
+        if lane is not None:
+            lanes[nearest].append(lane)
+
+    return tuple(replace(loop, lanes=tuple(lanes[number])) for number, loop in enumerate(loops))
+
+
+def _runs(steps: Sequence[SkeletonStep]) -> Iterator[tuple[SkeletonStep, ...]]:
+    """Các nhóm bước liền nhau gọi cùng một tool trong cùng một lượt, dài hết mức."""
+    start = 0
+    while start < len(steps):
+        end = start + 1
+        while end < len(steps) and _same_call(steps[start], steps[end]):
+            end += 1
+        yield tuple(steps[start:end])
+        start = end
+
+
+def _lane(
+    skeleton: Skeleton,
+    loop: LoopCandidate,
+    accepted: Sequence[Lane],
+    run: Sequence[SkeletonStep],
+    by_step: Mapping[str, Mapping[Path, Sources]],
+) -> Lane | None:
+    names = list(run[0].fields)
+    if any(list(step.fields) != names for step in run[1:]):
+        return None
+    earlier = [loop.steps, *(lane.steps for lane in accepted)]
+
+    links: list[LaneLink] = []
+    written: list[str] = []
+    for name in names:
+        values = [step.fields[name] for step in run]
+        if all(value == values[0] for value in values[1:]):
+            continue
+        link = _lane_link(skeleton, loop, earlier, run, name, by_step)
+        if link is not None:
+            links.append(link)
+        elif all(
+            not found.is_sourced
+            for step in run
+            for path, found in by_step[step.ref].items()
+            if path[: len(step.root) + 1] == (*step.root, name)
+        ):
+            written.append(name)
+        else:
+            # Thay đổi qua từng vòng mà nguồn lại không theo vòng: không phải một làn.
+            return None
+    if not links and not written:
+        return None
+    return Lane(steps=tuple(step.ref for step in run), links=tuple(links), written=tuple(written))
+
+
+def _lane_link(
+    skeleton: Skeleton,
+    loop: LoopCandidate,
+    earlier: Sequence[Sequence[str]],
+    run: Sequence[SkeletonStep],
+    name: str,
+    by_step: Mapping[str, Mapping[Path, Sources]],
+) -> LaneLink | None:
+    """Trường `name` của bước thứ k lấy từ cùng một chỗ trong dữ liệu của vòng thứ k."""
+    #: Mô tả một nguồn không phụ thuộc k → chỉ số phần tử ở từng vòng (nếu có).
+    shared: dict[tuple[Any, ...], list[int | None]] | None = None
+    for position, step in enumerate(run):
+        found = by_step[step.ref].get((*step.root, name))
+        if found is None:
+            return None
+        here: dict[tuple[Any, ...], int | None] = {}
+        for source in found.steps:
+            element = source.element
+            if (
+                source.step == loop.source
+                and element is not None
+                and element.array == loop.array
+                and element.index == loop.indices[position]
+            ):
+                here[("item", element.pick)] = None
+            for lane, members in enumerate(earlier):
+                if source.step != members[position]:
+                    continue
+                here[("path", lane, source.path)] = None
+                if element is not None:
+                    here[("element", lane, element.array, element.pick)] = element.index
+        if shared is None:
+            shared = {key: [index] for key, index in here.items()}
+        else:
+            shared = {key: [*seen, here[key]] for key, seen in shared.items() if key in here}
+    if not shared:
+        return None
+
+    # Phần tử đang lặp trước; rồi phần tử chọn theo khoá, vì nó sống sót khi thứ tự đổi;
+    # đường cố định sau cùng.
+    for key in sorted(shared, key=lambda found: ("item", "element", "path").index(found[0])):
+        if key[0] == "item":
+            return LaneLink(field=name, lane=None, path=key[1])
+        if key[0] == "path":
+            return LaneLink(field=name, lane=key[1], path=key[2])
+        _, lane, array, pick = key
+        indices = [index for index in shared[key] if index is not None]
+        arrays = [walk(skeleton.step(ref).output, array) for ref in earlier[lane]]
+        chosen = _shared_key(arrays, indices, pick)
+        if chosen is not None:
+            return LaneLink(field=name, lane=lane, path=array, key=chosen, pick=pick)
+    return None
+
+
+def _shared_key(
+    arrays: Sequence[Sequence[Any]], indices: Sequence[int], pick: Path
+) -> tuple[str, Any] | None:
+    """Một trường mà ở mọi vòng, phần tử được chọn là phần tử đầu tiên mang giá trị đó."""
+    first = arrays[0][indices[0]]
+    if not isinstance(first, Mapping):
+        return None
+    # Chuỗi trước: `type == "toggle"` nói được nhiều hơn `has_children == True`.
+    for field, value in sorted(first.items(), key=lambda item: not isinstance(item[1], str)):
+        if pick == (field,) or isinstance(value, Mapping | list) or value is None:
+            continue
+        if all(
+            next(
+                (
+                    position
+                    for position, other in enumerate(array)
+                    if isinstance(other, Mapping) and other.get(field) == value
+                ),
+                None,
+            )
+            == index
+            for array, index in zip(arrays, indices, strict=True)
+        ):
+            return field, value
+    return None

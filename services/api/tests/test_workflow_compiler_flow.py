@@ -238,6 +238,19 @@ def test_cum_buoc_lap_va_code_cua_agent_co_trong_tai_lieu() -> None:
     )
 
 
+def test_tai_lieu_ke_cac_lan_va_noi_lan_nao_chi_theo_vi_tri() -> None:
+    text = briefing(*_material("kb8-ba-luot"), INTENT)
+
+    assert "  - phần tử đang lặp đọc được qua `V1:phan_tu`" in text
+    assert "  - làn 1: l2.b2, l2.b3, l2.b4, l2.b5, l2.b6, l2.b7 (`slack.post_message`)" in text
+    assert "`text` do Agent tự soạn. Không dữ liệu nào nối làn này với từng phần tử" in text
+    assert (
+        "`block_id` lấy từ làn gốc của cùng vòng → phần tử của `results` có `type` = "
+        '"toggle" → `id`' in text
+    )
+    assert "`thread_ts` lấy từ làn 1 của cùng vòng → `message_ts`" in text
+
+
 def test_conversation_qua_dai_bi_tu_choi_chu_khong_cat_am_tham() -> None:
     with pytest.raises(ValidationError) as caught:
         briefing(*_material("kb8-ba-luot"), INTENT, max_chars=5000)
@@ -395,6 +408,34 @@ async def test_bang_gia_dinh_noi_buoc_nao_bo_va_gia_tri_lay_tu_dau() -> None:
     assert text.startswith("# Đăng link trang Notion vào Slack")
     assert "**Bước bị bỏ**\n- lượt 2, `slack.post_message`: Tin thử `ping`" in text
     assert '- `ten_trang` — lần chạy mẫu: "AWS"' in text
+
+
+async def test_bang_gia_dinh_noi_ro_than_vong_lap_va_dieu_da_suy_ra() -> None:
+    built = await _build(ScriptedAnswerAdvisor(_answers("kb8-ba-luot")), "kb8-ba-luot")
+    proposal = built.proposal
+    assert proposal is not None
+    assert proposal.is_ready
+
+    (loop,) = proposal.loops
+    lines = loop.split("\n  - ")
+    assert lines[0] == (
+        "`moi_cau`: lặp trên từng phần tử của `khoi` → `results` (lần chạy mẫu: 6 phần tử)"
+    )
+    assert lines[1].startswith(
+        "mỗi vòng chạy lần lượt `doc_khoi` → `dang_cau_hoi` → `doc_dap_an` → `tra_loi`. "
+        "Lần chạy mẫu thì làm xong từng việc cho cả 6 phần tử"
+    )
+    assert lines[2].startswith("`dang_cau_hoi` nằm trong vòng lặp vì nó chạy đúng 6 lần")
+    assert lines[3] == (
+        "`doc_dap_an`.block_id: lấy từ `doc_khoi` của cùng vòng: phần tử của `results` có "
+        '`type` = "toggle" (khoá suy ra từ lần chạy mẫu: cả 6 vòng đều chọn đúng phần tử đó)'
+    )
+    assert lines[4] == "`tra_loi`.thread_ts: lấy từ `dang_cau_hoi` của cùng vòng → `message_ts`"
+    # Sáu tin đăng chỉ còn một dòng: bước đầu của làn nói thay cả làn.
+    assert [item.node for item in proposal.linked if item.field == "text"] == [
+        "dang_cau_hoi",
+        "tra_loi",
+    ]
 
 
 async def test_code_va_dieu_kien_hien_nguyen_van() -> None:

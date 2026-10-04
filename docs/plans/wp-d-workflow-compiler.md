@@ -395,6 +395,7 @@ Mỗi commit xanh độc lập. GĐ 1–4 không gọi model, không DB.
   một bước khác nhau của lượt 2 và `text` do model viết. Không phải vòng lặp trên một
   mảng, nên `loops` không báo. kb8 nhiều khả năng kết thúc ở *"biên dịch được lượt 1,
   phần còn lại chưa tổng quát hoá được"* — và đó là câu trả lời đúng cho IR v2.
+  (Sai: IR biểu diễn được, bộ dò mới là thứ không thấy. Xem *Vòng lặp nhiều làn* ở GĐ 5.)
 
 **Sau khi `transform` vào IR** (2026-10-01, làm trước GĐ 3 theo yêu cầu)
 
@@ -591,12 +592,63 @@ Ba thứ lượt chạy này buộc phải sửa:
   bộ lắp phát nó sáu lần — id trùng, đồ thị có chu trình, và lỗi không truy được về câu
   hỏi nào nên vòng tự sửa dừng. Giờ node được phát một lần, trước bước đầu tiên đọc nó;
   hai bước gửi hai nội dung khác nhau thì tầng 3 báo `khong_tai_tao_duoc` ở đúng câu hỏi.
-- *Trần mười node `llm` quá thấp* cho một conversation trải phẳng. Nâng lên hai mươi.
+- *Trần mười node `llm` quá thấp* cho một conversation trải phẳng. Nâng lên hai mươi
+  (về lại mười khi có vòng lặp nhiều làn, xem dưới).
 
 **kb8 biên dịch được, nhưng không tổng quát.** IR lắp ra đúng cho một trang có đúng sáu
 câu hỏi: mọi binding trỏ theo vị trí. Trang có bảy câu thì câu thứ bảy bị bỏ sót, lặng
 lẽ. Mười ba cảnh báo `chi_so_tho` là dấu hiệu duy nhất; bảng giả định phải làm cho
 người dùng thấy điều đó, không để nó chìm trong danh sách.
+
+**Vòng lặp nhiều làn, 2026-10-04** — để kb8 thành một vòng lặp thay vì 27 bước trải phẳng.
+
+IR vẫn như cũ: thân `loop` vốn đã nhận nhiều node. Thứ thiếu là bộ dò không thấy rằng
+sáu tin đăng, sáu lần đọc đáp án và sáu tin trả lời đều *thuộc về* sáu khối của vòng lặp
+ở lượt 1.
+
+- *Làn.* Một nhóm bước liền nhau gọi cùng tool, đứng sau một vòng lặp và có đúng số bước
+  bằng số vòng. Bước thứ k của làn ứng với vòng thứ k. `LoopCandidate.lanes`; vòng lặp
+  gốc là làn 0.
+- *Hai mức bằng chứng.* `du_lieu`: một trường của bước thứ k lấy từ cùng một chỗ trong
+  dữ liệu của vòng thứ k — phần tử đang lặp, hoặc output của một làn đứng trước.
+  `vi_tri`: chỉ có số bước khớp, còn thứ thay đổi là nội dung model tự soạn. Làn theo vị
+  trí được đưa ra như một đề nghị; người trả lời quyết theo ý đồ, và tài liệu nói rõ là
+  không có dữ liệu nào nối nó với từng phần tử.
+- *Khoá suy ra.* Khối đáp án của kb8 đứng ở vị trí 5, 7 hay 6 tuỳ câu. Bộ dò tìm một
+  trường mà ở **mọi** vòng, phần tử được chọn là phần tử đầu tiên mang giá trị đó
+  (`type` = `toggle`), và binding thành `where`. Không tìm được thì làn không có mối nối
+  đó. Bảng giả định ghi rõ đây là điều suy ra từ lần chạy mẫu.
+- *Câu trả lời.* `vong_lap.V1.lan` là danh sách số làn được gộp. Chỉ bước đầu của mỗi
+  làn có câu hỏi phải trả lời; trường đã có mối nối thì không hỏi. Node `llm` đọc được
+  `V1:phan_tu` và output của làn đứng trước trong cùng vòng.
+- *Tầng 1* chặn: làn thiếu bước, làn lấy dữ liệu từ một làn không được gộp, node `llm`
+  ngoài vòng lặp đọc phần tử đang lặp hay một bước trong thân.
+- *Bộ lắp.* Thân vòng lặp là bước đầu của từng làn, theo thứ tự; node `llm` đứng ngay
+  trước bước đọc nó, trong thân. Node `loop` bị đẩy xuống sau node ngoài cuối cùng mà
+  thân nó đọc (kb8: `kenh` chạy ở lượt 2, sau làn gốc).
+- *Tầng 3* chạy từng vòng với output riêng của các node trong thân: node của làn j ở
+  vòng k được so với bước thứ k của làn j, và đọc được đúng output của vòng k.
+
+**Thứ tự chạy đổi.** Lần chạy mẫu đăng sáu câu hỏi rồi mới trả lời sáu đáp án; workflow
+đăng và trả lời từng câu một. Bảng giả định nói điều đó ở dòng đầu của vòng lặp, và
+prompt bảo model đừng gộp khi ý đồ đòi thứ tự kia.
+
+kb8 với đáp án viết tay: 4 node ngoài, một `loop` sáu node, 2 node `llm` (trước là 12),
+1 cảnh báo `chi_so_tho` (trước là 13) — còn lại là chọn trang Notion theo vị trí. Trần
+node `llm` về lại mười.
+
+Chạy thật với `gpt-6.1-sol` cùng ngày: **1 vòng**, qua ba tầng, cùng hình dạng với đáp án
+viết tay — model tự chọn gộp cả ba làn và khai đúng hai node `llm`, cho chúng đọc cả
+`V1:phan_tu` lẫn output của làn đứng trước. 2 lời gọi model, 20,5 nghìn token vào và
+1,5 nghìn token ra (lần trải phẳng: 2 vòng, câu trả lời từng vượt trần token).
+
+**Chưa làm trong đợt này:**
+
+- làn phải là các bước *liền nhau*. Model gọi xen kẽ (đăng–trả lời–đăng–trả lời) thì
+  không có làn nào, và conversation đó vẫn trải phẳng;
+- `tinh_toan` và `dieu_kien` chưa đặt được vào thân vòng lặp;
+- vòng lặp lồng nhau;
+- executor (Phase 4) chưa chạy node `llm` trong thân `loop`.
 
 **Còn mở sau GĐ 5:**
 

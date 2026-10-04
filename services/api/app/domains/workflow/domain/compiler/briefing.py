@@ -8,7 +8,9 @@ from typing import Any, Final
 
 from app.core.errors import ValidationError
 from app.domains.workflow.domain.compiler.intent import Intent, render_intent
+from app.domains.workflow.domain.compiler.provenance import Lane, LaneLink
 from app.domains.workflow.domain.compiler.questions import (
+    LOOP_ITEM,
     Candidate,
     LoopQuestion,
     QuestionSet,
@@ -39,7 +41,7 @@ def briefing(
         parts.append("\n".join(f"- {step.ref}: {step.tool_id}" for step in skeleton.unsupported))
     if questions.loops:
         parts.append("# Cụm bước lặp trên một mảng")
-        parts.append("\n".join(_loop(question) for question in questions.loops))
+        parts.append("\n".join(_loop(question, skeleton) for question in questions.loops))
     parts.append("# Dữ liệu mà node `llm` và `tinh_toan` được đọc")
     parts.append(", ".join(f"`{ref.key}`" for ref in questions.data) or "(không có)")
 
@@ -102,7 +104,7 @@ def _candidate(candidate: Candidate) -> str:
     return f"{text} — phần tử thứ {element.index} của mảng; chỉ chọn được theo vị trí"
 
 
-def _loop(question: LoopQuestion) -> str:
+def _loop(question: LoopQuestion, skeleton: Skeleton) -> str:
     loop = question.loop
     covered = "dùng hết mảng" if loop.covers_all else "chỉ dùng một phần mảng"
     text = (
@@ -112,7 +114,40 @@ def _loop(question: LoopQuestion) -> str:
     if loop.filter:
         shown = ", ".join(f"`{name}` = {_cut(value, 60)}" for name, value in loop.filter)
         text += f"; các phần tử được dùng có chung {shown}"
+    lines = [text, f"  - phần tử đang lặp đọc được qua `{question.id}:{LOOP_ITEM}`"]
+    lines += [
+        f"  - làn {number}: {_lane(lane, skeleton)}"
+        for number, lane in enumerate(loop.lanes, start=1)
+    ]
+    return "\n".join(lines)
+
+
+def _lane(lane: Lane, skeleton: Skeleton) -> str:
+    tool = skeleton.step(lane.steps[0]).tool_id
+    text = f"{', '.join(lane.steps)} (`{tool}`), mỗi bước ứng với một vòng"
+    for link in lane.links:
+        text += f"; `{link.field}` lấy từ {_lane_source(link)}"
+    if lane.written:
+        text += "; " + ", ".join(f"`{name}`" for name in lane.written) + " do Agent tự soạn"
+    if not lane.links:
+        text += (
+            ". Không dữ liệu nào nối làn này với từng phần tử: chỉ có số bước bằng số vòng. "
+            "Gộp khi ý đồ nói việc này làm cho từng phần tử"
+        )
     return text
+
+
+def _lane_source(link: LaneLink) -> str:
+    if link.lane is None:
+        return f"phần tử đang lặp → `{'.'.join(link.path)}`"
+    source = "làn gốc" if link.lane == 0 else f"làn {link.lane}"
+    if link.key is None:
+        return f"{source} của cùng vòng → `{'.'.join(link.path)}`"
+    name, value = link.key
+    return (
+        f"{source} của cùng vòng → phần tử của `{'.'.join(link.path)}` có `{name}` = "
+        f"{_cut(value, 60)} → `{'.'.join(link.pick)}`"
+    )
 
 
 def _shape(value: Any) -> str:

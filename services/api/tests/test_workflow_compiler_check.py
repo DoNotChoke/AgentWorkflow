@@ -107,7 +107,7 @@ def test_dap_an_viet_tay_qua_ca_ba_tang(name: str) -> None:
 
     assert _errors(checked) == []
     assert checked.assembled is not None
-    assert {issue.code for issue in checked.report.warnings} <= {"chi_so_tho"}
+    assert {issue.code for issue in checked.report.warnings} <= {"chi_so_tho", "llm_trong_loop"}
 
 
 def test_canh_bao_cung_mang_id_cau_hoi() -> None:
@@ -280,6 +280,66 @@ def test_trong_than_vong_lap_tung_vong_duoc_so_voi_tung_loi_goi() -> None:
     found = _replayed("kb3-notion-doc-sau", lay_url)
 
     assert found == [("V1", "khong_tai_tao_duoc", "doc_trang")] * 4
+
+
+KB8 = "kb8-ba-luot"
+
+
+def _body(document: dict[str, Any], node_id: str) -> dict[str, Any]:
+    return next(node for node in _node(document, "moi_cau")["body"] if node["id"] == node_id)
+
+
+def test_node_sau_trong_than_doc_output_cua_dung_vong_do() -> None:
+    """Sáu tin trả lời vào sáu thread khác nhau: mỗi vòng lấy `message_ts` của tin vừa
+    đăng trong chính vòng đó."""
+    assert _replayed(KB8, lambda document: None) == []
+
+
+def test_khoa_suy_ra_sai_thi_tung_vong_khong_tai_tao_duoc() -> None:
+    """Khối đầu tiên của mỗi câu là đề bài, không phải khối chứa đáp án."""
+
+    def khoi_dau(document: dict[str, Any]) -> None:
+        _body(document, "doc_dap_an")["input"]["block_id"] = {
+            "from_node": {"node": "doc_khoi", "path": ["results", "0", "id"]}
+        }
+
+    assert _replayed(KB8, khoi_dau) == [("V1", "khong_tai_tao_duoc", "doc_dap_an")] * 6
+
+
+def test_node_trong_than_khong_doc_duoc_output_cua_vong_khac() -> None:
+    """Trả lời vào tin của node chưa chạy trong vòng này."""
+
+    def doc_nguoc(document: dict[str, Any]) -> None:
+        _body(document, "dang_cau_hoi")["input"]["thread_ts"] = {
+            "from_node": {"node": "tra_loi", "path": ["message_ts"]}
+        }
+
+    found = _replayed(KB8, doc_nguoc)
+
+    assert {(code, node) for _, code, node in found} == {("khong_tinh_duoc", "dang_cau_hoi")}
+    assert len(found) == 6
+
+
+def test_noi_dung_soan_rieng_cho_tung_vong_khong_the_la_hang() -> None:
+    def text_co_dinh(raw: dict[str, Any]) -> None:
+        raw["gia_tri"]["N9"] = {"chon": "const"}
+        raw["llm"] = raw["llm"][1:]
+
+    checked = _checked(KB8, text_co_dinh)
+
+    # Vòng đầu khớp vì hằng lấy từ chính nó; năm vòng sau thì không.
+    assert _errors(checked) == [("doi_chieu", "N9", "khong_tai_tao_duoc")] * 5
+
+
+def test_lan_theo_vi_tri_van_duoc_doi_chieu_tung_vong() -> None:
+    """Làn đăng tin không có dấu vết dữ liệu nào, nhưng kênh của nó vẫn phải ra đúng."""
+
+    def kenh_dau(document: dict[str, Any]) -> None:
+        _body(document, "dang_cau_hoi")["input"]["channel"] = {
+            "from_node": {"node": "kenh", "path": ["channels", "0", "id"]}
+        }
+
+    assert _replayed(KB8, kenh_dau) == [("N10", "khong_tai_tao_duoc", "dang_cau_hoi")] * 6
 
 
 # ─── Tầng 3 trên nguyên liệu viết tay ────────────────────────────────────────

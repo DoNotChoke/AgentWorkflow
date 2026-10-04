@@ -97,7 +97,8 @@ def test_ir_lap_ra_qua_dung_validator_cua_ir_viet_tay(name: str) -> None:
 
     assert report.errors == ()
     assert {issue.code for issue in report.issues if issue.severity is Severity.WARNING} <= {
-        "chi_so_tho"
+        "chi_so_tho",
+        "llm_trong_loop",
     }
 
 
@@ -454,16 +455,136 @@ def test_de_rieng_thi_tung_buoc_phai_co_cau_tra_loi_va_ir_trai_phang() -> None:
     }
 
 
+KB8 = "kb8-ba-luot"
+
+
+def _bo(raw: dict[str, Any], *steps: str) -> None:
+    for step in steps:
+        raw["buoc"][step] = {"chon": "bo", "ly_do": "Không thuộc nhiệm vụ."}
+
+
+def _chi_lan_dang_tin(raw: dict[str, Any]) -> None:
+    """Thân vòng lặp chỉ còn đọc khối và đăng tin; lượt 3 đứng ngoài."""
+    raw["vong_lap"]["V1"]["lan"] = [1]
+    _bo(raw, *(f"l3.b{n}" for n in range(2, 13)))
+    raw["llm"] = [llm for llm in raw["llm"] if llm["id"] == "soan_cau_hoi"]
+    del raw["gia_tri"]["N27"], raw["gia_tri"]["N28"]
+
+
 def test_ben_ngoai_khong_doc_duoc_mot_buoc_trong_than_vong_lap() -> None:
     """kb8, lượt 3: đọc khối con của một kết quả nằm trong vòng lặp của lượt 1."""
 
-    def giu_luot_ba(raw: dict[str, Any]) -> None:
-        raw["buoc"]["l3.b1"] = {"chon": "giu"}
+    def doc_tu_ngoai(raw: dict[str, Any]) -> None:
+        _chi_lan_dang_tin(raw)
         raw["gia_tri"]["N21"] = {"chon": "from_step", "ung_vien": 1}
 
-    assert _codes("kb8-ba-luot", _changed("kb8-ba-luot", giu_luot_ba)) == [
-        ("N21", "nguon_trong_vong_lap")
+    assert _codes(KB8, _changed(KB8, doc_tu_ngoai)) == [("N21", "nguon_trong_vong_lap")]
+
+
+# ─── Vòng lặp nhiều làn ──────────────────────────────────────────────────────
+
+
+def test_ba_luot_cua_kb8_thanh_mot_vong_lap_sau_node() -> None:
+    document = _assemble(KB8).document
+
+    # Thân vòng lặp đọc danh sách kênh, bước mà trace chạy sau làn gốc.
+    assert [node["id"] for node in document["nodes"]] == ["t", "tim", "khoi", "kenh", "moi_cau"]
+    loop = _node(document, "moi_cau")
+    assert [(node["id"], node["type"]) for node in loop["body"]] == [
+        ("doc_khoi", "tool"),
+        ("soan_cau_hoi", "llm"),
+        ("dang_cau_hoi", "tool"),
+        ("doc_dap_an", "tool"),
+        ("soan_dap_an", "llm"),
+        ("tra_loi", "tool"),
     ]
+    assert loop["collect"] == "tra_loi"
+
+
+def test_truong_cua_lan_lay_tu_node_cung_vong() -> None:
+    body = {node["id"]: node for node in _node(_assemble(KB8).document, "moi_cau")["body"]}
+
+    assert body["doc_khoi"]["input"]["block_id"] == {"from_item": ["id"]}
+    assert body["doc_dap_an"]["input"]["block_id"] == {
+        "from_node": {
+            "node": "doc_khoi",
+            "path": ["results"],
+            "where": {"type": {"const": "toggle"}},
+            "pick": ["id"],
+        }
+    }
+    assert body["tra_loi"]["input"]["thread_ts"] == {
+        "from_node": {"node": "dang_cau_hoi", "path": ["message_ts"]}
+    }
+    assert body["soan_dap_an"]["input"] == {
+        "dap_an": {"from_node": {"node": "doc_dap_an", "path": ["results"]}}
+    }
+
+
+def test_loi_tren_truong_cua_lan_truy_ve_cau_hoi_vong_lap() -> None:
+    origin = _assemble(KB8).origin
+
+    assert origin[("doc_dap_an", ("input", "block_id"))] == "V1"
+    assert origin[("tra_loi", ("input", "thread_ts"))] == "V1"
+    assert origin[("tra_loi", ("input", "text"))] == "N27"
+
+
+def test_node_llm_trong_than_doc_duoc_phan_tu_dang_lap() -> None:
+    def doc_phan_tu(raw: dict[str, Any]) -> None:
+        raw["llm"][0]["dau_vao"] = {"khoi": "V1:phan_tu"}
+
+    skeleton, questions = _questions(KB8)
+    answers, issues = read_answers(questions, skeleton, _changed(KB8, doc_phan_tu))
+
+    assert issues == ()
+    assert answers is not None
+    document = assemble(skeleton, questions, answers, TOOLS, llm_model="m").document
+    body = {node["id"]: node for node in _node(document, "moi_cau")["body"]}
+    assert body["soan_cau_hoi"]["input"] == {"khoi": {"from_item": []}}
+
+
+def _thieu_lan_nguon(raw: dict[str, Any]) -> None:
+    raw["vong_lap"]["V1"]["lan"] = [2, 3]
+    _bo(raw, "l2.b1", *(f"l2.b{n}" for n in range(2, 8)))
+    raw["llm"] = raw["llm"][1:]
+    del raw["gia_tri"]["N9"], raw["gia_tri"]["N10"]
+    raw["gia_tri"]["N28"] = {"chon": "const"}
+
+
+def _bo_mot_buoc_cua_lan(raw: dict[str, Any]) -> None:
+    _bo(raw, "l3.b9")
+
+
+def _llm_ngoai_doc_phan_tu(raw: dict[str, Any]) -> None:
+    _chi_lan_dang_tin(raw)
+    _bo(raw, "l3.b1")
+    raw["vong_lap"]["V1"]["lan"] = []
+    _bo(raw, *(f"l2.b{n}" for n in range(3, 8)))
+    raw["llm"][0]["dau_vao"] = {"khoi": "V1:phan_tu"}
+
+
+def _llm_ngoai_doc_buoc_trong_than(raw: dict[str, Any]) -> None:
+    _llm_ngoai_doc_phan_tu(raw)
+    raw["llm"][0]["dau_vao"] = {"khoi": "l1.b3:results"}
+
+
+@pytest.mark.parametrize(
+    ("mutate", "expected"),
+    [
+        (_thieu_lan_nguon, [("V1", "lan_thieu_nguon")]),
+        (_bo_mot_buoc_cua_lan, [("V1", "vong_lap_thieu_buoc")]),
+        (_llm_ngoai_doc_phan_tu, [("llm:soan_cau_hoi", "phan_tu_ngoai_vong_lap")]),
+        (_llm_ngoai_doc_buoc_trong_than, [("llm:soan_cau_hoi", "nguon_trong_vong_lap")]),
+    ],
+)
+def test_lan_gop_sai_bi_tang_mot_chan(mutate: Any, expected: list[tuple[str, str]]) -> None:
+    assert _codes(KB8, _changed(KB8, mutate)) == expected
+
+
+def test_so_lan_ngoai_tap_bi_hinh_dang_chan() -> None:
+    raw = _changed(KB8, lambda r: r["vong_lap"]["V1"].update({"lan": [4]}))
+
+    assert _codes(KB8, raw) == [("V1", "sai_hinh_dang")]
 
 
 @pytest.mark.parametrize(

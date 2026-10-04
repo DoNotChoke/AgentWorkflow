@@ -49,7 +49,14 @@
       }
     },
     {
-      "id": "moi_khoi",
+      "id": "kenh",
+      "type": "tool",
+      "tool_id": "slack.list_channels",
+      "tool_version": "1.0",
+      "input": {}
+    },
+    {
+      "id": "moi_cau",
       "type": "loop",
       "over": {
         "from_node": {
@@ -73,9 +80,165 @@
               ]
             }
           }
+        },
+        {
+          "id": "soan_cau_hoi",
+          "type": "llm",
+          "model": "claude-sonnet-5",
+          "instructions": "Từ các khối trong `khoi` của một câu hỏi trắc nghiệm, viết lại đề bài và các lựa chọn thành một tin nhắn Slack. Không kèm đáp án.",
+          "input": {
+            "khoi": {
+              "from_node": {
+                "node": "doc_khoi",
+                "path": [
+                  "results"
+                ]
+              }
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              }
+            }
+          }
+        },
+        {
+          "id": "dang_cau_hoi",
+          "type": "tool",
+          "tool_id": "slack.post_message",
+          "tool_version": "1.0",
+          "input": {
+            "text": {
+              "from_node": {
+                "node": "soan_cau_hoi",
+                "path": [
+                  "text"
+                ]
+              }
+            },
+            "channel": {
+              "from_node": {
+                "node": "kenh",
+                "path": [
+                  "channels"
+                ],
+                "where": {
+                  "name": {
+                    "const": "aws"
+                  }
+                },
+                "pick": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "doc_dap_an",
+          "type": "tool",
+          "tool_id": "notion.get_block_children",
+          "tool_version": "1.0",
+          "input": {
+            "block_id": {
+              "from_node": {
+                "node": "doc_khoi",
+                "path": [
+                  "results"
+                ],
+                "where": {
+                  "type": {
+                    "const": "toggle"
+                  }
+                },
+                "pick": [
+                  "id"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "soan_dap_an",
+          "type": "llm",
+          "model": "claude-sonnet-5",
+          "instructions": "Từ các khối trong `dap_an`, viết một tin nhắn nêu đáp án đúng, bắt đầu bằng \"✅ Đáp án đúng:\".",
+          "input": {
+            "dap_an": {
+              "from_node": {
+                "node": "doc_dap_an",
+                "path": [
+                  "results"
+                ]
+              }
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              }
+            }
+          }
+        },
+        {
+          "id": "tra_loi",
+          "type": "tool",
+          "tool_id": "slack.post_message",
+          "tool_version": "1.0",
+          "input": {
+            "text": {
+              "from_node": {
+                "node": "soan_dap_an",
+                "path": [
+                  "text"
+                ]
+              }
+            },
+            "channel": {
+              "from_node": {
+                "node": "kenh",
+                "path": [
+                  "channels"
+                ],
+                "where": {
+                  "name": {
+                    "const": "aws"
+                  }
+                },
+                "pick": [
+                  "id"
+                ]
+              }
+            },
+            "thread_ts": {
+              "from_node": {
+                "node": "dang_cau_hoi",
+                "path": [
+                  "message_ts"
+                ]
+              }
+            }
+          }
         }
       ],
-      "collect": "doc_khoi"
+      "collect": "tra_loi"
     }
   ],
   "edges": [
@@ -89,7 +252,11 @@
     },
     {
       "from": "khoi",
-      "to": "moi_khoi"
+      "to": "kenh"
+    },
+    {
+      "from": "kenh",
+      "to": "moi_cau"
     }
   ]
 }

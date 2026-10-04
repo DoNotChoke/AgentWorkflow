@@ -1,5 +1,5 @@
 {
-  "ten": "Đọc các câu hỏi trên một trang Notion",
+  "ten": "Đăng từng câu hỏi trên trang Notion lên Slack kèm đáp án",
   "buoc": {
     "l1.b1": {
       "chon": "giu",
@@ -29,80 +29,65 @@
       "chon": "giu"
     },
     "l2.b1": {
-      "chon": "bo",
-      "ly_do": "Chỉ phục vụ việc đăng tin ở lượt 2, phần chưa tổng quát hoá được."
+      "chon": "giu",
+      "id": "kenh"
     },
     "l2.b2": {
-      "chon": "bo",
-      "ly_do": "Nội dung do model soạn từ nhiều khối; chưa tổng quát hoá được thành một vòng lặp."
+      "chon": "giu",
+      "id": "dang_cau_hoi"
     },
     "l2.b3": {
-      "chon": "bo",
-      "ly_do": "Nội dung do model soạn từ nhiều khối; chưa tổng quát hoá được thành một vòng lặp."
+      "chon": "giu"
     },
     "l2.b4": {
-      "chon": "bo",
-      "ly_do": "Nội dung do model soạn từ nhiều khối; chưa tổng quát hoá được thành một vòng lặp."
+      "chon": "giu"
     },
     "l2.b5": {
-      "chon": "bo",
-      "ly_do": "Nội dung do model soạn từ nhiều khối; chưa tổng quát hoá được thành một vòng lặp."
+      "chon": "giu"
     },
     "l2.b6": {
-      "chon": "bo",
-      "ly_do": "Nội dung do model soạn từ nhiều khối; chưa tổng quát hoá được thành một vòng lặp."
+      "chon": "giu"
     },
     "l2.b7": {
-      "chon": "bo",
-      "ly_do": "Nội dung do model soạn từ nhiều khối; chưa tổng quát hoá được thành một vòng lặp."
+      "chon": "giu"
     },
     "l3.b1": {
-      "chon": "bo",
-      "ly_do": "Đọc lại để soạn đáp án; đi cùng phần chưa tổng quát hoá được."
+      "chon": "giu",
+      "id": "doc_dap_an"
     },
     "l3.b2": {
-      "chon": "bo",
-      "ly_do": "Đọc lại để soạn đáp án; đi cùng phần chưa tổng quát hoá được."
+      "chon": "giu"
     },
     "l3.b3": {
-      "chon": "bo",
-      "ly_do": "Đọc lại để soạn đáp án; đi cùng phần chưa tổng quát hoá được."
+      "chon": "giu"
     },
     "l3.b4": {
-      "chon": "bo",
-      "ly_do": "Đọc lại để soạn đáp án; đi cùng phần chưa tổng quát hoá được."
+      "chon": "giu"
     },
     "l3.b5": {
-      "chon": "bo",
-      "ly_do": "Đọc lại để soạn đáp án; đi cùng phần chưa tổng quát hoá được."
+      "chon": "giu"
     },
     "l3.b6": {
-      "chon": "bo",
-      "ly_do": "Đọc lại để soạn đáp án; đi cùng phần chưa tổng quát hoá được."
+      "chon": "giu"
     },
     "l3.b7": {
-      "chon": "bo",
-      "ly_do": "Mỗi tin trả lời vào một thread khác nhau với nội dung do model soạn; IR chưa biểu diễn được."
+      "chon": "giu",
+      "id": "tra_loi"
     },
     "l3.b8": {
-      "chon": "bo",
-      "ly_do": "Mỗi tin trả lời vào một thread khác nhau với nội dung do model soạn; IR chưa biểu diễn được."
+      "chon": "giu"
     },
     "l3.b9": {
-      "chon": "bo",
-      "ly_do": "Mỗi tin trả lời vào một thread khác nhau với nội dung do model soạn; IR chưa biểu diễn được."
+      "chon": "giu"
     },
     "l3.b10": {
-      "chon": "bo",
-      "ly_do": "Mỗi tin trả lời vào một thread khác nhau với nội dung do model soạn; IR chưa biểu diễn được."
+      "chon": "giu"
     },
     "l3.b11": {
-      "chon": "bo",
-      "ly_do": "Mỗi tin trả lời vào một thread khác nhau với nội dung do model soạn; IR chưa biểu diễn được."
+      "chon": "giu"
     },
     "l3.b12": {
-      "chon": "bo",
-      "ly_do": "Mỗi tin trả lời vào một thread khác nhau với nội dung do model soạn; IR chưa biểu diễn được."
+      "chon": "giu"
     }
   },
   "gia_tri": {
@@ -113,12 +98,57 @@
     "N2": {
       "chon": "from_step",
       "ung_vien": 1
+    },
+    "N9": {
+      "chon": "llm",
+      "node": "soan_cau_hoi"
+    },
+    "N10": {
+      "chon": "from_step",
+      "ung_vien": 1,
+      "khoa": "name",
+      "nguon_khoa": {
+        "chon": "const"
+      }
+    },
+    "N27": {
+      "chon": "llm",
+      "node": "soan_dap_an"
+    },
+    "N28": {
+      "chon": "from_step",
+      "ung_vien": 1,
+      "khoa": "name",
+      "nguon_khoa": {
+        "chon": "const"
+      }
     }
   },
   "vong_lap": {
     "V1": {
       "chon": "loop",
-      "id": "moi_khoi"
+      "id": "moi_cau",
+      "lan": [
+        1,
+        2,
+        3
+      ]
     }
-  }
+  },
+  "llm": [
+    {
+      "id": "soan_cau_hoi",
+      "instructions": "Từ các khối trong `khoi` của một câu hỏi trắc nghiệm, viết lại đề bài và các lựa chọn thành một tin nhắn Slack. Không kèm đáp án.",
+      "dau_vao": {
+        "khoi": "l1.b3:results"
+      }
+    },
+    {
+      "id": "soan_dap_an",
+      "instructions": "Từ các khối trong `dap_an`, viết một tin nhắn nêu đáp án đúng, bắt đầu bằng \"✅ Đáp án đúng:\".",
+      "dau_vao": {
+        "dap_an": "l3.b1:results"
+      }
+    }
+  ]
 }
