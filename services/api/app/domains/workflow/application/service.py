@@ -1,9 +1,4 @@
-"""Vòng đời một workflow: tạo, sửa draft, publish, lưu trữ (§12).
-
-Hai cửa, hai mức khắt khe (Q14). Lưu draft dễ tính — người đang sửa dở có quyền
-lưu một IR chưa hợp lệ, nếu không thì editor không lưu nổi trạng thái giữa
-chừng. Publish thì khắt khe: đủ bốn nhóm của §39 mới đóng băng thành version.
-"""
+"""Vòng đời một workflow: tạo, sửa draft, publish, lưu trữ"""
 
 from __future__ import annotations
 

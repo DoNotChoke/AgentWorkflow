@@ -1,4 +1,4 @@
-"""Activity của executor. Mọi I/O của một lần chạy workflow nằm ở đây (Q9)."""
+"""Activity của executor. Mọi I/O của một lần chạy workflow nằm ở đây."""
 
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ class ExecutorActivities:
 
 @activity.defn(name=RUN_TOOL_NODE)
 async def run_tool_node(request: RunToolInput) -> dict[str, Any]:
-    """Chỗ giữ cho GĐ 5, khi worker gọi Integration Gateway qua HTTP (Q5)."""
+    """Chỗ giữ cho GĐ 5, khi worker gọi Integration Gateway qua HTTP."""
     with as_temporal_errors():
         raise WorkflowExecutionError(
             f"Node tool chưa chạy được ở bản này ({request.tool_id}).",

@@ -1,10 +1,4 @@
-"""Nối worker (domain `workflow`) với domain `execution` và catalog tool.
-
-Tách khỏi `entrypoints/wiring.py` cùng lý do `agent_wiring.py` tách ra (ADR-0003):
-`wiring.py` là module duy nhất dựng được `CredentialResolver`, và contract 7
-cấm tiến trình worker có đường import tới đó. Module này chỉ biết `workflow`,
-`execution` và catalog tool — không `connection`, không `core.crypto`.
-"""
+"""Nối worker (domain `workflow`) với domain `execution` và catalog tool."""
 
 from __future__ import annotations
 

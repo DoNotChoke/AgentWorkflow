@@ -1,4 +1,4 @@
-"""Lỗi của platform → lỗi Temporal hiểu được (Q10)."""
+"""Lỗi của platform → lỗi Temporal hiểu được."""
 
 from __future__ import annotations
 
