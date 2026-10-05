@@ -27,6 +27,7 @@ from app.domains.identity.infrastructure import models as identity_models  # noq
 from app.domains.integration.infrastructure import models as integration_models  # noqa: F401
 from app.domains.tenant.infrastructure import models as tenant_models  # noqa: F401
 from app.domains.trace.infrastructure import models as trace_models  # noqa: F401
+from app.domains.workflow.infrastructure import compile_models  # noqa: F401
 from app.domains.workflow.infrastructure import models as workflow_models  # noqa: F401
 
 config = context.config

@@ -22,9 +22,7 @@ from sqlalchemy import text
 from app.core.config import get_settings
 from app.core.db import dispose_engine, init_engine, session_scope
 from app.core.objectstore import close_object_store, init_object_store
-from app.domains.trace.application.service import PayloadSide, TraceService
-from app.domains.trace.infrastructure.payload_store import build_payload_store
-from app.domains.trace.infrastructure.repositories import SqlAlchemyExecutionTraceRepository
+from app.entrypoints.compiler_wiring import TraceCompileSourceReader
 
 HERE = Path(__file__).parent
 
@@ -91,65 +89,14 @@ async def _read(conversation_id: str) -> dict[str, Any]:
                 {"c": conversation_id},
             )
         ).scalar_one_or_none()
-        if tenant_id is None:
-            raise SystemExit(f"Không có trace nào của {conversation_id}.")
-
-        service = TraceService(
-            traces=SqlAlchemyExecutionTraceRepository(session),
-            payloads=build_payload_store(get_settings()),
-        )
-        traces = []
-        listed = await service.list_for_conversation(
-            tenant_id=tenant_id, conversation_id=conversation_id
-        )
-        for trace in sorted(listed, key=lambda item: item.started_at):
-            detail = await service.get(tenant_id=tenant_id, trace_id=trace.id)
-            steps = []
-            for step in detail.steps:
-                sides = {}
-                for side in PayloadSide:
-                    view = await service.get_payload(
-                        tenant_id=tenant_id, trace_id=trace.id, step_id=step.id, side=side
-                    )
-                    sides[side.value] = {
-                        "state": view.availability.value,
-                        "payload": view.payload,
-                    }
-                steps.append(
-                    {
-                        "id": step.id,
-                        "kind": step.kind.value,
-                        "status": step.status.value,
-                        "parent_step_id": step.parent_step_id,
-                        "started_at": step.started_at.isoformat(),
-                        "attributes": dict(step.attributes),
-                        "error_category": step.error_category,
-                        "input": sides["input"],
-                        "output": sides["output"],
-                    }
-                )
-            traces.append(
-                {
-                    "id": trace.id,
-                    "status": trace.status.value,
-                    "started_at": trace.started_at.isoformat(),
-                    "steps": steps,
-                }
-            )
-        rows = await session.execute(
-            text(
-                "select role, content, created_at from agent.messages "
-                "where conversation_id = :c and tenant_id = :t and content <> '' "
-                "and (role = 'user' or (role = 'assistant' and tool_calls::text = '[]')) "
-                "order by created_at"
-            ),
-            {"c": conversation_id, "t": tenant_id},
-        )
-        messages = [
-            {"role": role, "content": content, "created_at": created_at.isoformat()}
-            for role, content, created_at in rows
-        ]
-    return {"conversation_id": conversation_id, "messages": messages, "traces": traces}
+    if tenant_id is None:
+        raise SystemExit(f"Không có trace nào của {conversation_id}.")
+    source = await TraceCompileSourceReader().read(
+        tenant_id=tenant_id, conversation_id=conversation_id
+    )
+    if source is None:
+        raise SystemExit(f"Không có conversation {conversation_id}.")
+    return dict(source.document)
 
 
 def main() -> None:

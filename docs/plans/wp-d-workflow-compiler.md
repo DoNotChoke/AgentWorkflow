@@ -692,6 +692,32 @@ model, 20,3 nghìn token vào và 1,6 nghìn token ra.
     repository, `compile_service`. Test máy trạng thái; test đồng ý xong không còn lời
     gọi model nào; test không ghi vào conversation nguồn.
 
+**GĐ 6 đã làm, 2026-10-04.** Khác Q11 ở ba chỗ, đều do ADR-0015 có hai lần xác nhận:
+
+- *Trạng thái.* Chỉ lưu trạng thái **chờ người dùng**: `awaiting_intent` ⇄ nói lại,
+  `awaiting_confirmation` ⇄ đổi, `compiled`, `abandoned`. Không có `proposing` /
+  `revising`: lúc model đang chạy thì phiên chưa đổi. Không có `failed`: bảng giả định còn
+  lỗi vẫn là một bảng người dùng đọc được và đòi đổi được; chỉ là chưa đồng ý được.
+- *Hai lần ghi cùng lúc.* Cột `revision` là khoá lạc quan — một lời gọi model mất hàng
+  chục giây, không giữ transaction mở chừng đó để khoá hàng. Ai ghi trước thì thắng.
+- *Người dùng nói lại.* Ở bước ý đồ, lời đó tới model hiểu ý đồ cùng cả đoạn chat của
+  phiên. Ở bước giả định, nó tới model trả lời cùng câu trả lời đang hiện, và ý đồ đã
+  chấp nhận không đổi; muốn đổi nhiệm vụ thì `reopen_intent`, bảng giả định bị bỏ.
+
+Ba quyết định của người dùng: lời ở bước giả định đi tới model trả lời; phiên **ghim**
+các trace lúc mở (`read_source(only=…)`), lượt chat thêm sau đó không vào nguyên liệu, và
+vân tay nguyên liệu đổi thì phải mở phiên mới; mỗi người **một** phiên đang mở trên một
+conversation — service cho phiên cũ nhường chỗ, index duy nhất một phần giữ điều đó ở
+database.
+
+`confirm` không gọi model: ghi phiên trước (lần bấm thứ hai dừng ở đó), rồi tạo workflow
+và draft mang IR đã kiểm, `intent` và `compiled_from`. `publish` chép hai cột đó sang
+version; sửa draft bằng tay không làm mất chúng.
+
+`TraceCompileSourceReader` ở `entrypoints/compiler_wiring.py` đọc conversation, tin nhắn
+và trace thật; script xuất fixture giờ dùng chính nó. Chưa có endpoint nào gọi
+`CompileService`: việc mở transaction quanh từng thao tác là của GĐ 7.
+
 **GĐ 7 — HTTP**
 
 17. `feat(api): compile a conversation over SSE` — bốn endpoint trên `:8001`:

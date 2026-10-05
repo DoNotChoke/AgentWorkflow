@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -69,3 +71,20 @@ class SourceMaterial:
     def steps(self) -> Iterator[SourceStep]:
         for turn in self.turns:
             yield from turn.steps
+
+
+def fingerprint(source: SourceMaterial) -> str:
+    """Vân tay của thứ compiler đọc: lời người dùng và từng bước kèm dữ liệu của nó."""
+    seen = [
+        [
+            turn.trace_id,
+            turn.request,
+            [
+                [step.step_id, step.tool_id, step.tool_version, step.input, step.output]
+                for step in turn.steps
+            ],
+        ]
+        for turn in source.turns
+    ]
+    canonical = json.dumps(seen, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

@@ -10,6 +10,8 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from app.core.config import get_settings
+from app.core.db import session_scope
 from app.core.errors import ValidationError
 from app.core.sandbox import DEFAULT_LIMITS, Limits, run
 from app.domains.agent.application.ports import (
@@ -20,6 +22,13 @@ from app.domains.agent.application.ports import (
     ModelTurn,
     StopReason,
 )
+from app.domains.agent.infrastructure.repositories import (
+    SqlAlchemyConversationRepository,
+    SqlAlchemyMessageRepository,
+)
+from app.domains.trace.application.service import PayloadSide, TraceService
+from app.domains.trace.infrastructure.payload_store import build_payload_store
+from app.domains.trace.infrastructure.repositories import SqlAlchemyExecutionTraceRepository
 from app.domains.workflow.application.compile_flow import (
     ANSWER_TOOL,
     ANSWERS_PROMPT,
@@ -27,7 +36,12 @@ from app.domains.workflow.application.compile_flow import (
     INTENT_SCHEMA,
     INTENT_TOOL,
 )
-from app.domains.workflow.application.ports import AnswerAttempt, DialogueTurn, IntentReply
+from app.domains.workflow.application.ports import (
+    AnswerAttempt,
+    CompileSource,
+    DialogueTurn,
+    IntentReply,
+)
 
 #: Với model suy luận, trần này gồm cả phần suy luận, không chỉ phần trả lời.
 _INTENT_MAX_TOKENS = 4096
@@ -149,3 +163,84 @@ class SandboxRunner:
 
     def run(self, code: str, args: Mapping[str, Any]) -> Any:
         return run(code, dict(args), self._limits).value
+
+
+class TraceCompileSourceReader:
+    """`CompileSourceReader` của domain `workflow`: conversation và tin nhắn ở `agent`,
+    trace và payload ở `trace`. Chỉ đọc."""
+
+    async def read(self, *, tenant_id: str, conversation_id: str) -> CompileSource | None:
+        async with session_scope() as session:
+            conversation = await SqlAlchemyConversationRepository(session).get(
+                tenant_id=tenant_id, conversation_id=conversation_id
+            )
+            if conversation is None:
+                return None
+            said = await SqlAlchemyMessageRepository(session).list_for_conversation(
+                tenant_id=tenant_id, conversation_id=conversation_id
+            )
+            service = TraceService(
+                traces=SqlAlchemyExecutionTraceRepository(session),
+                payloads=build_payload_store(get_settings()),
+            )
+            listed = await service.list_for_conversation(
+                tenant_id=tenant_id, conversation_id=conversation_id
+            )
+            traces = [
+                await self._trace(service, tenant_id, trace.id)
+                for trace in sorted(listed, key=lambda item: item.started_at)
+            ]
+
+        # Chỉ lời có chữ: câu người dùng gõ, và câu Agent trả lời sau khi gọi xong tool.
+        messages = [
+            {
+                "role": str(message.role),
+                "content": message.content,
+                "created_at": message.created_at.isoformat(),
+            }
+            for message in said
+            if message.content
+            and (
+                str(message.role) == "user"
+                or (str(message.role) == "assistant" and not message.tool_calls)
+            )
+        ]
+        return CompileSource(
+            document={
+                "conversation_id": conversation_id,
+                "messages": messages,
+                "traces": traces,
+            },
+            user_id=conversation.user_id,
+            workspace_id=conversation.workspace_id,
+        )
+
+    async def _trace(self, service: TraceService, tenant_id: str, trace_id: str) -> dict[str, Any]:
+        detail = await service.get(tenant_id=tenant_id, trace_id=trace_id)
+        steps: list[dict[str, Any]] = []
+        for step in detail.steps:
+            sides: dict[str, dict[str, Any]] = {}
+            for side in PayloadSide:
+                view = await service.get_payload(
+                    tenant_id=tenant_id, trace_id=trace_id, step_id=step.id, side=side
+                )
+                sides[str(side)] = {"state": str(view.availability), "payload": view.payload}
+            steps.append(
+                {
+                    "id": step.id,
+                    "kind": str(step.kind),
+                    "status": str(step.status),
+                    "parent_step_id": step.parent_step_id,
+                    "started_at": step.started_at.isoformat(),
+                    "attributes": dict(step.attributes),
+                    "error_category": step.error_category,
+                    "input": sides["input"],
+                    "output": sides["output"],
+                }
+            )
+        return {
+            "id": detail.trace.id,
+            "status": str(detail.trace.status),
+            "started_at": detail.trace.started_at.isoformat(),
+            "steps": steps,
+        }

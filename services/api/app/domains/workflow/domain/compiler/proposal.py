@@ -8,7 +8,7 @@ lời; khung trình bày là của code.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any, Final
 
 from app.domains.workflow.domain.compiler.answers import (
@@ -362,6 +362,14 @@ def render_proposal(proposal: Proposal) -> str:
             + "\n".join(f"- {line}" for line in proposal.errors)
         )
     return "\n\n".join(parts)
+
+
+def proposal_document(proposal: Proposal) -> dict[str, Any]:
+    """Bảng giả định ở dạng dữ liệu, để lưu và để giao diện dựng thẻ."""
+    document = asdict(proposal)
+    document["is_ready"] = proposal.is_ready
+    # Qua JSON một vòng: tuple thành mảng, đúng thứ sẽ đọc lại từ kho.
+    return json.loads(json.dumps(document, ensure_ascii=False))  # type: ignore[no-any-return]
 
 
 def _table(title: str, items: tuple[Assumption, ...]) -> list[str]:

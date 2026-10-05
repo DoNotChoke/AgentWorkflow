@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
@@ -20,9 +20,13 @@ _AVAILABLE = "available"
 _RUNNING = "running"
 
 
-def read_source(document: Mapping[str, Any]) -> SourceMaterial:
+def read_source(
+    document: Mapping[str, Any], *, only: Collection[str] | None = None
+) -> SourceMaterial:
     """`document` là thứ `CompileSourceReader` nạp: tin nhắn có chữ của conversation,
-    và mỗi trace kèm các bước, mỗi bước kèm hai phía payload và trạng thái đọc được."""
+    và mỗi trace kèm các bước, mỗi bước kèm hai phía payload và trạng thái đọc được.
+
+    `only` là các trace một phiên đã ghim: lượt khác bị bỏ, cùng tin nhắn của nó."""
     traces = sorted(document["traces"], key=_started)
     # Lượt đang chạy vẫn chặn cửa sổ của lượt trước nó: tin nhắn của nó không
     # thuộc về lượt trước.
@@ -30,7 +34,7 @@ def read_source(document: Mapping[str, Any]) -> SourceMaterial:
 
     turns: list[Turn] = []
     for trace, end in zip(traces, ends, strict=True):
-        if trace["status"] == _RUNNING:
+        if trace["status"] == _RUNNING or (only is not None and trace["id"] not in only):
             continue
         said = [
             message

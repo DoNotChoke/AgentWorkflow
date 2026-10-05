@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, Protocol
 
+from app.domains.workflow.domain.compiler.session import CompileSession
 from app.domains.workflow.domain.entities import Workflow, WorkflowDraft, WorkflowVersion
 
 
@@ -161,6 +162,36 @@ class WorkflowRepository(Protocol):
     async def list_versions(self, *, tenant_id: str, workflow_id: str) -> list[WorkflowVersion]: ...
 
     async def latest_version_number(self, *, tenant_id: str, workflow_id: str) -> int | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class CompileSource:
+    """Một conversation ở hình dạng `read_source` nhận, kèm chủ của nó."""
+
+    document: Mapping[str, Any]
+    user_id: str
+    workspace_id: str
+
+
+class CompileSourceReader(Protocol):
+    """Nạp tin nhắn, trace và payload của một conversation. Hiện thực ở `entrypoints`,
+    vì nó đọc hai domain khác."""
+
+    async def read(self, *, tenant_id: str, conversation_id: str) -> CompileSource | None: ...
+
+
+class CompileSessionRepository(Protocol):
+    async def add(self, session: CompileSession) -> None: ...
+
+    async def get(self, *, tenant_id: str, session_id: str) -> CompileSession | None: ...
+
+    async def save(self, session: CompileSession, *, expected_revision: int) -> None:
+        """Ghi đè phiên đang ở `expected_revision`. Ném `ValidationError` khi phiên đã
+        được ghi ở nơi khác kể từ lúc đọc."""
+
+    async def list_open(
+        self, *, tenant_id: str, conversation_id: str, created_by: str
+    ) -> list[CompileSession]: ...
 
 
 class TransformRunner(Protocol):

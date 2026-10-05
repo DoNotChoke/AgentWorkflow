@@ -25,6 +25,7 @@ class ResourceKind(StrEnum):
     TRACE_STEP = "stp"
     WORKFLOW = "wf"
     WORKFLOW_VERSION = "wfv"
+    COMPILE_SESSION = "cps"
     WORKFLOW_SCHEDULE = "sch"
     EXECUTION = "exe"
     NODE_EXECUTION = "nex"
