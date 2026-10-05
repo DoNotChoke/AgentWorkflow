@@ -58,6 +58,8 @@ class CompileSessionResponse(BaseModel):
     intent: dict[str, Any] | None
     #: Bảng giả định ở dạng dữ liệu. `None` khi chưa tới bước đó.
     proposal: dict[str, Any] | None
+    #: IR đã qua ba tầng kiểm, để giao diện vẽ các bước sẽ chạy. `None` khi chưa có.
+    ir: dict[str, Any] | None
     #: Bấm Đồng ý được hay chưa.
     is_ready: bool
     workflow_id: str | None
@@ -77,6 +79,7 @@ def _response(session: Any) -> CompileSessionResponse:
         ],
         intent=None if session.intent is None else dict(session.intent),
         proposal=None if session.proposal is None else dict(session.proposal),
+        ir=None if session.ir is None else dict(session.ir),
         is_ready=session.is_ready,
         workflow_id=session.workflow_id,
         created_at=session.created_at,
@@ -223,6 +226,16 @@ def create_router(
 
     # ─── Không gọi model ─────────────────────────────────────────────────────
 
+    @router.get("/conversations/{conversation_id}/compile-sessions/current")
+    async def current_session(
+        conversation_id: Annotated[str, Path(max_length=64)], ctx: Context, service: Transactional
+    ) -> CompileSessionResponse | None:
+        """Phiên đang mở của người gọi trên conversation này; `null` khi không có."""
+        found = await service.current(
+            tenant_id=ctx.organization_id, conversation_id=conversation_id, actor_id=ctx.user_id
+        )
+        return None if found is None else _response(found)
+
     @router.get("/compile-sessions/{session_id}")
     async def get_compile_session(
         session_id: SessionId, ctx: Context, service: Transactional
@@ -249,3 +262,4 @@ def create_router(
         return _response(await service.abandon(**on(ctx, session_id)))
 
     return router
+

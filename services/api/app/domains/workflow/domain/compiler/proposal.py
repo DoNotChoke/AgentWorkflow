@@ -54,6 +54,8 @@ class Assumption:
     value: str
     detail: str
     reason: str | None = None
+    #: Phần tử được chọn theo vị trí trong mảng: thứ tự provider trả về đổi thì nó sai.
+    by_position: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,7 +184,13 @@ def _assumption(question: SourceQuestion, chosen: SourceAnswer, answers: Answers
         value=_cut(question.value),
         detail=detail,
         reason=chosen.reason,
+        by_position=chosen.choice is Choice.FROM_STEP and _by_position(question, chosen),
     )
+
+
+def _by_position(question: SourceQuestion, chosen: SourceAnswer) -> bool:
+    assert chosen.candidate is not None
+    return question.candidates[chosen.candidate - 1].element is not None and chosen.key is None
 
 
 def _link(question: SourceQuestion, chosen: SourceAnswer, answers: Answers) -> str:

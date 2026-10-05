@@ -293,6 +293,7 @@ def test_tu_mo_phien_toi_draft_qua_hai_lan_xac_nhan(monkeypatch: pytest.MonkeyPa
         session = _session(events)
         assert (session["status"], session["is_ready"]) == ("awaiting_confirmation", True)
         assert session["proposal"]["name"] == "Đăng link trang Notion vào Slack"
+        assert session["ir"] == IR
         assert session["messages"][-1]["kind"] == "assumptions"
 
         done = b.post(session, "confirm")
@@ -352,6 +353,24 @@ def test_model_hoi_lai_thi_phien_mang_cau_hoi_do(monkeypatch: pytest.MonkeyPatch
                 "at": session["messages"][0]["at"],
             }
         ]
+
+
+def test_mo_lai_cua_so_thi_tiep_tuc_phien_dang_do(monkeypatch: pytest.MonkeyPatch) -> None:
+    with bench(monkeypatch, INTENT) as b:
+        path = f"/v1/conversations/{CONVERSATION}/compile-sessions/current"
+        truoc = b.client.get(path, headers=b.owner.headers())
+        assert (truoc.status_code, truoc.json()) == (200, None)
+
+        session = _session(b.open())
+
+        assert b.client.get(path, headers=b.owner.headers()).json() == session
+        # Phiên là của người mở nó: người khác không có phiên nào trên conversation này.
+        khac = _make_user(b.client, "Khac")
+        assert b.client.get(path, headers=khac.headers()).json() is None
+
+        b.post(session, "abandon")
+        assert b.client.get(path, headers=b.owner.headers()).json() is None
+        assert len(b.model.calls) == 1
 
 
 # ─── Lỗi ─────────────────────────────────────────────────────────────────────

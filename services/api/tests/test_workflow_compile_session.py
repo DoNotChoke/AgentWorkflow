@@ -324,6 +324,10 @@ async def test_chap_nhan_y_do_thi_co_bang_gia_dinh_va_ir_da_kiem() -> None:
     assert session.proposal is not None
     assert session.proposal["is_ready"] is True
     assert session.proposal["inputs"] == [["ten_trang", '"AWS"']]
+    assert {item["field"]: item["by_position"] for item in session.proposal["linked"]} == {
+        "channel": False,
+        "text": True,
+    }
     assert session.messages[-1].kind is MessageKind.ASSUMPTIONS
     assert session.messages[-1].text.startswith("# Đăng link trang Notion vào Slack")
     assert bench.answer.calls[0]["comment"] is None

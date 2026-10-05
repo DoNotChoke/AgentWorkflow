@@ -97,6 +97,16 @@ class CompileService:
         ensure_owns(session, actor_id=actor_id)
         return session
 
+    async def current(
+        self, *, tenant_id: str, conversation_id: str, actor_id: str
+    ) -> CompileSession | None:
+        """Phiên người này đang mở trên conversation đó, để giao diện tiếp tục thay vì mở
+        phiên mới."""
+        found = await self._sessions.list_open(
+            tenant_id=tenant_id, conversation_id=conversation_id, created_by=actor_id
+        )
+        return max(found, key=lambda session: session.updated_at, default=None)
+
     # ─── Mở ──────────────────────────────────────────────────────────────────
 
     async def open(
