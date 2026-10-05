@@ -59,7 +59,7 @@ from app.domains.tenant.infrastructure.repositories import (
     SqlAlchemyOrganizationRepository,
     SqlAlchemyWorkspaceRepository,
 )
-from app.entrypoints import agent_wiring
+from app.entrypoints import agent_wiring, compiler
 from app.entrypoints.middleware import (
     RequestContextMiddleware,
     app_error_handler,
@@ -705,6 +705,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(router)
+    app.include_router(compiler.create_router(context=resolve_context, models=get_model_client))
 
     instrument_fastapi(app)
     return app

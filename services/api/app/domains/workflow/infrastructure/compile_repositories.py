@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ValidationError
@@ -91,7 +92,14 @@ class SqlAlchemyCompileSessionRepository:
                 **_changing(session),
             )
         )
-        await self._session.flush()
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            # Index duy nhất của phiên đang mở: một request khác vừa mở trước.
+            raise ValidationError(
+                "Vừa có một phiên biên dịch khác được mở cho cuộc hội thoại này. Tải lại.",
+                details={"conversation_id": session.conversation_id},
+            ) from exc
 
     async def get(self, *, tenant_id: str, session_id: str) -> CompileSession | None:
         row = await self._session.scalar(

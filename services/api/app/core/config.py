@@ -137,6 +137,12 @@ class Settings(BaseSettings):
     #: Số lần model được trả lời lại sau khi ba tầng kiểm báo lỗi, kể cả lần đầu.
     compiler_max_rounds: int = 3
     compiler_max_briefing_chars: int = 60000
+    #: Model của các node `llm` trong workflow lắp ra.
+    compiler_llm_node_model: str = "gpt-6.1-sol"
+    #: Số thao tác có gọi model một người được làm trong một cửa sổ: mở phiên, nói lại,
+    #: chấp nhận ý đồ.
+    compiler_rate_limit: int = 10
+    compiler_rate_window_seconds: int = 300
 
     # ─── Agent Runtime ──────────────────────────────────────────────────
     #: Nơi Agent Runtime gọi tool — luôn là Control Plane.

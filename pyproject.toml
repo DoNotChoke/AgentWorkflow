@@ -256,6 +256,23 @@ forbidden_modules = [
     "app.entrypoints.wiring",
 ]
 
+# ── Contract 9: Agent Runtime tạo draft, không publish và không chạy workflow ─
+#
+# Workflow Compiler chạy trong Agent Runtime, cạnh LLM. Thứ nó được phép để lại là một
+# **draft**: người dùng xem rồi mới publish ở Control Plane, và chỉ worker chạy nó
+# (ADR-0015). import-linter không cấm được một lời gọi hàm, nên hàng rào đặt ở import:
+# tiến trình này không nạp `WorkflowService` (chủ của `publish` và `prepare_run`) và
+# không nạp phần Temporal của domain workflow. Compiler ghi draft qua cổng `DraftWriter`.
+[[tool.importlinter.contracts]]
+name = "Agent Runtime tạo draft, không publish và không chạy workflow"
+type = "forbidden"
+source_modules = ["app.entrypoints.agent"]
+forbidden_modules = [
+    "app.domains.workflow.application.service",
+    "app.domains.workflow.infrastructure.temporal",
+    "app.domains.execution",
+]
+
 # ── Contract 7: Temporal worker không có đường nào tới credential (§2.4) ──────
 #
 # Cùng hàng rào với contract 6, cho tiến trình thứ hai không được giải mã

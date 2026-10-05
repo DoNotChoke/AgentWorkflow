@@ -94,3 +94,13 @@ def test_control_plane_van_dung_duoc_duong_credential() -> None:
 
     assert "app.core.crypto" in loaded
     assert "app.domains.connection.infrastructure.credential_store" in loaded
+
+
+def test_agent_runtime_khong_nap_duong_publish_hay_chay_workflow() -> None:
+    """Compiler chạy cạnh LLM và chỉ được để lại một draft (ADR-0015, contract 9)."""
+    loaded = _modules_after_importing("app.entrypoints.agent")
+
+    assert "app.domains.workflow.application.compile_service" in loaded
+    assert "app.domains.workflow.application.service" not in loaded
+    forbidden = ("app.domains.workflow.infrastructure.temporal", "app.domains.execution")
+    assert [name for name in loaded if name.startswith(forbidden)] == []

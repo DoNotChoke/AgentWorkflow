@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, Protocol
@@ -192,6 +192,19 @@ class CompileSessionRepository(Protocol):
     async def list_open(
         self, *, tenant_id: str, conversation_id: str, created_by: str
     ) -> list[CompileSession]: ...
+
+
+class DraftWriter(Protocol):
+    """Phần của `WorkflowRepository` mà compiler dùng: tạo một workflow và draft của nó.
+    Compiler không publish và không chạy gì (contract 9)."""
+
+    async def add(self, workflow: Workflow) -> None: ...
+
+    async def save_draft(self, draft: WorkflowDraft) -> None: ...
+
+
+#: Báo một dòng tiến độ cho người đang chờ.
+Progress = Callable[[str], Awaitable[None]]
 
 
 class TransformRunner(Protocol):

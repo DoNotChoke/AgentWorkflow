@@ -16,10 +16,11 @@ from app.domains.workflow.application.ports import (
     CompileSessionRepository,
     CompileSourceReader,
     DialogueTurn,
+    DraftWriter,
     IntentAdvisor,
+    Progress,
     ToolCatalogReader,
     TransformRunner,
-    WorkflowRepository,
 )
 from app.domains.workflow.domain.compiler.intent import read_intent, to_document
 from app.domains.workflow.domain.compiler.normalize import read_source
@@ -61,7 +62,7 @@ class CompileService:
         *,
         sessions: CompileSessionRepository,
         sources: CompileSourceReader,
-        workflows: WorkflowRepository,
+        workflows: DraftWriter,
         intent_advisor: IntentAdvisor,
         answer_advisor: AnswerAdvisor,
         tools: ToolShapes,
@@ -99,8 +100,15 @@ class CompileService:
     # ─── Mở ──────────────────────────────────────────────────────────────────
 
     async def open(
-        self, *, tenant_id: str, workspace_id: str, conversation_id: str, actor_id: str
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        conversation_id: str,
+        actor_id: str,
+        progress: Progress | None = None,
     ) -> CompileSession:
+        await _tell(progress, "Đang đọc cuộc hội thoại.")
         material = await self._material(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
@@ -114,6 +122,7 @@ class CompileService:
                 details={"conversation_id": conversation_id},
             )
 
+        await _tell(progress, "Đang tìm hiểu ý đồ.")
         outcome = await propose_intent(
             material, [], self._intent_advisor, max_rounds=self._max_rounds
         )
@@ -156,7 +165,13 @@ class CompileService:
     # ─── Nói lại ─────────────────────────────────────────────────────────────
 
     async def say(
-        self, *, tenant_id: str, session_id: str, actor_id: str, text: str
+        self,
+        *,
+        tenant_id: str,
+        session_id: str,
+        actor_id: str,
+        text: str,
+        progress: Progress | None = None,
     ) -> CompileSession:
         """Ở bước ý đồ, lời này tới model hiểu ý đồ. Ở bước giả định, nó tới model trả lời
         cùng câu trả lời đang hiện; ý đồ đã chấp nhận thì không đổi."""
@@ -169,6 +184,7 @@ class CompileService:
         material = await self._pinned(session)
 
         if session.status is SessionStatus.AWAITING_INTENT:
+            await _tell(progress, "Đang xem lại ý đồ.")
             dialogue = [*_dialogue(session), DialogueTurn("user", text)]
             outcome = await propose_intent(
                 material, dialogue, self._intent_advisor, max_rounds=self._max_rounds
@@ -181,7 +197,7 @@ class CompileService:
                 at=datetime.now(UTC),
             )
         else:
-            built = await self._build(session, material, comment=text)
+            built = await self._build(session, material, comment=text, progress=progress)
             moved = _built(session, built, said=text)
 
         await self._sessions.save(moved, expected_revision=session.revision)
@@ -190,14 +206,16 @@ class CompileService:
     # ─── Hai lần xác nhận ────────────────────────────────────────────────────
 
     async def accept_intent(
-        self, *, tenant_id: str, session_id: str, actor_id: str
+        self, *, tenant_id: str, session_id: str, actor_id: str, progress: Progress | None = None
     ) -> CompileSession:
         session = await self.get(tenant_id=tenant_id, session_id=session_id, actor_id=actor_id)
         if session.status is not SessionStatus.AWAITING_INTENT or session.intent is None:
             raise ValidationError(
                 "Chưa có ý đồ nào đang chờ chấp nhận.", details={"session_id": session_id}
             )
-        built = await self._build(session, await self._pinned(session), comment=None)
+        built = await self._build(
+            session, await self._pinned(session), comment=None, progress=progress
+        )
         moved = _built(session, built, said=None)
         await self._sessions.save(moved, expected_revision=session.revision)
         return moved
@@ -288,7 +306,12 @@ class CompileService:
         return material
 
     async def _build(
-        self, session: CompileSession, material: SourceMaterial, *, comment: str | None
+        self,
+        session: CompileSession,
+        material: SourceMaterial,
+        *,
+        comment: str | None,
+        progress: Progress | None,
     ) -> Built:
         assert session.intent is not None
         skeleton = build_skeleton(material)
@@ -303,6 +326,7 @@ class CompileService:
             max_briefing_chars=self._max_briefing_chars,
             comment=comment,
             previous=session.answers if comment else None,
+            progress=progress,
         )
 
     def _check(self, skeleton: Skeleton, questions: QuestionSet, raw: Mapping[str, Any]) -> Checked:
@@ -315,6 +339,11 @@ class CompileService:
             runner=self._runner,
             llm_model=self._llm_node_model,
         )
+
+
+async def _tell(progress: Progress | None, text: str) -> None:
+    if progress is not None:
+        await progress(text)
 
 
 def _dialogue(session: CompileSession) -> list[DialogueTurn]:

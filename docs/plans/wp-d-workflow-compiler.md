@@ -731,6 +731,38 @@ và trace thật; script xuất fixture giờ dùng chính nó. Chưa có endpoi
 
     Chỉ chủ conversation mở được phiên. Rate limit theo người dùng. Contract 9.
 
+**GĐ 7 đã làm, 2026-10-05.** Bảy endpoint thay vì bốn, vì có hai lần xác nhận:
+
+| | | |
+|---|---|---|
+| `POST /v1/conversations/{id}/compile-sessions` | SSE | mở phiên, đề xuất ý đồ |
+| `POST /v1/compile-sessions/{id}/messages` | SSE | người dùng nói lại |
+| `POST /v1/compile-sessions/{id}/accept-intent` | SSE | chấp nhận ý đồ, dựng bảng giả định |
+| `POST /v1/compile-sessions/{id}/reopen-intent` | JSON | quay lại bước ý đồ |
+| `POST /v1/compile-sessions/{id}/confirm` | JSON | đồng ý → draft |
+| `POST /v1/compile-sessions/{id}/abandon` | JSON | bỏ phiên |
+| `GET /v1/compile-sessions/{id}` | JSON | đọc lại phiên |
+
+- *SSE* có ba loại sự kiện: `status` (một dòng tiến độ), `session` (phiên sau thao tác),
+  `error`. Model Gateway chưa stream từng chữ, và ở đây cũng không có gì đáng stream: model
+  nộp JSON qua một tool, và người dùng chỉ thấy nó sau khi code đã kiểm. Lỗi giữa chừng thì
+  phiên không đổi, vì thao tác chỉ ghi sau khi model trả lời xong.
+- *Transaction.* Ba thao tác có gọi model dùng repository mở transaction riêng cho từng
+  lần ghi. Bốn thao tác còn lại chạy trong transaction của request; với `confirm`, phiên,
+  workflow và draft cùng thành hoặc cùng huỷ.
+- *Hạn mức.* 10 thao tác có gọi model mỗi người trong 5 phút, đếm chung ba endpoint SSE
+  (`compiler_rate_limit`, `compiler_rate_window_seconds`). Thao tác không gọi model không
+  tính.
+- *Contract 9.* `app.entrypoints.agent` không nạp `WorkflowService`, phần Temporal của
+  domain workflow, hay domain `execution`. Compiler ghi draft qua cổng hẹp `DraftWriter`.
+  Có thêm một test nạp thật module để canh cùng điều đó.
+- Node `llm` của workflow lắp ra dùng `compiler_llm_node_model` (mặc định `gpt-6.1-sol`).
+
+Chạy thật qua HTTP với `gpt-6.1-sol` trên một conversation có sẵn trong dev DB (4 lượt,
+5 lời gọi tool — đúng conversation đã thành fixture kb7): mở phiên → chấp nhận ý đồ → đồng
+ý, mỗi bước một lời gọi model, không vòng sửa nào, ra một draft bốn node mang ý đồ và id
+phiên.
+
 **GĐ 8 — Web**
 
 18. `feat(web): turn a conversation into a workflow` — nút, cửa sổ chat bật lên, thẻ giả định, nút

@@ -18,6 +18,7 @@ from app.domains.workflow.application.ports import (
     AnswerAttempt,
     DialogueTurn,
     IntentAdvisor,
+    Progress,
 )
 from app.domains.workflow.domain.compiler.briefing import MAX_BRIEFING_CHARS, briefing
 from app.domains.workflow.domain.compiler.digest import digest
@@ -125,6 +126,7 @@ async def build(
     max_briefing_chars: int = MAX_BRIEFING_CHARS,
     comment: str | None = None,
     previous: Mapping[str, Any] | None = None,
+    progress: Progress | None = None,
 ) -> Built:
     """Model trả lời, ba tầng kiểm chấm, lỗi quay lại model — tới khi sạch hoặc hết trần.
 
@@ -136,6 +138,12 @@ async def build(
     attempts: list[AnswerAttempt] = []
 
     while True:
+        if progress is not None:
+            await progress(
+                f"Đang sửa {len(attempts[-1].errors)} lỗi mà lần kiểm trước tìm ra."
+                if attempts
+                else "Đang dựng workflow theo ý đồ."
+            )
         raw = await advisor.answer(
             briefing=document,
             schema=schema,
@@ -143,6 +151,8 @@ async def build(
             comment=comment,
             previous=previous,
         )
+        if progress is not None:
+            await progress("Đang kiểm workflow với lần chạy mẫu.")
         # Tầng 3 chạy code trong một tiến trình con và chờ nó.
         checked = await asyncio.to_thread(check, raw)
         report = checked.report

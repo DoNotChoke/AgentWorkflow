@@ -10,7 +10,9 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from app.core.config import get_settings
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import Settings, get_settings
 from app.core.db import session_scope
 from app.core.errors import ValidationError
 from app.core.sandbox import DEFAULT_LIMITS, Limits, run
@@ -26,6 +28,7 @@ from app.domains.agent.infrastructure.repositories import (
     SqlAlchemyConversationRepository,
     SqlAlchemyMessageRepository,
 )
+from app.domains.integration.infrastructure.catalog_view import tool_rows
 from app.domains.trace.application.service import PayloadSide, TraceService
 from app.domains.trace.infrastructure.payload_store import build_payload_store
 from app.domains.trace.infrastructure.repositories import SqlAlchemyExecutionTraceRepository
@@ -36,12 +39,18 @@ from app.domains.workflow.application.compile_flow import (
     INTENT_SCHEMA,
     INTENT_TOOL,
 )
+from app.domains.workflow.application.compile_service import CompileService
 from app.domains.workflow.application.ports import (
     AnswerAttempt,
     CompileSource,
     DialogueTurn,
     IntentReply,
 )
+from app.domains.workflow.infrastructure.catalog import RowToolCatalog
+from app.domains.workflow.infrastructure.compile_repositories import (
+    SqlAlchemyCompileSessionRepository,
+)
+from app.domains.workflow.infrastructure.repositories import SqlAlchemyWorkflowRepository
 
 #: Với model suy luận, trần này gồm cả phần suy luận, không chỉ phần trả lời.
 _INTENT_MAX_TOKENS = 4096
@@ -244,3 +253,72 @@ class TraceCompileSourceReader:
             "started_at": detail.trace.started_at.isoformat(),
             "steps": steps,
         }
+
+
+class ScopedCompileSessions:
+    """`CompileSessionRepository` mà mỗi lần gọi là một transaction riêng.
+
+    Cho các thao tác có gọi model: lời gọi đó mất hàng chục giây, và không transaction
+    nào nên mở suốt chừng ấy. `revision` lo phần hai request ghi chồng lên nhau."""
+
+    async def add(self, session: Any) -> None:
+        async with session_scope() as db:
+            await SqlAlchemyCompileSessionRepository(db).add(session)
+
+    async def get(self, *, tenant_id: str, session_id: str) -> Any:
+        async with session_scope() as db:
+            return await SqlAlchemyCompileSessionRepository(db).get(
+                tenant_id=tenant_id, session_id=session_id
+            )
+
+    async def save(self, session: Any, *, expected_revision: int) -> None:
+        async with session_scope() as db:
+            await SqlAlchemyCompileSessionRepository(db).save(
+                session, expected_revision=expected_revision
+            )
+
+    async def list_open(self, *, tenant_id: str, conversation_id: str, created_by: str) -> Any:
+        async with session_scope() as db:
+            return await SqlAlchemyCompileSessionRepository(db).list_open(
+                tenant_id=tenant_id, conversation_id=conversation_id, created_by=created_by
+            )
+
+
+class ScopedDrafts:
+    """`DraftWriter` mà mỗi lần gọi là một transaction riêng. Service dựng theo kiểu này
+    không được dùng để `confirm`: phiên, workflow và draft phải cùng thành hoặc cùng huỷ."""
+
+    async def add(self, workflow: Any) -> None:
+        async with session_scope() as db:
+            await SqlAlchemyWorkflowRepository(db).add(workflow)
+
+    async def save_draft(self, draft: Any) -> None:
+        async with session_scope() as db:
+            await SqlAlchemyWorkflowRepository(db).save_draft(draft)
+
+
+def build_compile_service(
+    *, models: ModelClient, settings: Settings, session: AsyncSession | None = None
+) -> CompileService:
+    """`session` có thì mọi lần ghi nằm trong transaction của request đó; không có thì
+    mỗi lần ghi một transaction riêng."""
+    rows = tool_rows()
+    return CompileService(
+        sessions=(
+            ScopedCompileSessions()
+            if session is None
+            else SqlAlchemyCompileSessionRepository(session)
+        ),
+        sources=TraceCompileSourceReader(),
+        workflows=ScopedDrafts() if session is None else SqlAlchemyWorkflowRepository(session),
+        intent_advisor=ModelIntentAdvisor(models, model=settings.compiler_intent_model),
+        answer_advisor=ModelAnswerAdvisor(models, model=settings.compiler_answer_model),
+        tools={(row["tool_id"], row["version"]): row["input_schema"] for row in rows},
+        catalog=RowToolCatalog(rows),
+        runner=SandboxRunner(),
+        intent_model=settings.compiler_intent_model,
+        answer_model=settings.compiler_answer_model,
+        llm_node_model=settings.compiler_llm_node_model,
+        max_rounds=settings.compiler_max_rounds,
+        max_briefing_chars=settings.compiler_max_briefing_chars,
+    )

@@ -14,7 +14,6 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from conftest import infra_unavailable
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
 from app.core.db import dispose_engine, init_engine, session_scope
@@ -193,7 +192,7 @@ async def test_moi_nguoi_mot_phien_dang_mo_tren_mot_conversation() -> None:
     session = make_session()
     await _add(session)
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(ValidationError, match="phi.n bi.n d.ch kh.c"):
         await _add(make_session(conversation=session.conversation_id))
 
 
