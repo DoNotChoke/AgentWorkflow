@@ -43,6 +43,11 @@ const nextConfig: NextConfig = {
         destination: `${API_ORIGIN}/v1/conversations/:conversationId/traces`,
       },
       { source: "/v1/conversations/:path*", destination: `${AGENT_ORIGIN}/v1/conversations/:path*` },
+      // Workflow Compiler chạy trong Agent Runtime, cạnh Model Gateway (ADR-0015).
+      {
+        source: "/v1/compile-sessions/:path*",
+        destination: `${AGENT_ORIGIN}/v1/compile-sessions/:path*`,
+      },
       { source: "/v1/:path*", destination: `${API_ORIGIN}/v1/:path*` },
     ];
   },

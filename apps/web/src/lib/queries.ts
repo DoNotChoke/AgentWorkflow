@@ -5,6 +5,7 @@ import {
   type Agent,
   apiRequest,
   type Authorization,
+  type CompileSession,
   type ChatMessage,
   type Connection,
   type ConnectionAudit,
@@ -19,6 +20,8 @@ import {
   type SharingPolicy,
   type SlugAvailability,
   type ToolSummary,
+  type Workflow,
+  type WorkflowDraft,
   type Workspace,
   type WorkspaceRole,
 } from "@/lib/api";
@@ -52,6 +55,14 @@ export const queryKeys = {
     ["messages", organizationId, conversationId] as const,
   conversationConnections: (organizationId: string | null, conversationId: string | null) =>
     ["conversation-connections", organizationId, conversationId] as const,
+  workflows: (organizationId: string | null, workspaceId: string | null) =>
+    ["workflows", organizationId, workspaceId] as const,
+  workflow: (organizationId: string | null, workflowId: string | null) =>
+    ["workflow", organizationId, workflowId] as const,
+  workflowDraft: (organizationId: string | null, workflowId: string | null) =>
+    ["workflow-draft", organizationId, workflowId] as const,
+  compileSession: (organizationId: string | null, sessionId: string | null) =>
+    ["compile-session", organizationId, sessionId] as const,
 };
 
 /** Header chọn tenant cho request hiện tại — bỏ trống thì backend lấy org đầu tiên. */
@@ -723,6 +734,77 @@ export function useConversationMessages(
     enabled: status === "authenticated" && organizationId !== null && conversationId !== null,
     queryFn: () =>
       apiRequest<ChatMessage[]>(`/v1/conversations/${conversationId}/messages`, {
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+      }),
+  });
+}
+
+// ─── Workflow ───────────────────────────────────────────────────────────────
+
+export function useWorkflows(organizationId: string | null, workspaceId: string | null) {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: queryKeys.workflows(organizationId, workspaceId),
+    enabled: status === "authenticated" && organizationId !== null && workspaceId !== null,
+    queryFn: () =>
+      apiRequest<Workflow[]>("/v1/workflows", {
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+      }),
+  });
+}
+
+export function useWorkflow(
+  organizationId: string | null,
+  workspaceId: string | null,
+  workflowId: string | null,
+) {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: queryKeys.workflow(organizationId, workflowId),
+    enabled: status === "authenticated" && workspaceId !== null && workflowId !== null,
+    queryFn: () =>
+      apiRequest<Workflow>(`/v1/workflows/${workflowId}`, {
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+      }),
+  });
+}
+
+export function useWorkflowDraft(
+  organizationId: string | null,
+  workspaceId: string | null,
+  workflowId: string | null,
+) {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: queryKeys.workflowDraft(organizationId, workflowId),
+    enabled: status === "authenticated" && workspaceId !== null && workflowId !== null,
+    queryFn: () =>
+      apiRequest<WorkflowDraft>(`/v1/workflows/${workflowId}/draft`, {
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+      }),
+  });
+}
+
+/**
+ * Phiên biên dịch đã sinh ra một draft. Chỉ người mở phiên đọc được nó; người khác
+ * nhận 403, và màn draft khi đó bỏ mục "Left out" chứ không báo lỗi.
+ */
+export function useCompileSessionById(
+  organizationId: string | null,
+  workspaceId: string | null,
+  sessionId: string | null,
+) {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: queryKeys.compileSession(organizationId, sessionId),
+    enabled: status === "authenticated" && workspaceId !== null && sessionId !== null,
+    retry: false,
+    queryFn: () =>
+      apiRequest<CompileSession>(`/v1/compile-sessions/${sessionId}`, {
         accessToken,
         headers: workspaceHeaders(organizationId, workspaceId),
       }),

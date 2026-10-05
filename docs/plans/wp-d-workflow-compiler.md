@@ -763,6 +763,33 @@ Chạy thật qua HTTP với `gpt-6.1-sol` trên một conversation có sẵn tr
 ý, mỗi bước một lời gọi model, không vòng sửa nào, ra một draft bốn node mang ý đồ và id
 phiên.
 
+**GĐ 8 đã làm, 2026-10-05** — trừ màn Run, để sau.
+
+- *Nút* **Turn into Workflow** trên đầu màn chat, hiện khi conversation đã có lời gọi tool
+  và không lượt nào đang chạy.
+- *Cửa sổ biên dịch* (`compile-dialog.tsx`, hook `lib/compile.ts`): ba bước Intent →
+  Assumptions → Draft. Ý đồ và bảng giả định **đang hiện** là thẻ dựng từ dữ liệu có cấu
+  trúc; các bản cũ trong đoạn chat là markdown thu gọn. Dòng tiến độ là sự kiện `status`
+  của backend, nguyên văn.
+- *Mở lại thì tiếp tục*: `GET /v1/conversations/{id}/compile-sessions/current` trả phiên
+  đang mở của người gọi, hoặc `null`. Cửa sổ hỏi nó trước khi mở phiên mới.
+- *Hai trang* `/workflows` (danh sách) và `/workflows/[id]` (draft, chỉ đọc): ý đồ, các
+  bước theo thứ tự chạy, kết quả kiểm, và các bước đã bỏ đọc từ phiên đã sinh ra draft.
+  Chưa có nút Publish hay Run.
+- Phiên trả thêm `ir` (để vẽ các bước) và mỗi giả định có `by_position`.
+- Chữ giao diện tiếng Anh như phần còn lại của web; ý đồ, lý do và văn bản model viết giữ
+  ngôn ngữ của conversation.
+
+Khác bản thiết kế trên canvas ở một chỗ: mối nối giữa các làn của vòng lặp (khoá suy ra,
+`thread_ts` của cùng vòng) hiện trong mục *Loops and conditions* bằng chính câu backend
+viết, chưa thành từng dòng có nhãn `INFERRED` trong mục giá trị — bảng giả định chưa có
+dữ liệu có cấu trúc cho phần đó.
+
+Kiểm: `tsc`, eslint và `next build` sạch. Luồng request của giao diện đã đi thật qua proxy
+của Next với `gpt-6.1-sol` (mở → `current` → chấp nhận ý đồ → đồng ý → danh sách → draft →
+đọc lại phiên). **Chưa ai nhìn giao diện trên trình duyệt**: web chưa có bộ test, và lần
+này không nối được trình duyệt.
+
 **GĐ 8 — Web**
 
 18. `feat(web): turn a conversation into a workflow` — nút, cửa sổ chat bật lên, thẻ giả định, nút

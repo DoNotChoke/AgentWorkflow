@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CompileDialog } from "@/components/compile-dialog";
 import { ConnectionChoiceCard } from "@/components/connection-choice-card";
 import { ConnectionUsageStrip, type ConnectionUsageRow } from "@/components/connection-usage-strip";
 import { Markdown } from "@/components/markdown";
@@ -54,6 +55,7 @@ export function AgentChat({
   const convoConnections = useConversationConnections(orgId, wsId, activeConvo);
 
   const [composer, setComposer] = useState("");
+  const [compiling, setCompiling] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
 
   const persisted = useMemo(() => messages.data ?? [], [messages.data]);
@@ -129,7 +131,32 @@ export function AgentChat({
             {modelLabel(agent.model)} ·<ToolsMenu agent={agent} label={toolLabel} />
           </span>
         </div>
+        <div className="grow" />
+        {/* Chỉ mời khi conversation đã có lời gọi tool và không lượt nào đang chạy:
+            compiler đọc các lượt đã xong. */}
+        {activeConvo && wsId && !pending && persisted.some((m) => m.role === "tool") ? (
+          <button
+            type="button"
+            onClick={() => setCompiling(true)}
+            className="flex h-9 items-center gap-1.5 rounded-control bg-accent px-3.5 text-[13px] font-medium text-white hover:bg-accent-ink"
+          >
+            Turn into Workflow
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 8h9M8.5 4.5L12 8l-3.5 3.5" />
+            </svg>
+          </button>
+        ) : null}
       </header>
+
+      {compiling && activeConvo && wsId ? (
+        <CompileDialog
+          organizationId={orgId}
+          workspaceId={wsId}
+          conversationId={activeConvo}
+          conversationTitle={conversationTitle(activeConvo, persisted, activeConvo)}
+          onClose={() => setCompiling(false)}
+        />
+      ) : null}
 
       {usage.length > 0 && activeConvo ? (
         <ConnectionUsageStrip

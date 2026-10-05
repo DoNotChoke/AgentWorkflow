@@ -338,3 +338,137 @@ export type AgentSseEvent =
     }
   | { event: "final"; data: { text: string } }
   | { event: "error"; data: { message: string } };
+
+// ─── Workflow ───────────────────────────────────────────────────────────────
+
+export type Workflow = {
+  id: string;
+  name: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  /** Version mới nhất đã publish. `null` nghĩa là mới chỉ có draft. */
+  current_version_id: string | null;
+  archived_at: string | null;
+};
+
+/** Một giá trị của node lấy từ đâu (`bindings` trong Workflow IR v2). */
+export type IrBinding =
+  | { const: unknown }
+  | { from_input: string }
+  | { from_item: string[] }
+  | {
+      from_node: {
+        node: string;
+        path: string[];
+        where?: Record<string, IrBinding>;
+        pick?: string[];
+      };
+    };
+
+export type IrNode = {
+  id: string;
+  type: "trigger" | "tool" | "llm" | "loop" | "transform" | "condition";
+  tool_id?: string;
+  model?: string;
+  instructions?: string;
+  code?: string;
+  input?: Record<string, IrBinding>;
+  args?: Record<string, IrBinding>;
+  input_schema?: { properties?: Record<string, unknown> };
+  over?: IrBinding;
+  filter?: Record<string, IrBinding>;
+  body?: IrNode[];
+  left?: IrBinding;
+  op?: string;
+  right?: IrBinding;
+};
+
+export type WorkflowIr = { schema_version: string; nodes: IrNode[]; edges: unknown[] };
+
+export type ValidationIssue = {
+  code: string;
+  message: string;
+  severity: string;
+  node: string | null;
+  field: string[];
+};
+
+/** Ý đồ người dùng đã chấp nhận lúc biên dịch (khoá tiếng Việt như backend lưu). */
+export type WorkflowIntent = {
+  nhiem_vu: string;
+  thay_doi: string[];
+  co_dinh: string[];
+  dieu_kien: string[];
+  khong_thuoc_nhiem_vu: string[];
+};
+
+export type WorkflowDraft = {
+  workflow_id: string;
+  ir: WorkflowIr;
+  intent: WorkflowIntent | null;
+  /** Phiên biên dịch đã sinh ra draft này. */
+  compiled_from: string | null;
+  updated_by: string;
+  updated_at: string;
+  validation: { ok: boolean; errors: ValidationIssue[]; warnings: ValidationIssue[] };
+};
+
+// ─── Phiên biên dịch (Agent Runtime) ────────────────────────────────────────
+
+export type CompileStatus = "awaiting_intent" | "awaiting_confirmation" | "compiled" | "abandoned";
+
+export type CompileMessage = {
+  /** `intent`: một đề xuất ý đồ. `question`: model hỏi lại. `assumptions`: một bảng giả định. */
+  kind: "user" | "intent" | "question" | "assumptions";
+  text: string;
+  at: string;
+};
+
+export type Assumption = {
+  question: string;
+  node: string;
+  field: string;
+  /** Giá trị ở lần chạy mẫu, đã cắt ngắn. */
+  value: string;
+  detail: string;
+  reason: string | null;
+  by_position: boolean;
+};
+
+/** Bảng giả định ở dạng dữ liệu (`proposal_document` ở backend). */
+export type CompileProposal = {
+  name: string;
+  inputs: [string, string][];
+  fixed: Assumption[];
+  linked: Assumption[];
+  defaults: Assumption[];
+  dropped: { step: string; tool_id: string; turn: number; reason: string | null }[];
+  loops: string[];
+  written: { id: string; kind: "instructions" | "code"; text: string; detail: string }[];
+  conditions: string[];
+  warnings: string[];
+  errors: string[];
+  is_ready: boolean;
+};
+
+export type CompileSession = {
+  id: string;
+  conversation_id: string;
+  status: CompileStatus;
+  revision: number;
+  messages: CompileMessage[];
+  intent: WorkflowIntent | null;
+  proposal: CompileProposal | null;
+  ir: WorkflowIr | null;
+  /** Bấm Agree được hay chưa: bảng giả định đã qua cả ba tầng kiểm. */
+  is_ready: boolean;
+  workflow_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CompileSseEvent =
+  | { event: "status"; data: { text: string } }
+  | { event: "session"; data: CompileSession }
+  | { event: "error"; data: { message: string; category: string } };
