@@ -37,6 +37,8 @@ def _to_draft(row: WorkflowDraftModel) -> WorkflowDraft:
         ir=row.ir,
         updated_at=row.updated_at,
         updated_by=row.updated_by,
+        intent=row.intent,
+        compiled_from=row.compiled_from,
     )
 
 
@@ -50,6 +52,8 @@ def _to_version(row: WorkflowVersionModel) -> WorkflowVersion:
         ir_sha256=row.ir_sha256,
         published_at=row.published_at,
         published_by=row.published_by,
+        intent=row.intent,
+        compiled_from=row.compiled_from,
     )
 
 
@@ -117,6 +121,8 @@ class SqlAlchemyWorkflowRepository:
             workflow_id=draft.workflow_id,
             tenant_id=draft.tenant_id,
             ir=dict(draft.ir),
+            intent=None if draft.intent is None else dict(draft.intent),
+            compiled_from=draft.compiled_from,
             updated_by=draft.updated_by,
             updated_at=draft.updated_at,
         )
@@ -125,6 +131,8 @@ class SqlAlchemyWorkflowRepository:
                 index_elements=["workflow_id"],
                 set_={
                     "ir": statement.excluded.ir,
+                    "intent": statement.excluded.intent,
+                    "compiled_from": statement.excluded.compiled_from,
                     "updated_by": statement.excluded.updated_by,
                     "updated_at": statement.excluded.updated_at,
                 },
@@ -152,6 +160,8 @@ class SqlAlchemyWorkflowRepository:
                 number=version.number,
                 ir=dict(version.ir),
                 ir_sha256=version.ir_sha256,
+                intent=None if version.intent is None else dict(version.intent),
+                compiled_from=version.compiled_from,
                 published_by=version.published_by,
                 published_at=version.published_at,
             )

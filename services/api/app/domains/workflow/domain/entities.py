@@ -48,6 +48,11 @@ class WorkflowDraft:
     ir: Mapping[str, Any]
     updated_at: datetime
     updated_by: str
+    #: Workflow này để làm gì, như người dùng đã chấp nhận lúc biên dịch. Mô tả đúng IR
+    #: này, nên đi cùng nó chứ không nằm ở `Workflow`.
+    intent: Mapping[str, Any] | None = None
+    #: Phiên biên dịch đã sinh ra draft này.
+    compiled_from: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +71,8 @@ class WorkflowVersion:
     ir_sha256: str
     published_at: datetime
     published_by: str
+    intent: Mapping[str, Any] | None = None
+    compiled_from: str | None = None
 
 
 def canonical_bytes(ir: Mapping[str, Any]) -> bytes:

@@ -132,6 +132,8 @@ class WorkflowResponse(BaseModel):
 class DraftResponse(BaseModel):
     workflow_id: str
     ir: dict[str, Any]
+    intent: dict[str, Any] | None
+    compiled_from: str | None
     updated_by: str
     updated_at: datetime
     validation: ValidationResponse
@@ -143,6 +145,8 @@ class VersionResponse(BaseModel):
     number: int
     ir: dict[str, Any]
     ir_sha256: str
+    intent: dict[str, Any] | None
+    compiled_from: str | None
     published_by: str
     published_at: datetime
 
@@ -191,6 +195,8 @@ def _draft(draft: WorkflowDraft, report: ValidationReport) -> DraftResponse:
     return DraftResponse(
         workflow_id=draft.workflow_id,
         ir=dict(draft.ir),
+        intent=None if draft.intent is None else dict(draft.intent),
+        compiled_from=draft.compiled_from,
         updated_by=draft.updated_by,
         updated_at=draft.updated_at,
         validation=_validation(report),
@@ -204,6 +210,8 @@ def _version(version: WorkflowVersion) -> VersionResponse:
         number=version.number,
         ir=dict(version.ir),
         ir_sha256=version.ir_sha256,
+        intent=None if version.intent is None else dict(version.intent),
+        compiled_from=version.compiled_from,
         published_by=version.published_by,
         published_at=version.published_at,
     )

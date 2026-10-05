@@ -158,6 +158,8 @@ class WorkflowService:
         ensure_not_archived(workflow)
         ensure_can_manage(workflow, actor_id=actor_id, can_manage_workspace=can_manage_workspace)
 
+        # Sửa IR không xoá ý đồ: nó vẫn là thứ người dùng đã chấp nhận cho workflow này.
+        current = await self._workflows.get_draft(tenant_id=tenant_id, workflow_id=workflow_id)
         at = datetime.now(UTC)
         draft = WorkflowDraft(
             workflow_id=workflow_id,
@@ -165,6 +167,8 @@ class WorkflowService:
             ir=ir,
             updated_at=at,
             updated_by=actor_id,
+            intent=current.intent if current else None,
+            compiled_from=current.compiled_from if current else None,
         )
         await self._workflows.save_draft(draft)
         return draft, self.inspect(ir)
@@ -214,6 +218,8 @@ class WorkflowService:
             ir_sha256=fingerprint(draft.ir),
             published_at=at,
             published_by=actor_id,
+            intent=draft.intent,
+            compiled_from=draft.compiled_from,
         )
         await self._workflows.add_version(version)
         await self._workflows.update(published(workflow, version, at=at))

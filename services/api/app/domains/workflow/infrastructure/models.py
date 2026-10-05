@@ -45,6 +45,8 @@ class WorkflowDraftModel(Base):
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     #: IR đang sửa. Được phép chưa hợp lệ (Q14).
     ir: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    intent: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    compiled_from: Mapped[str | None] = mapped_column(String(64))
     updated_by: Mapped[str] = mapped_column(String(64), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -65,5 +67,7 @@ class WorkflowVersionModel(Base):
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     ir: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     ir_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    intent: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    compiled_from: Mapped[str | None] = mapped_column(String(64))
     published_by: Mapped[str] = mapped_column(String(64), nullable=False)
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
