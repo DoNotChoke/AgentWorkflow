@@ -39,12 +39,13 @@ from app.domains.workflow.domain.compiler.briefing import briefing
 from app.domains.workflow.domain.compiler.digest import MAX_REPLY_CHARS, digest
 from app.domains.workflow.domain.compiler.intent import Intent, read_intent, render_intent
 from app.domains.workflow.domain.compiler.normalize import read_source
-from app.domains.workflow.domain.compiler.proposal import render_proposal
+from app.domains.workflow.domain.compiler.proposal import _warnings, render_proposal
 from app.domains.workflow.domain.compiler.provenance import find_sources
 from app.domains.workflow.domain.compiler.questions import QuestionSet, build_questions
 from app.domains.workflow.domain.compiler.report import CompileIssue, CompileReport, Tier
 from app.domains.workflow.domain.compiler.skeleton import Skeleton, build_skeleton
 from app.domains.workflow.domain.compiler.source import SourceMaterial
+from app.domains.workflow.domain.validation import Severity
 from app.domains.workflow.infrastructure.catalog import RowToolCatalog
 from app.entrypoints.compiler_wiring import ModelAnswerAdvisor, ModelIntentAdvisor, SandboxRunner
 
@@ -435,6 +436,22 @@ async def test_bang_gia_dinh_noi_ro_than_vong_lap_va_dieu_da_suy_ra() -> None:
     assert [item.node for item in proposal.linked if item.field == "text"] == [
         "dang_cau_hoi",
         "tra_loi",
+    ]
+
+
+def test_canh_bao_cung_loai_gop_thanh_mot_dong() -> None:
+    def warning(question: str, code: str) -> CompileIssue:
+        return CompileIssue(
+            Tier.DOCUMENT, question, code, f"{question} chọn theo vị trí.", Severity.WARNING
+        )
+
+    report = CompileReport(
+        (warning("N2", "chi_so_tho"), warning("N5", "chi_so_tho"), warning("N9", "khac"))
+    )
+
+    assert _warnings(report) == [
+        "2 chỗ (N2, N5), ví dụ: N2 chọn theo vị trí.",
+        "N9: N9 chọn theo vị trí.",
     ]
 
 

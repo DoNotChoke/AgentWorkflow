@@ -29,7 +29,7 @@ from app.domains.workflow.domain.compiler.questions import (
     QuestionSet,
     SourceQuestion,
 )
-from app.domains.workflow.domain.compiler.report import CompileReport
+from app.domains.workflow.domain.compiler.report import CompileIssue, CompileReport
 from app.domains.workflow.domain.compiler.skeleton import Skeleton, StepKind
 
 _VALUE: Final = 120
@@ -142,9 +142,25 @@ def build_proposal(
         loops=tuple(_loops(skeleton, questions, answers)),
         written=tuple(_written(skeleton, answers)),
         conditions=tuple(_conditions(answers)),
-        warnings=tuple(f"{issue.question}: {issue.message}" for issue in report.warnings),
+        warnings=tuple(_warnings(report)),
         errors=tuple(f"{issue.question or '(chung)'}: {issue.message}" for issue in report.errors),
     )
+
+
+def _warnings(report: CompileReport) -> list[str]:
+    """Mười ba cảnh báo cùng loại là một điều cần biết, không phải mười ba dòng."""
+    by_code: dict[str, list[CompileIssue]] = {}
+    for issue in report.warnings:
+        by_code.setdefault(issue.code, []).append(issue)
+    lines: list[str] = []
+    for issues in by_code.values():
+        first = issues[0]
+        if len(issues) == 1:
+            lines.append(f"{first.question}: {first.message}")
+        else:
+            where = ", ".join(issue.question for issue in issues)
+            lines.append(f"{len(issues)} chỗ ({where}), ví dụ: {first.message}")
+    return lines
 
 
 def _assumption(question: SourceQuestion, chosen: SourceAnswer, answers: Answers) -> Assumption:
@@ -324,7 +340,9 @@ def render_proposal(proposal: Proposal) -> str:
     if proposal.loops:
         parts.append("**Vòng lặp**\n" + "\n".join(f"- {line}" for line in proposal.loops))
     if proposal.conditions:
-        parts.append("**Điều kiện**\n" + "\n".join(f"- {line}" for line in proposal.conditions))
+        parts.append(
+            "**Điều kiện đã dựng**\n" + "\n".join(f"- {line}" for line in proposal.conditions)
+        )
     for text in proposal.written:
         fence = "python" if text.kind == "code" else "text"
         parts.append(f"**`{text.id}`** — {text.detail}\n```{fence}\n{text.text}\n```")
