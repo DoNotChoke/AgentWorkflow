@@ -145,6 +145,17 @@ class NodeExecution:
     usage: Mapping[str, int] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class Tally:
+    """Số bước của một lần chạy, tính trên các hàng node đã ghi."""
+
+    steps: int = 0
+    #: `succeeded` và `skipped`.
+    done: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
 def ensure_inputs_size(inputs: Mapping[str, Any]) -> None:
     size = len(json.dumps(inputs, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     if size > MAX_INPUTS_BYTES:

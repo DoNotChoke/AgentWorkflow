@@ -25,6 +25,7 @@ from app.domains.execution.domain.entities import (
     Failure,
     NodeExecution,
     NodeStatus,
+    Tally,
 )
 from app.domains.execution.infrastructure.repositories import SqlAlchemyExecutionRepository
 from app.domains.workflow.domain.entities import Workflow, WorkflowVersion, fingerprint
@@ -172,7 +173,7 @@ async def test_tenant_khac_khong_doc_duoc() -> None:
         repo = SqlAlchemyExecutionRepository(session)
         assert await repo.get(tenant_id=OTHER_TENANT, execution_id=execution.id) is None
         assert (
-            await repo.list_for_workflow(
+            await repo.list_recent(
                 tenant_id=OTHER_TENANT, workflow_id=execution.workflow_id, limit=10
             )
             == []
@@ -188,10 +189,55 @@ async def test_liet_ke_moi_nhat_truoc() -> None:
     await _add(newer)
 
     async with session_scope() as session:
-        found = await SqlAlchemyExecutionRepository(session).list_for_workflow(
+        found = await SqlAlchemyExecutionRepository(session).list_recent(
             tenant_id=TENANT, workflow_id=version.workflow_id, limit=10
         )
     assert [e.id for e in found] == [newer.id, older.id]
+
+
+async def test_liet_ke_loc_theo_workspace_va_trang_thai() -> None:
+    version = await _version()
+    pending = _execution(version)
+    failed = _execution(version, status=ExecutionStatus.FAILED)
+    elsewhere = _execution(version, workspace_id="wsp_khac")
+    for execution in (pending, failed, elsewhere):
+        await _add(execution)
+
+    async with session_scope() as session:
+        repo = SqlAlchemyExecutionRepository(session)
+        here = await repo.list_recent(tenant_id=TENANT, workspace_id=WORKSPACE, limit=10)
+        only_failed = await repo.list_recent(
+            tenant_id=TENANT, workspace_id=WORKSPACE, status="failed", limit=10
+        )
+    assert {e.id for e in here} == {pending.id, failed.id}
+    assert [e.id for e in only_failed] == [failed.id]
+
+
+async def test_dem_buoc_va_token_theo_lan_chay() -> None:
+    version = await _version()
+    counted, empty = _execution(version), _execution(version)
+    await _add(counted)
+    await _add(empty)
+    async with session_scope() as session:
+        repo = SqlAlchemyExecutionRepository(session)
+        await repo.save_node(_node(counted, "doc", status=NodeStatus.SUCCEEDED))
+        await repo.save_node(_node(counted, "bo_qua", status=NodeStatus.SKIPPED))
+        await repo.save_node(
+            _node(
+                counted,
+                "soan",
+                status=NodeStatus.SUCCEEDED,
+                usage={"input_tokens": 120, "output_tokens": 30, "model_calls": 1},
+            )
+        )
+        await repo.save_node(_node(counted, "dang", status=NodeStatus.RUNNING))
+
+    async with session_scope() as session:
+        repo = SqlAlchemyExecutionRepository(session)
+        found = await repo.tally(tenant_id=TENANT, execution_ids=[counted.id, empty.id])
+        assert await repo.tally(tenant_id=OTHER_TENANT, execution_ids=[counted.id]) == {}
+        assert await repo.tally(tenant_id=TENANT, execution_ids=[]) == {}
+    assert found == {counted.id: Tally(steps=4, done=3, input_tokens=120, output_tokens=30)}
 
 
 # ─── Khoá ngoại ──────────────────────────────────────────────────────────────

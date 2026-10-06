@@ -23,9 +23,15 @@ from app.domains.execution.application.service import (
     DEFAULT_LIST_LIMIT,
     MAX_LIST_LIMIT,
     ExecutionService,
+    ExecutionSummary,
 )
 from app.domains.execution.application.starting import ExecutionStarter
-from app.domains.execution.domain.entities import Execution, Failure, NodeExecution
+from app.domains.execution.domain.entities import (
+    Execution,
+    ExecutionStatus,
+    Failure,
+    NodeExecution,
+)
 from app.domains.execution.infrastructure.repositories import SqlAlchemyExecutionRepository
 
 router = APIRouter(prefix="/v1/executions", tags=["execution"])
@@ -134,6 +140,14 @@ class ExecutionResponse(BaseModel):
     error: FailureResponse | None
 
 
+class ExecutionSummaryResponse(ExecutionResponse):
+    #: Số hàng node đã ghi. Vòng lặp chưa tới thì các lượt của nó chưa được đếm.
+    steps: int
+    steps_done: int
+    input_tokens: int
+    output_tokens: int
+
+
 class NodeResponse(BaseModel):
     node_path: str
     node_id: str
@@ -172,6 +186,16 @@ def _execution(execution: Execution) -> ExecutionResponse:
         started_at=execution.started_at,
         finished_at=execution.finished_at,
         error=_failure(execution.failure),
+    )
+
+
+def _summary(summary: ExecutionSummary) -> ExecutionSummaryResponse:
+    return ExecutionSummaryResponse(
+        **_execution(summary.execution).model_dump(),
+        steps=summary.tally.steps,
+        steps_done=summary.tally.done,
+        input_tokens=summary.tally.input_tokens,
+        output_tokens=summary.tally.output_tokens,
     )
 
 
@@ -215,18 +239,21 @@ async def start_execution(
 
 @router.get("")
 async def list_executions(
-    workflow_id: Annotated[str, Query(max_length=64)],
     context: CurrentContext,
     service: Annotated[ExecutionService, Depends(get_service)],
+    workflow_id: Annotated[str | None, Query(max_length=64)] = None,
+    status: Annotated[ExecutionStatus | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIST_LIMIT)] = DEFAULT_LIST_LIMIT,
-) -> list[ExecutionResponse]:
-    found = await service.list_for_workflow(
+) -> list[ExecutionSummaryResponse]:
+    """Lần chạy của workspace đang chọn, mới nhất trước."""
+    found = await service.list_recent(
         tenant_id=context.organization_id,
-        workflow_id=workflow_id,
-        limit=limit,
         workspace_id=context.workspace_id,
+        workflow_id=workflow_id,
+        status=status,
+        limit=limit,
     )
-    return [_execution(execution) for execution in found]
+    return [_summary(summary) for summary in found]
 
 
 @router.get("/{execution_id}")

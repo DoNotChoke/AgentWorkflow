@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from app.domains.execution.domain.entities import Execution, NodeExecution
+from app.domains.execution.domain.entities import Execution, NodeExecution, Tally
 
 
 class ExecutionRepository(Protocol):
@@ -19,10 +19,19 @@ class ExecutionRepository(Protocol):
 
     async def update(self, execution: Execution) -> None: ...
 
-    async def list_for_workflow(
-        self, *, tenant_id: str, workflow_id: str, limit: int
+    async def list_recent(
+        self,
+        *,
+        tenant_id: str,
+        limit: int,
+        workspace_id: str | None = None,
+        workflow_id: str | None = None,
+        status: str | None = None,
     ) -> list[Execution]:
         """Mới nhất trước."""
+
+    async def tally(self, *, tenant_id: str, execution_ids: Sequence[str]) -> dict[str, Tally]:
+        """Lần chạy chưa có hàng node nào thì không có khoá."""
 
     async def seed_nodes(self, nodes: Sequence[NodeExecution]) -> None:
         """Chèn hàng `pending`; `node_path` đã có thì để nguyên hàng cũ."""

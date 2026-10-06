@@ -18,6 +18,7 @@ from app.domains.execution.domain.entities import (
     Failure,
     NodeExecution,
     NodeStatus,
+    Tally,
     ensure_inputs_size,
     move_execution,
     move_node,
@@ -44,6 +45,12 @@ class ExecutionProgress:
     nodes: tuple[NodeExecution, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class ExecutionSummary:
+    execution: Execution
+    tally: Tally
+
+
 class ExecutionService:
     def __init__(self, *, repository: ExecutionRepository) -> None:
         self._executions = repository
@@ -68,20 +75,29 @@ class ExecutionService:
         nodes = await self._executions.list_nodes(tenant_id=tenant_id, execution_id=execution_id)
         return ExecutionProgress(execution=execution, nodes=tuple(nodes))
 
-    async def list_for_workflow(
+    async def list_recent(
         self,
         *,
         tenant_id: str,
-        workflow_id: str,
         limit: int = DEFAULT_LIST_LIMIT,
         workspace_id: str | None = None,
-    ) -> list[Execution]:
-        found = await self._executions.list_for_workflow(
-            tenant_id=tenant_id, workflow_id=workflow_id, limit=max(1, min(limit, MAX_LIST_LIMIT))
+        workflow_id: str | None = None,
+        status: ExecutionStatus | None = None,
+    ) -> list[ExecutionSummary]:
+        found = await self._executions.list_recent(
+            tenant_id=tenant_id,
+            limit=max(1, min(limit, MAX_LIST_LIMIT)),
+            workspace_id=workspace_id,
+            workflow_id=workflow_id,
+            status=None if status is None else str(status),
         )
-        if workspace_id is None:
-            return found
-        return [execution for execution in found if execution.workspace_id == workspace_id]
+        tallies = await self._executions.tally(
+            tenant_id=tenant_id, execution_ids=[execution.id for execution in found]
+        )
+        return [
+            ExecutionSummary(execution=execution, tally=tallies.get(execution.id, Tally()))
+            for execution in found
+        ]
 
     # ─── Ghi ─────────────────────────────────────────────────────────────────
 

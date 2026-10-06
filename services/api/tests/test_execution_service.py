@@ -16,6 +16,7 @@ from app.domains.execution.domain.entities import (
     Failure,
     NodeExecution,
     NodeStatus,
+    Tally,
 )
 
 T0 = datetime(2026, 9, 29, 9, 0, tzinfo=UTC)
@@ -49,15 +50,39 @@ class FakeExecutionRepository:
     async def update(self, execution: Execution) -> None:
         self.executions[execution.id] = execution
 
-    async def list_for_workflow(
-        self, *, tenant_id: str, workflow_id: str, limit: int
+    async def list_recent(
+        self,
+        *,
+        tenant_id: str,
+        limit: int,
+        workspace_id: str | None = None,
+        workflow_id: str | None = None,
+        status: str | None = None,
     ) -> list[Execution]:
         found = [
             e
             for e in self.executions.values()
-            if e.tenant_id == tenant_id and e.workflow_id == workflow_id
+            if e.tenant_id == tenant_id
+            and workspace_id in (None, e.workspace_id)
+            and workflow_id in (None, e.workflow_id)
+            and status in (None, str(e.status))
         ]
         return sorted(found, key=lambda e: e.created_at, reverse=True)[:limit]
+
+    async def tally(self, *, tenant_id: str, execution_ids: Sequence[str]) -> dict[str, Tally]:
+        counted: dict[str, Tally] = {}
+        for (execution_id, _), node in self.nodes.items():
+            if execution_id not in execution_ids:
+                continue
+            before = counted.get(execution_id, Tally())
+            usage = node.usage or {}
+            counted[execution_id] = Tally(
+                steps=before.steps + 1,
+                done=before.done + (node.status in (NodeStatus.SUCCEEDED, NodeStatus.SKIPPED)),
+                input_tokens=before.input_tokens + usage.get("input_tokens", 0),
+                output_tokens=before.output_tokens + usage.get("output_tokens", 0),
+            )
+        return counted
 
     async def seed_nodes(self, nodes: Sequence[NodeExecution]) -> None:
         for node in nodes:
@@ -234,9 +259,12 @@ async def test_liet_ke_moi_nhat_truoc_va_co_tran(
         repo.executions[execution.id] = replace(
             execution, created_at=T0 + timedelta(minutes=minute)
         )
-    found = await service.list_for_workflow(tenant_id=ORG_A, workflow_id="wf_1", limit=2)
-    assert [e.created_at for e in found] == [T0 + timedelta(minutes=2), T0 + timedelta(minutes=1)]
-    assert await service.list_for_workflow(tenant_id=ORG_B, workflow_id="wf_1") == []
+    found = await service.list_recent(tenant_id=ORG_A, workflow_id="wf_1", limit=2)
+    assert [s.execution.created_at for s in found] == [
+        T0 + timedelta(minutes=2),
+        T0 + timedelta(minutes=1),
+    ]
+    assert await service.list_recent(tenant_id=ORG_B, workflow_id="wf_1") == []
 
 
 # ─── Cửa nguyên thuỷ cho worker_wiring ───────────────────────────────────────

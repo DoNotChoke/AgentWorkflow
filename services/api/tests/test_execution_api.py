@@ -185,7 +185,24 @@ def test_liet_ke_theo_workflow_moi_nhat_truoc(client: TestClient) -> None:
     found = nguoi.get("/v1/executions", params={"workflow_id": workflow_id}).json()
 
     assert [item["id"] for item in found] == list(reversed(ids))
-    assert nguoi.get("/v1/executions").status_code == 422
+    assert found[0]["steps"] == 0 and found[0]["input_tokens"] == 0
+
+
+def test_liet_ke_ca_workspace_va_loc_theo_trang_thai(client: TestClient) -> None:
+    nguoi = Nguoi(client)
+    connection = _connection(client, nguoi)
+    ids = [
+        _run(nguoi, _published(nguoi), connections_by_provider={"slack": connection}).json()["id"]
+        for _ in range(2)
+    ]
+
+    found = nguoi.get("/v1/executions").json()
+
+    assert [item["id"] for item in found] == list(reversed(ids))
+    assert nguoi.get("/v1/executions", params={"status": "failed"}).json() == []
+    assert len(nguoi.get("/v1/executions", params={"status": "pending"}).json()) == 2
+    assert nguoi.get("/v1/executions", params={"status": "xong"}).status_code == 422
+    assert Nguoi(client, "khac").get("/v1/executions").json() == []
 
 
 def test_to_chuc_khac_khong_thay_lan_chay(client: TestClient) -> None:

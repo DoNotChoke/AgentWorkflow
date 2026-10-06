@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sqlalchemy import select, update
+from sqlalchemy import ColumnElement, Integer, cast, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,7 @@ from app.domains.execution.domain.entities import (
     Failure,
     NodeExecution,
     NodeStatus,
+    Tally,
 )
 from app.domains.execution.infrastructure.models import ExecutionModel, NodeExecutionModel
 
@@ -43,6 +44,10 @@ def _to_execution(row: ExecutionModel) -> Execution:
         failure=_failure(row.error_category, row.error_message),
         connection_bindings=dict(row.connection_bindings),
     )
+
+
+def _tokens(key: str) -> ColumnElement[int]:
+    return cast(NodeExecutionModel.usage[key].astext, Integer)
 
 
 def _to_node(row: NodeExecutionModel) -> NodeExecution:
@@ -149,19 +154,54 @@ class SqlAlchemyExecutionRepository:
         )
         await self._session.flush()
 
-    async def list_for_workflow(
-        self, *, tenant_id: str, workflow_id: str, limit: int
+    async def list_recent(
+        self,
+        *,
+        tenant_id: str,
+        limit: int,
+        workspace_id: str | None = None,
+        workflow_id: str | None = None,
+        status: str | None = None,
     ) -> list[Execution]:
+        query = select(ExecutionModel).where(ExecutionModel.tenant_id == tenant_id)
+        if workspace_id is not None:
+            query = query.where(ExecutionModel.workspace_id == workspace_id)
+        if workflow_id is not None:
+            query = query.where(ExecutionModel.workflow_id == workflow_id)
+        if status is not None:
+            query = query.where(ExecutionModel.status == status)
         rows = await self._session.scalars(
-            select(ExecutionModel)
-            .where(
-                ExecutionModel.tenant_id == tenant_id,
-                ExecutionModel.workflow_id == workflow_id,
-            )
-            .order_by(ExecutionModel.created_at.desc(), ExecutionModel.id.desc())
-            .limit(limit)
+            query.order_by(ExecutionModel.created_at.desc(), ExecutionModel.id.desc()).limit(limit)
         )
         return [_to_execution(row) for row in rows]
+
+    async def tally(self, *, tenant_id: str, execution_ids: Sequence[str]) -> dict[str, Tally]:
+        if not execution_ids:
+            return {}
+        done = NodeExecutionModel.status.in_((NodeStatus.SUCCEEDED, NodeStatus.SKIPPED))
+        rows = await self._session.execute(
+            select(
+                NodeExecutionModel.execution_id,
+                func.count(),
+                func.count().filter(done),
+                func.coalesce(func.sum(_tokens("input_tokens")), 0),
+                func.coalesce(func.sum(_tokens("output_tokens")), 0),
+            )
+            .where(
+                NodeExecutionModel.tenant_id == tenant_id,
+                NodeExecutionModel.execution_id.in_(execution_ids),
+            )
+            .group_by(NodeExecutionModel.execution_id)
+        )
+        return {
+            execution_id: Tally(
+                steps=steps,
+                done=finished,
+                input_tokens=int(tokens_in),
+                output_tokens=int(tokens_out),
+            )
+            for execution_id, steps, finished, tokens_in, tokens_out in rows
+        }
 
     # ─── Node ────────────────────────────────────────────────────────────────
 
