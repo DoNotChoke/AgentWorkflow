@@ -310,18 +310,7 @@ class TenantService:
         name: str,
         slug: str | None = None,
     ) -> Workspace:
-        """Đổi tên workspace, và địa chỉ của nó nếu ``slug`` được truyền.
-
-        Quyền thuộc về **ADMIN của chính workspace đó**, không phải chỉ quản trị
-        organization — người phụ trách một workspace thì đặt được tên cho nó.
-        OWNER và ADMIN của organization tự động có quyền ADMIN ở mọi workspace
-        (xem ``resolve_workspace_role``) nên vẫn làm được.
-
-        Khác organization ở chỗ slug không đóng băng: địa chỉ workspace chỉ duy
-        nhất trong phạm vi một organization và không phải danh tính công khai
-        của khách hàng. Đổi nó vẫn phá link cũ, nên đây là hành động tường minh
-        chứ không tự chạy theo tên.
-        """
+        """Đổi tên workspace, và địa chỉ của nó nếu ``slug`` được truyền."""
         workspace = await self._require_workspace(workspace_id)
         access = await self.require_access(
             user_id=actor_id,
@@ -383,11 +372,6 @@ class TenantService:
 
         profile = await self._users.find_by_email(email)
         if profile is None:
-            # `reason` để giao diện phân biệt được thất bại này với những lỗi
-            # 422 khác của cùng endpoint. Nó là ngõ cụt hay gặp nhất của luồng
-            # thêm thành viên, và màn hình phải chỉ đường ra (gửi link đăng ký)
-            # chứ không chỉ in lại câu này — bắt theo nội dung thông điệp thì
-            # đổi một chữ là hỏng.
             raise ValidationError(
                 "Không tìm thấy tài khoản nào dùng email này. "
                 "Người được thêm phải đăng ký trước đã.",

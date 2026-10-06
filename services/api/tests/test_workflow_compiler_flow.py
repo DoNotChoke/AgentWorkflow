@@ -52,6 +52,7 @@ from app.entrypoints.compiler_wiring import ModelAnswerAdvisor, ModelIntentAdvis
 FIXTURES = Path(__file__).parent / "fixtures"
 CATALOG = RowToolCatalog(tool_rows())
 TOOLS = {(row["tool_id"], row["version"]): row["input_schema"] for row in tool_rows()}
+MUTATING = {(row["tool_id"], row["version"]) for row in tool_rows() if row["mutates"]}
 
 INTENT = Intent(
     task="Tìm một trang Notion theo tên rồi đăng đường link của nó vào kênh test.",
@@ -71,7 +72,7 @@ def _source(name: str) -> SourceMaterial:
 
 def _material(name: str) -> tuple[Skeleton, QuestionSet]:
     skeleton = build_skeleton(_source(name))
-    return skeleton, build_questions(skeleton, find_sources(skeleton), TOOLS)
+    return skeleton, build_questions(skeleton, find_sources(skeleton), TOOLS, MUTATING)
 
 
 def _answers(name: str, mutate: Any = None) -> dict[str, Any]:
@@ -422,16 +423,20 @@ async def test_bang_gia_dinh_noi_ro_than_vong_lap_va_dieu_da_suy_ra() -> None:
     assert lines[0] == (
         "`moi_cau`: lặp trên từng phần tử của `khoi` → `results` (lần chạy mẫu: 6 phần tử)"
     )
-    assert lines[1].startswith(
-        "mỗi vòng chạy lần lượt `doc_khoi` → `dang_cau_hoi` → `doc_dap_an` → `tra_loi`. "
+    assert lines[1] == (
+        'chỉ những phần tử có `type` = "numbered_list_item"; phần tử khác trong mảng bị bỏ qua'
+    )
+    assert lines[2].startswith(
+        "mỗi vòng chạy lần lượt `doc_khoi` → `doc_dap_an` → `dang_cau_hoi` → `tra_loi`. "
+        "Các bước chỉ đọc được đưa lên trước các bước ghi ra ngoài. "
         "Lần chạy mẫu thì làm xong từng việc cho cả 6 phần tử"
     )
-    assert lines[2].startswith("`dang_cau_hoi` nằm trong vòng lặp vì nó chạy đúng 6 lần")
-    assert lines[3] == (
+    assert lines[3].startswith("`dang_cau_hoi` nằm trong vòng lặp vì nó chạy đúng 6 lần")
+    assert lines[4] == (
         "`doc_dap_an`.block_id: lấy từ `doc_khoi` của cùng vòng: phần tử của `results` có "
         '`type` = "toggle" (khoá suy ra từ lần chạy mẫu: cả 6 vòng đều chọn đúng phần tử đó)'
     )
-    assert lines[4] == "`tra_loi`.thread_ts: lấy từ `dang_cau_hoi` của cùng vòng → `message_ts`"
+    assert lines[5] == "`tra_loi`.thread_ts: lấy từ `dang_cau_hoi` của cùng vòng → `message_ts`"
     # Sáu tin đăng chỉ còn một dòng: bước đầu của làn nói thay cả làn.
     assert [item.node for item in proposal.linked if item.field == "text"] == [
         "dang_cau_hoi",
@@ -453,6 +458,25 @@ def test_canh_bao_cung_loai_gop_thanh_mot_dong() -> None:
         "2 chỗ (N2, N5), ví dụ: N2 chọn theo vị trí.",
         "N9: N9 chọn theo vị trí.",
     ]
+
+
+async def test_khong_loc_thi_bang_gia_dinh_noi_ro_la_moi_phan_tu() -> None:
+    khong_loc = _answers("kb8-ba-luot", lambda raw: raw["vong_lap"]["V1"].pop("loc"))
+    built = await _build(ScriptedAnswerAdvisor(khong_loc), "kb8-ba-luot")
+    assert built.proposal is not None
+
+    (loop,) = built.proposal.loops
+    assert "chạy trên **mọi** phần tử của mảng, không lọc" in loop
+    assert '`type` = "numbered_list_item"' in loop
+
+
+def test_tai_lieu_noi_mang_loc_duoc_theo_truong_nao() -> None:
+    text = briefing(*_material("kb8-ba-luot"), INTENT)
+
+    assert (
+        "  - lọc được theo (`loc`): mọi phần tử của lần chạy này có `type` = "
+        '"numbered_list_item".' in text
+    )
 
 
 async def test_code_va_dieu_kien_hien_nguyen_van() -> None:

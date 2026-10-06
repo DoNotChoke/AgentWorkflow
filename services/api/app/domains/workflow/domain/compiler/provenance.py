@@ -134,6 +134,10 @@ class LoopCandidate:
     covers_all: bool
     #: Trường mà mọi phần tử được dùng có chung giá trị, và không phần tử bị bỏ nào có.
     filter: tuple[tuple[str, Any], ...] = ()
+    #: Khi vòng lặp dùng hết mảng: trường nói về *loại* mà mọi phần tử có chung. Lần chạy
+    #: mẫu không cần lọc theo nó; lần chạy khác thì có thể, nên đây là đề nghị cho người
+    #: trả lời, không phải một phần của vòng lặp.
+    suggested: tuple[tuple[str, Any], ...] = ()
     #: Những nhóm bước khác chạy một lần cho mỗi vòng. `steps` ở trên là làn 0.
     lanes: tuple[Lane, ...] = ()
 
@@ -492,8 +496,29 @@ def _loop(
             indices=tuple(indices),
             covers_all=len(indices) == len(elements),
             filter=_filter(elements, set(indices)),
+            suggested=_suggested(elements) if len(indices) == len(elements) else (),
         )
     return None
+
+
+#: Tên trường thường nói phần tử thuộc loại nào.
+_KIND_FIELDS: Final = ("type", "kind", "status", "category", "subtype")
+_MAX_KIND_CHARS: Final = 40
+
+
+def _suggested(elements: Sequence[Any]) -> tuple[tuple[str, Any], ...]:
+    """Chỉ những trường có tên nói về loại: một trường bất kỳ trùng nhau ở sáu phần tử
+    (`object` = "block", `archived` = false) không nói gì về phần tử thứ bảy."""
+    if len(elements) < 2 or not all(isinstance(element, Mapping) for element in elements):
+        return ()
+    first = elements[0]
+    return tuple(
+        (name, first[name])
+        for name in _KIND_FIELDS
+        if isinstance(first.get(name), str)
+        and 0 < len(first[name]) <= _MAX_KIND_CHARS
+        and all(element.get(name) == first[name] for element in elements)
+    )
 
 
 def _filter(elements: Sequence[Any], used: set[int]) -> tuple[tuple[str, Any], ...]:

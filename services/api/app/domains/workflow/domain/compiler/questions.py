@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final
@@ -11,7 +11,7 @@ from app.domains.workflow.domain.compiler.provenance import Element, LoopCandida
 from app.domains.workflow.domain.compiler.skeleton import Skeleton, SkeletonStep, StepKind
 from app.domains.workflow.domain.ir import ConditionOp, Path
 
-QUESTION_SET_VERSION: Final = "1"
+QUESTION_SET_VERSION: Final = "2"
 
 #: Schema input của từng tool, theo `(tool_id, version)`. Dữ liệu thuần: tầng này không
 #: biết catalog là gì.
@@ -103,6 +103,8 @@ class QuestionSet:
     sources: tuple[SourceQuestion, ...]
     loops: tuple[LoopQuestion, ...]
     data: tuple[DataRef, ...]
+    #: Bước gọi một tool có side effect.
+    writes: frozenset[str] = frozenset()
 
     def of(self, step: str) -> tuple[SourceQuestion, ...]:
         return tuple(question for question in self.sources if question.step == step)
@@ -128,7 +130,13 @@ class QuestionSet:
         return next((ref for ref in self.data if ref.key == key), None)
 
 
-def build_questions(skeleton: Skeleton, report: SourceReport, tools: ToolShapes) -> QuestionSet:
+def build_questions(
+    skeleton: Skeleton,
+    report: SourceReport,
+    tools: ToolShapes,
+    mutating: Collection[tuple[str, str]] = frozenset(),
+) -> QuestionSet:
+    """`mutating` là `(tool_id, version)` của những tool có side effect."""
     sources: list[SourceQuestion] = []
     data: list[DataRef] = []
     for step in skeleton.steps:
@@ -151,6 +159,13 @@ def build_questions(skeleton: Skeleton, report: SourceReport, tools: ToolShapes)
         data=(
             *data,
             *(DataRef(f"V{n}", (LOOP_ITEM,)) for n in range(1, len(loops) + 1)),
+        ),
+        writes=frozenset(
+            step.ref
+            for step in skeleton.steps
+            if step.kind is StepKind.TOOL
+            and step.tool_version is not None
+            and (step.tool_id, current_version(tools, step.tool_id, step.tool_version)) in mutating
         ),
     )
 
@@ -339,6 +354,14 @@ def _loop_schema(question: LoopQuestion, node_id: Mapping[str, Any]) -> dict[str
             "uniqueItems": True,
             "items": {"enum": list(range(1, len(question.loop.lanes) + 1))},
             "description": "Chỉ khi chon = loop: những làn khác cùng chạy trong mỗi vòng.",
+        }
+    if question.loop.suggested:
+        properties["loc"] = {
+            "type": "array",
+            "uniqueItems": True,
+            "items": {"enum": [name for name, _ in question.loop.suggested]},
+            "description": "Chỉ khi chon = loop: tên những trường dùng để lọc phần tử, trong "
+            "số được đề nghị. Bỏ trống thì vòng lặp chạy trên mọi phần tử của mảng.",
         }
     return _object(properties, ["chon"])
 

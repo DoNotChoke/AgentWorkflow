@@ -66,6 +66,11 @@
           ]
         }
       },
+      "filter": {
+        "type": {
+          "const": "numbered_list_item"
+        }
+      },
       "max_items": 50,
       "body": [
         {
@@ -78,6 +83,30 @@
               "from_item": [
                 "id"
               ]
+            }
+          }
+        },
+        {
+          "id": "doc_dap_an",
+          "type": "tool",
+          "tool_id": "notion.get_block_children",
+          "tool_version": "1.0",
+          "input": {
+            "block_id": {
+              "from_node": {
+                "node": "doc_khoi",
+                "path": [
+                  "results"
+                ],
+                "where": {
+                  "type": {
+                    "const": "toggle"
+                  }
+                },
+                "pick": [
+                  "id"
+                ]
+              }
             }
           }
         },
@@ -134,30 +163,6 @@
                 "where": {
                   "name": {
                     "const": "aws"
-                  }
-                },
-                "pick": [
-                  "id"
-                ]
-              }
-            }
-          }
-        },
-        {
-          "id": "doc_dap_an",
-          "type": "tool",
-          "tool_id": "notion.get_block_children",
-          "tool_version": "1.0",
-          "input": {
-            "block_id": {
-              "from_node": {
-                "node": "doc_khoi",
-                "path": [
-                  "results"
-                ],
-                "where": {
-                  "type": {
-                    "const": "toggle"
                   }
                 },
                 "pick": [

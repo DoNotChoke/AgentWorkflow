@@ -11,9 +11,10 @@ from app.domains.workflow.domain.compiler.answers import (
     Answers,
     SourceAnswer,
     ValueAnswer,
-    included_lanes,
+    body_order,
     is_loop_item,
     lane_link,
+    loop_filter,
     loop_id,
     membership,
     subsumed,
@@ -233,7 +234,7 @@ class _Build:
         loop = question.loop
         node_id = loop_id(question.id, self.answers)
         body: list[dict[str, Any]] = []
-        for lane in included_lanes(question, self.answers):
+        for lane in body_order(self.questions, question, self.answers):
             members = loop.lane_steps(lane)
             step = first if lane == 0 else self.skeleton.step(members[0])
             inner = self.step_node(step)
@@ -255,8 +256,8 @@ class _Build:
                 self.node_of(loop.source), self.output_path(loop.source, loop.array)
             ),
         }
-        if loop.filter:
-            node["filter"] = {name: {"const": value} for name, value in loop.filter}
+        if chosen := loop_filter(question, self.answers):
+            node["filter"] = {name: {"const": value} for name, value in chosen}
         node |= {"max_items": self.loop_max_items, "body": body, "collect": body[-1]["id"]}
         self.origin[(node_id, ("over",))] = question.id
         self.owners[node_id] = question.id

@@ -800,6 +800,30 @@ Chỉ có tác dụng với conversation chạy **sau** thay đổi này: trace 
 nên biên dịch lại chúng vẫn ra chọn theo vị trí. Khớp là khớp nguyên văn: người dùng nói
 "VPC" mà trang tên "VPC notes" thì không có khoá, và lại về vị trí kèm cảnh báo.
 
+**Bộ lọc đề nghị, và đọc trước ghi sau, 2026-10-06.** Hai chỗ một workflow biên dịch ra
+đúng với lần chạy mẫu mà yếu với lần chạy khác.
+
+- *Bộ lọc đề nghị.* Bộ dò trước chỉ tìm bộ lọc khi lần chạy mẫu bỏ qua vài phần tử. Giờ
+  khi vòng lặp dùng hết mảng mà mọi phần tử có chung một trường nói về **loại** (`type`,
+  `kind`, `status`, `category`, `subtype`), nó ghi trường đó vào `LoopCandidate.suggested`.
+  Người trả lời chọn dùng qua `vong_lap.V….loc`; không chọn thì vòng lặp chạy trên mọi
+  phần tử. Bảng giả định nói rõ cả hai trường hợp. Bộ lọc mà lần chạy mẫu buộc phải có
+  vẫn áp tự động như cũ.
+- *Đọc trước, ghi sau.* `body_order` xếp các làn của thân vòng lặp: một làn đứng sau mọi
+  làn nó lấy dữ liệu (mối nối của làn, ứng viên `from_step`, input của node `llm`); trong
+  phạm vi đó làn chỉ đọc đứng trước làn ghi ra ngoài; còn lại giữ thứ tự của mẫu. Compiler
+  biết tool nào ghi qua cờ `mutates` của catalog (`build_questions(..., mutating)`).
+  Tầng 3 không đổi: mỗi node vẫn được so với đúng bước của nó.
+- Tập câu hỏi và prompt cùng lên version 2 (`answers.v2.md`, `intent.v2.md` là bản chép).
+
+kb8 giờ lắp ra `doc_khoi → doc_dap_an → soan_cau_hoi → dang_cau_hoi → soan_dap_an →
+tra_loi`, lọc `type = numbered_list_item`. Chạy thật với `gpt-6.1-sol` trên conversation
+VPC: một vòng, model tự chọn `loc`, bảng giả định ghi cả bộ lọc lẫn thứ tự mới.
+
+Hai thứ nó không giải quyết: một mục đúng loại mà không phải câu hỏi vẫn làm hỏng vòng đó;
+và chạy lại sau khi hỏng giữa chừng vẫn đăng trùng các vòng đã xong (cần khoá idempotency
+của executor).
+
 **GĐ 8 — Web**
 
 18. `feat(web): turn a conversation into a workflow` — nút, cửa sổ chat bật lên, thẻ giả định, nút

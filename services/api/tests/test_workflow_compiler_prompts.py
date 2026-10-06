@@ -13,6 +13,7 @@ FILES = ("intent", "answers")
 #: Vân tay của nội dung ở từng version đã phát hành: mọi file của version đó, nối lại.
 _RELEASED = {
     "1": "588e564a42870e1be190d011382cd5f3ab815fb321d0c19f671ba09cad514909",
+    "2": "6fa7993a97aa6dce82b585cb89cafe3182a971e9f2186c0c3e8f295ec6953434",
 }
 
 

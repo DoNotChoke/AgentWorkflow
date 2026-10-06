@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Final
 
-COMPILER_PROMPT_VERSION: Final = "1"
+COMPILER_PROMPT_VERSION: Final = "2"
 
 _PROMPTS: Final = Path(__file__).resolve().parent / "prompts"
 

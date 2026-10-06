@@ -38,6 +38,7 @@ EXAMPLES = Path(__file__).resolve().parents[3] / "packages" / "schemas" / "workf
 
 CATALOG = RowToolCatalog(tool_rows())
 TOOLS = {(row["tool_id"], row["version"]): row["input_schema"] for row in tool_rows()}
+MUTATING = {(row["tool_id"], row["version"]) for row in tool_rows() if row["mutates"]}
 
 COMPILED = [
     "kb1-slack-ghi",
@@ -58,7 +59,7 @@ def _json(path: Path) -> dict[str, Any]:
 
 def _questions(name: str) -> tuple[Skeleton, QuestionSet]:
     skeleton = build_skeleton(read_source(_json(FIXTURES / "sources" / f"{name}.json")))
-    return skeleton, build_questions(skeleton, find_sources(skeleton), TOOLS)
+    return skeleton, build_questions(skeleton, find_sources(skeleton), TOOLS, MUTATING)
 
 
 def _raw(name: str) -> dict[str, Any]:
@@ -492,13 +493,91 @@ def test_ba_luot_cua_kb8_thanh_mot_vong_lap_sau_node() -> None:
     loop = _node(document, "moi_cau")
     assert [(node["id"], node["type"]) for node in loop["body"]] == [
         ("doc_khoi", "tool"),
+        ("doc_dap_an", "tool"),
         ("soan_cau_hoi", "llm"),
         ("dang_cau_hoi", "tool"),
-        ("doc_dap_an", "tool"),
         ("soan_dap_an", "llm"),
         ("tra_loi", "tool"),
     ]
     assert loop["collect"] == "tra_loi"
+
+
+# ─── Đọc trước, ghi sau ──────────────────────────────────────────────────────
+
+
+def _than(mutate: Any = None, *, mutating: Any = MUTATING) -> list[str]:
+    skeleton = build_skeleton(read_source(_json(FIXTURES / "sources" / f"{KB8}.json")))
+    questions = build_questions(skeleton, find_sources(skeleton), TOOLS, mutating)
+    raw = _changed(KB8, mutate) if mutate is not None else _raw(KB8)
+    answers, issues = read_answers(questions, skeleton, raw)
+    assert issues == ()
+    assert answers is not None
+    document = assemble(skeleton, questions, answers, TOOLS, llm_model="m").document
+    return [node["id"] for node in _node(document, "moi_cau")["body"] if node["type"] != "llm"]
+
+
+def test_buoc_doc_len_truoc_buoc_ghi_trong_moi_vong() -> None:
+    """Lần chạy mẫu đăng câu hỏi rồi ở một lượt sau mới đọc đáp án. Đọc đáp án không cần gì
+    của tin đã đăng, nên nó chạy trước: hỏng thì hỏng khi chưa có gì lên Slack."""
+    assert _than() == ["doc_khoi", "doc_dap_an", "dang_cau_hoi", "tra_loi"]
+
+
+def test_buoc_ghi_can_ket_qua_cua_buoc_ghi_khac_van_dung_sau_no() -> None:
+    than = _than()
+
+    # `tra_loi.thread_ts` lấy từ `dang_cau_hoi.message_ts` của cùng vòng.
+    assert than.index("dang_cau_hoi") < than.index("tra_loi")
+
+
+def test_khong_biet_tool_nao_ghi_thi_giu_thu_tu_cua_lan_chay_mau() -> None:
+    assert _than(mutating=frozenset()) == ["doc_khoi", "dang_cau_hoi", "doc_dap_an", "tra_loi"]
+
+
+def test_node_llm_van_dung_ngay_truoc_buoc_dung_no_va_sau_du_lieu_no_doc() -> None:
+    body = [node["id"] for node in _node(_assemble(KB8).document, "moi_cau")["body"]]
+
+    assert body.index("doc_dap_an") < body.index("soan_dap_an") < body.index("tra_loi")
+    assert body.index("soan_cau_hoi") + 1 == body.index("dang_cau_hoi")
+
+
+# ─── Bộ lọc đề nghị ──────────────────────────────────────────────────────────
+
+
+def test_bo_loc_duoc_chon_di_vao_vong_lap() -> None:
+    assert _node(_assemble(KB8).document, "moi_cau")["filter"] == {
+        "type": {"const": "numbered_list_item"}
+    }
+
+
+def test_khong_chon_bo_loc_thi_vong_lap_chay_tren_moi_phan_tu() -> None:
+    skeleton, questions = _questions(KB8)
+    raw = _changed(KB8, lambda r: r["vong_lap"]["V1"].pop("loc"))
+    answers, issues = read_answers(questions, skeleton, raw)
+
+    assert issues == ()
+    assert answers is not None
+    document = assemble(skeleton, questions, answers, TOOLS, llm_model="m").document
+    assert "filter" not in _node(document, "moi_cau")
+
+
+def test_truong_khong_duoc_de_nghi_thi_bi_hinh_dang_chan() -> None:
+    raw = _changed(KB8, lambda r: r["vong_lap"]["V1"].update({"loc": ["has_children"]}))
+
+    assert _codes(KB8, raw) == [("V1", "sai_hinh_dang")]
+
+
+def test_kb3_cung_duoc_de_nghi_loc_theo_loai_khoi() -> None:
+    """Bốn khối của kb3 đều là `child_page` và đều được đọc: không bắt buộc lọc, nhưng lọc được."""
+    skeleton, questions = _questions("kb3-notion-doc-sau")
+    (question,) = questions.loops
+    assert (question.loop.filter, question.loop.suggested) == ((), (("type", "child_page"),))
+
+    raw = _changed("kb3-notion-doc-sau", lambda r: r["vong_lap"]["V1"].update({"loc": ["type"]}))
+    answers, issues = read_answers(questions, skeleton, raw)
+    assert issues == ()
+    assert answers is not None
+    document = assemble(skeleton, questions, answers, TOOLS, llm_model="m").document
+    assert _node(document, "moi_trang")["filter"] == {"type": {"const": "child_page"}}
 
 
 def test_truong_cua_lan_lay_tu_node_cung_vong() -> None:

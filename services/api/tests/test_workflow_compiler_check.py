@@ -38,6 +38,7 @@ from app.domains.workflow.infrastructure.catalog import RowToolCatalog
 FIXTURES = Path(__file__).parent / "fixtures"
 CATALOG = RowToolCatalog(tool_rows())
 TOOLS = {(row["tool_id"], row["version"]): row["input_schema"] for row in tool_rows()}
+MUTATING = {(row["tool_id"], row["version"]) for row in tool_rows() if row["mutates"]}
 
 COMPILED = [
     "kb1-slack-ghi",
@@ -69,7 +70,7 @@ def _json(path: Path) -> dict[str, Any]:
 
 def _material(name: str) -> tuple[Skeleton, QuestionSet]:
     skeleton = build_skeleton(read_source(_json(FIXTURES / "sources" / f"{name}.json")))
-    return skeleton, build_questions(skeleton, find_sources(skeleton), TOOLS)
+    return skeleton, build_questions(skeleton, find_sources(skeleton), TOOLS, MUTATING)
 
 
 def _raw(name: str, mutate: Any = None) -> dict[str, Any]:
@@ -368,7 +369,7 @@ def _so_le(*, thread: bool = True) -> SourceMaterial:
 def test_kb8_so_le_lap_ra_dung_ir_cua_kb8() -> None:
     """Cùng một việc, Agent làm theo thứ tự khác: workflow phải là một."""
     skeleton = build_skeleton(_so_le())
-    questions = build_questions(skeleton, find_sources(skeleton), TOOLS)
+    questions = build_questions(skeleton, find_sources(skeleton), TOOLS, MUTATING)
     kenh = {"chon": "from_step", "ung_vien": 1, "khoa": "name", "nguon_khoa": {"chon": "const"}}
     ids = {
         "l1.b1": "tim",
@@ -394,7 +395,7 @@ def test_kb8_so_le_lap_ra_dung_ir_cua_kb8() -> None:
             "N7": {"chon": "llm", "node": "soan_dap_an"},
             "N8": kenh,
         },
-        "vong_lap": {"V1": {"chon": "loop", "id": "moi_cau", "lan": [1, 2, 3]}},
+        "vong_lap": {"V1": {"chon": "loop", "id": "moi_cau", "lan": [1, 2, 3], "loc": ["type"]}},
         "llm": [
             golden["llm"][0] | {"dau_vao": {"khoi": "l1.b4:results"}},
             golden["llm"][1] | {"dau_vao": {"dap_an": "l1.b6:results"}},
@@ -414,7 +415,7 @@ def test_kb8_so_le_lap_ra_dung_ir_cua_kb8() -> None:
         skeleton, questions, intent, checked.answers, checked.assembled, checked.report
     )
     (loop,) = proposal.loops
-    assert "mỗi vòng chạy lần lượt `doc_khoi` → `dang_cau_hoi`" in loop
+    assert "mỗi vòng chạy lần lượt `doc_khoi` → `doc_dap_an` → `dang_cau_hoi`" in loop
     assert "Lần chạy mẫu thì" not in loop
 
 
@@ -450,7 +451,7 @@ def _made(request: str, steps: list[SourceStep]) -> tuple[Skeleton, QuestionSet]
             ),
         )
     )
-    return skeleton, build_questions(skeleton, find_sources(skeleton), TOOLS)
+    return skeleton, build_questions(skeleton, find_sources(skeleton), TOOLS, MUTATING)
 
 
 def test_vong_lap_chay_nhieu_vong_hon_trace_ma_khong_co_gi_de_loc() -> None:
@@ -534,7 +535,7 @@ def test_tool_khong_con_trong_catalog_truy_ve_buoc_da_goi_no() -> None:
         if "tool_version" in step["attributes"]:
             step["attributes"]["tool_version"] = "9.0"
     skeleton = build_skeleton(read_source(document))
-    questions = build_questions(skeleton, find_sources(skeleton), TOOLS)
+    questions = build_questions(skeleton, find_sources(skeleton), TOOLS, MUTATING)
 
     checked = _check(skeleton, questions, _raw("kb1-slack-ghi"))
 

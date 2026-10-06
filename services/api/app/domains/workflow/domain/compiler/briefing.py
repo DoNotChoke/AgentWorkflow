@@ -115,6 +115,12 @@ def _loop(question: LoopQuestion, skeleton: Skeleton) -> str:
         shown = ", ".join(f"`{name}` = {_cut(value, 60)}" for name, value in loop.filter)
         text += f"; các phần tử được dùng có chung {shown}"
     lines = [text, f"  - phần tử đang lặp đọc được qua `{question.id}:{LOOP_ITEM}`"]
+    if loop.suggested:
+        shown = ", ".join(f"`{name}` = {_cut(value, 60)}" for name, value in loop.suggested)
+        lines.append(
+            f"  - lọc được theo ({'`loc`'}): mọi phần tử của lần chạy này có {shown}. Lần chạy "
+            "khác có thể có phần tử loại khác trong cùng mảng"
+        )
     lines += [
         f"  - làn {number}: {_lane(lane, skeleton)}"
         for number, lane in enumerate(loop.lanes, start=1)

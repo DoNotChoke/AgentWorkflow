@@ -15,8 +15,10 @@ from app.domains.workflow.domain.compiler.answers import (
     Answers,
     SourceAnswer,
     ValueAnswer,
+    body_order,
     included_lanes,
     is_loop_item,
+    loop_filter,
     loop_id,
     subsumed,
 )
@@ -221,7 +223,13 @@ def _loops(skeleton: Skeleton, questions: QuestionSet, answers: Answers) -> list
             lines.append(
                 f"`{loop_id(question.id, answers)}`: lặp trên từng phần tử của {source} "
                 f"(lần chạy mẫu: {len(question.loop.steps)} phần tử)"
-                + "".join(f"\n  - {line}" for line in _lanes(skeleton, question, answers))
+                + "".join(
+                    f"\n  - {line}"
+                    for line in (
+                        *_filtering(question, answers),
+                        *_lanes(skeleton, questions, question, answers),
+                    )
+                )
             )
         else:
             lines.append(
@@ -231,23 +239,44 @@ def _loops(skeleton: Skeleton, questions: QuestionSet, answers: Answers) -> list
     return lines
 
 
-def _lanes(skeleton: Skeleton, question: LoopQuestion, answers: Answers) -> list[str]:
+def _filtering(question: LoopQuestion, answers: Answers) -> list[str]:
+    """Vòng lặp chạy trên phần tử nào. Nói cả khi không lọc: đó cũng là một giả định."""
+    loop = question.loop
+    chosen = loop_filter(question, answers)
+    if chosen:
+        shown = ", ".join(f"`{name}` = {_cut(value)}" for name, value in chosen)
+        return [f"chỉ những phần tử có {shown}; phần tử khác trong mảng bị bỏ qua"]
+    if loop.suggested:
+        shown = ", ".join(f"`{name}` = {_cut(value)}" for name, value in loop.suggested)
+        return [
+            f"chạy trên **mọi** phần tử của mảng, không lọc. Ở lần chạy mẫu phần tử nào cũng "
+            f"có {shown}; phần tử loại khác, nếu có, cũng sẽ được xử lý như vậy"
+        ]
+    return []
+
+
+def _lanes(
+    skeleton: Skeleton, questions: QuestionSet, question: LoopQuestion, answers: Answers
+) -> list[str]:
     """Thân vòng lặp nhiều bước: thứ tự chạy, và mỗi mối nối suy ra từ lần chạy mẫu."""
     loop = question.loop
-    lanes = included_lanes(question, answers)
+    sampled = included_lanes(question, answers)
+    lanes = body_order(questions, question, answers)
     if len(lanes) < 2:
         return []
     names = {lane: f"`{answers.node_id(loop.lane_steps(lane)[0])}`" for lane in lanes}
     running = f"mỗi vòng chạy lần lượt {' → '.join(names[lane] for lane in lanes)}"
+    if lanes != sampled:
+        running += ". Các bước chỉ đọc được đưa lên trước các bước ghi ra ngoài"
     order = {step.ref: position for position, step in enumerate(skeleton.steps)}
     # Lần chạy mẫu đã sang vòng hai của làn gốc trước khi một làn khác bắt đầu.
-    if any(order[loop.lane_steps(lane)[0]] > order[loop.steps[1]] for lane in lanes[1:]):
+    if any(order[loop.lane_steps(lane)[0]] > order[loop.steps[1]] for lane in sampled[1:]):
         running += (
             f". Lần chạy mẫu thì làm xong từng việc cho cả {len(loop.steps)} phần tử rồi mới "
             "sang việc sau"
         )
     lines = [running]
-    for lane in lanes[1:]:
+    for lane in sampled[1:]:
         found = loop.lanes[lane - 1]
         lines += [
             f"{names[lane]}.{link.field}: {_lane_source(loop, link, names)}" for link in found.links

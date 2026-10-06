@@ -84,14 +84,7 @@ def _to_session_response(result: AuthResult) -> SessionResponse:
 
 
 def _set_refresh_cookie(response: Response, settings: Settings, result: AuthResult) -> None:
-    """Gắn refresh token vào cookie httpOnly.
-
-    ``httponly`` là điểm mấu chốt: JavaScript không đọc được, nên một lỗ XSS
-    trên frontend không lấy được refresh token.
-
-    ``path`` giới hạn cookie chỉ đi kèm các endpoint xác thực, nên nó không bị
-    đính vào mọi request API — giảm cả bề mặt CSRF lẫn nguy cơ lọt vào log.
-    """
+    """Gắn refresh token vào cookie httpOnly."""
     response.set_cookie(
         key=settings.refresh_cookie_name,
         value=result.refresh_token,

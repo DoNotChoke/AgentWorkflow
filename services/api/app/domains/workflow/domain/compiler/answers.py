@@ -66,6 +66,8 @@ class LoopAnswer:
     reason: str | None = None
     #: Những làn khác được gộp vào thân vòng lặp, theo số thứ tự từ 1.
     lanes: tuple[int, ...] = ()
+    #: Tên những trường lọc phần tử, chọn trong số bộ dò đề nghị.
+    filters: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +175,7 @@ def _parse(raw: Mapping[str, Any]) -> Answers:
                 id=item.get("id"),
                 reason=item.get("ly_do"),
                 lanes=tuple(sorted(item.get("lan", ()))),
+                filters=tuple(item.get("loc", ())),
             )
             for qid, item in raw.get("vong_lap", {}).items()
         },
@@ -238,11 +241,71 @@ class Membership:
 
 
 def included_lanes(question: LoopQuestion, answers: Answers) -> tuple[int, ...]:
-    """Các làn nằm trong thân vòng lặp, theo thứ tự chạy. Rỗng khi không gộp."""
+    """Các làn nằm trong thân vòng lặp, theo thứ tự của lần chạy mẫu. Rỗng khi không gộp."""
     answer = answers.loops.get(question.id)
     if answer is None or not answer.as_loop:
         return ()
     return (0, *answer.lanes)
+
+
+def loop_filter(question: LoopQuestion, answers: Answers) -> tuple[tuple[str, Any], ...]:
+    """Bộ lọc của vòng lặp: phần lần chạy mẫu buộc phải có, và phần người trả lời chọn thêm."""
+    answer = answers.loops.get(question.id)
+    chosen = answer.filters if answer is not None else ()
+    return (
+        *question.loop.filter,
+        *((name, value) for name, value in question.loop.suggested if name in chosen),
+    )
+
+
+def body_order(questions: QuestionSet, question: LoopQuestion, answers: Answers) -> tuple[int, ...]:
+    """Các làn của thân vòng lặp theo thứ tự chạy.
+
+    Một làn đứng sau mọi làn nó lấy dữ liệu. Trong phạm vi đó, làn chỉ đọc đứng trước làn
+    ghi ra ngoài: thứ gì hỏng được thì hỏng trước khi có gì được gửi đi. Còn lại giữ thứ tự
+    của lần chạy mẫu."""
+    lanes = included_lanes(question, answers)
+    needs = {lane: _lane_needs(questions, question, answers, lane) & set(lanes) for lane in lanes}
+    writes = {lane: question.loop.lane_steps(lane)[0] in questions.writes for lane in lanes}
+
+    placed: list[int] = []
+    while len(placed) < len(lanes):
+        ready = [lane for lane in lanes if lane not in placed and needs[lane] <= set(placed)]
+        if not ready:
+            # Phụ thuộc vòng: không xảy ra với nguồn lấy từ bước chạy trước, nhưng một
+            # thứ tự sai vẫn hơn một vòng lặp vô hạn. Tầng 3 sẽ báo.
+            ready = [lane for lane in lanes if lane not in placed]
+        placed.append(next((lane for lane in ready if not writes[lane]), ready[0]))
+    return tuple(placed)
+
+
+def _lane_needs(
+    questions: QuestionSet, question: LoopQuestion, answers: Answers, lane: int
+) -> set[int]:
+    """Những làn khác của cùng vòng lặp mà bước đầu của `lane` đọc."""
+    loop = question.loop
+    first = loop.lane_steps(lane)[0]
+
+    def lane_holding(step: str) -> int | None:
+        found = questions.lane_of(step)
+        return found[1] if found is not None and found[0].id == question.id else None
+
+    needed: set[int | None] = set()
+    if lane > 0:
+        needed |= {link.lane for link in loop.lanes[lane - 1].links}
+    for source in questions.of(first):
+        answer = answers.sources.get(source.id)
+        if answer is None:
+            continue
+        if answer.choice is Choice.FROM_STEP and answer.candidate is not None:
+            needed.add(lane_holding(source.candidates[answer.candidate - 1].step))
+        elif answer.choice is Choice.LLM:
+            node = next((llm for llm in answers.llms if llm.id == answer.node), None)
+            for key in node.inputs.values() if node is not None else ():
+                ref = questions.ref(key)
+                if ref is not None:
+                    needed.add(lane_holding(ref.step))
+    return {found for found in needed if found is not None and found != lane}
 
 
 def membership(questions: QuestionSet, answers: Answers, step: str) -> Membership | None:
@@ -458,7 +521,7 @@ def _reads_into_loop(questions: QuestionSet, answers: Answers, *, reader: str, s
     here = membership(questions, answers, reader)
     if here is None or here.question.id != inside.question.id:
         return True
-    lanes = included_lanes(here.question, answers)
+    lanes = body_order(questions, here.question, answers)
     return inside.position != here.position or lanes.index(inside.lane) >= lanes.index(here.lane)
 
 

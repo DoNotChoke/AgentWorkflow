@@ -400,6 +400,8 @@ def test_vong_lap_chi_dung_mot_phan_mang_thi_tim_truong_phan_biet() -> None:
     assert loop.indices == (0, 2)
     assert not loop.covers_all
     assert loop.filter == (("type", "child_page"),)
+    # Bộ lọc này là thứ lần chạy mẫu buộc phải có, không còn gì để đề nghị thêm.
+    assert loop.suggested == ()
 
 
 def test_hai_truong_cung_doi_thi_khong_phai_vong_lap_tren_mot_mang() -> None:
@@ -444,6 +446,71 @@ def test_lan_chi_co_so_buoc_bang_so_vong_thi_noi_ro_la_theo_vi_tri() -> None:
     assert dang.links == ()
     assert dang.written == ("text",)
     assert dang.evidence is LaneEvidence.POSITION
+
+
+def test_vong_lap_dung_het_mang_thi_de_nghi_loc_theo_loai() -> None:
+    """Sáu khối của trang đều là câu hỏi, nên lần chạy mẫu không cần lọc. Trang khác thì có
+    thể có tiêu đề mục chen vào."""
+    (loop,) = _report("kb8-ba-luot").loops
+
+    assert loop.covers_all
+    assert loop.filter == ()
+    assert loop.suggested == (("type", "numbered_list_item"),)
+
+
+def test_truong_trung_nhau_ma_khong_noi_ve_loai_thi_khong_de_nghi() -> None:
+    """`object` và `archived` giống nhau ở mọi phần tử, nhưng không phân biệt được gì."""
+    report = find_sources(
+        _made(
+            (
+                "đọc hai trang",
+                [
+                    _call(
+                        "l1.b1",
+                        {},
+                        {
+                            "results": [
+                                {"id": "blk_aaa", "object": "page", "archived": False},
+                                {"id": "blk_bbb", "object": "page", "archived": False},
+                            ]
+                        },
+                    ),
+                    _call("l1.b2", {"page_id": "blk_aaa"}),
+                    _call("l1.b3", {"page_id": "blk_bbb"}),
+                ],
+            )
+        )
+    )
+
+    (loop,) = report.loops
+    assert loop.suggested == ()
+
+
+def test_phan_tu_khac_loai_nhau_thi_khong_co_gi_de_de_nghi() -> None:
+    report = find_sources(
+        _made(
+            (
+                "đọc hai khối",
+                [
+                    _call(
+                        "l1.b1",
+                        {},
+                        {
+                            "results": [
+                                {"id": "blk_aaa", "type": "paragraph"},
+                                {"id": "blk_bbb", "type": "heading_1"},
+                            ]
+                        },
+                    ),
+                    _call("l1.b2", {"page_id": "blk_aaa"}),
+                    _call("l1.b3", {"page_id": "blk_bbb"}),
+                ],
+            )
+        )
+    )
+
+    (loop,) = report.loops
+    assert loop.suggested == ()
 
 
 def _hai_trang(*sau: SourceStep) -> SourceReport:

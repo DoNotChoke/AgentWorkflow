@@ -36,6 +36,7 @@ from app.entrypoints.compiler_wiring import SandboxRunner
 
 FIXTURES = Path(__file__).parent / "fixtures"
 TOOLS = {(row["tool_id"], row["version"]): row["input_schema"] for row in tool_rows()}
+MUTATING = {(row["tool_id"], row["version"]) for row in tool_rows() if row["mutates"]}
 KB7 = "kb7-buoc-thua"
 
 TENANT = "org_bien_dich"
@@ -190,6 +191,7 @@ class Bench:
             intent_advisor=self.intent,
             answer_advisor=self.answer,
             tools=TOOLS,
+            mutating=MUTATING,
             catalog=self.catalog,
             runner=SandboxRunner(),
             intent_model="model-y-do",
@@ -235,7 +237,7 @@ async def test_phien_ghi_lai_no_da_doc_gi_va_bang_model_nao() -> None:
     material = read_source(bench.sources.document)
     assert session.trace_ids == tuple(turn.trace_id for turn in material.turns)
     assert (session.intent_model, session.answer_model) == ("model-y-do", "model-tra-loi")
-    assert (session.question_set_version, session.prompt_version) == ("1", "1")
+    assert (session.question_set_version, session.prompt_version) == ("2", "2")
 
 
 async def test_model_hoi_lai_thi_chua_co_y_do_de_chap_nhan() -> None:

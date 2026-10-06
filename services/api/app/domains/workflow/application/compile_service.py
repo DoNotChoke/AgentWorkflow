@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from datetime import UTC, datetime
 from typing import Any, Final, Literal
 
@@ -66,6 +66,7 @@ class CompileService:
         intent_advisor: IntentAdvisor,
         answer_advisor: AnswerAdvisor,
         tools: ToolShapes,
+        mutating: Collection[tuple[str, str]],
         catalog: ToolCatalogReader,
         runner: TransformRunner,
         intent_model: str,
@@ -80,6 +81,7 @@ class CompileService:
         self._intent_advisor = intent_advisor
         self._answer_advisor = answer_advisor
         self._tools = tools
+        self._mutating = frozenset(mutating)
         self._catalog = catalog
         self._runner = runner
         self._intent_model = intent_model
@@ -325,7 +327,7 @@ class CompileService:
     ) -> Built:
         assert session.intent is not None
         skeleton = build_skeleton(material)
-        questions = build_questions(skeleton, find_sources(skeleton), self._tools)
+        questions = build_questions(skeleton, find_sources(skeleton), self._tools, self._mutating)
         return await build(
             skeleton,
             questions,

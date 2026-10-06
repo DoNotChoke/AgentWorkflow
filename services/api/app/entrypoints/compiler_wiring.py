@@ -306,6 +306,7 @@ def build_compile_service(
         intent_advisor=ModelIntentAdvisor(models, model=settings.compiler_intent_model),
         answer_advisor=ModelAnswerAdvisor(models, model=settings.compiler_answer_model),
         tools={(row["tool_id"], row["version"]): row["input_schema"] for row in rows},
+        mutating={(row["tool_id"], row["version"]) for row in rows if row["mutates"]},
         catalog=RowToolCatalog(rows),
         runner=SandboxRunner(),
         intent_model=settings.compiler_intent_model,
