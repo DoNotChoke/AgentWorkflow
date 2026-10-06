@@ -113,7 +113,11 @@ export function Panel({
     error: { border: "border-danger-line", head: "bg-danger-wash text-danger" },
   }[tone];
   return (
-    <section className={`overflow-hidden rounded-[9px] border bg-surface ${look.border}`}>
+    // `shrink-0`: một khung `overflow-hidden` nằm trong cột flex có chiều cao cố định sẽ bị
+    // co lại thay vì đẩy cột cuộn, và các hàng cuối của nó biến mất.
+    <section
+      className={`shrink-0 overflow-hidden rounded-[9px] border bg-surface ${look.border}`}
+    >
       <header className={`flex items-center justify-between px-3 py-2 ${look.head}`}>
         <h3 className="text-[11px] font-semibold tracking-wide uppercase">{title}</h3>
         {count ? <span className="text-[11.5px]">{count}</span> : null}

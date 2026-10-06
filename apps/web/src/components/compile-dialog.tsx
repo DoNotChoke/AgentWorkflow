@@ -96,7 +96,10 @@ export function CompileDialog({
         </button>
       </header>
 
-      <div ref={threadRef} className="flex min-h-0 grow flex-col gap-4 overflow-y-auto bg-canvas px-6 py-5">
+      <div
+        ref={threadRef}
+        className="flex min-h-0 grow flex-col gap-4 overflow-y-auto bg-canvas px-6 py-5 [&>*]:shrink-0"
+      >
         {session ? (
           <Thread
             session={session}

@@ -66,7 +66,7 @@ export default function WorkflowDraftPage() {
       </header>
 
       <div className="flex min-h-0 grow flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
-        <div className="flex min-w-0 grow flex-col gap-[18px] px-8 py-6 lg:overflow-y-auto">
+        <div className="flex min-w-0 grow flex-col gap-[18px] px-8 py-6 lg:overflow-y-auto [&>*]:shrink-0">
           {intent ? <Intent intent={intent} compiled={draft.data.compiled_from !== null} /> : null}
 
           <Panel title="Steps, in the order they run" count={outlineCount(ir)}>
@@ -91,7 +91,7 @@ export default function WorkflowDraftPage() {
           ) : null}
         </div>
 
-        <aside className="flex w-full shrink-0 flex-col gap-3.5 border-t border-line bg-canvas px-5 py-6 lg:w-[372px] lg:overflow-y-auto lg:border-t-0 lg:border-l">
+        <aside className="flex w-full shrink-0 flex-col gap-3.5 border-t border-line bg-canvas px-5 py-6 lg:w-[372px] lg:overflow-y-auto lg:border-t-0 lg:border-l [&>*]:shrink-0">
           <Panel
             title="Checks"
             tone={validation.errors.length ? "error" : "plain"}
