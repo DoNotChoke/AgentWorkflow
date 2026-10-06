@@ -63,6 +63,14 @@ export const queryKeys = {
     ["workflow-draft", organizationId, workflowId] as const,
   compileSession: (organizationId: string | null, sessionId: string | null) =>
     ["compile-session", organizationId, sessionId] as const,
+  workflowVersions: (organizationId: string | null, workflowId: string | null) =>
+    ["workflow-versions", organizationId, workflowId] as const,
+  workflowVersion: (organizationId: string | null, workflowId: string | null, number: number | null) =>
+    ["workflow-version", organizationId, workflowId, number] as const,
+  runs: (organizationId: string | null, workspaceId: string | null) =>
+    ["runs", organizationId, workspaceId] as const,
+  run: (organizationId: string | null, runId: string | null) =>
+    ["run", organizationId, runId] as const,
 };
 
 /** Header chọn tenant cho request hiện tại — bỏ trống thì backend lấy org đầu tiên. */
@@ -359,7 +367,7 @@ export function useDeleteWorkspace(organizationId: string | null) {
  * chung, nhưng sai ở đây, vì màn hình này đang nói về một workspace cụ thể.
  */
 
-function workspaceHeaders(
+export function workspaceHeaders(
   organizationId: string | null,
   workspaceId: string | null,
 ): Record<string, string> {

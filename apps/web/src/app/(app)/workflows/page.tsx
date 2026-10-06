@@ -8,8 +8,8 @@ import { useTenant } from "@/lib/tenant";
 /**
  * Workflow của workspace đang mở.
  *
- * Chỉ đọc: một workflow bắt đầu từ một conversation với Agent ("Turn into
- * Workflow"), không có nút tạo tay ở đây. Publish và Run chưa có ở giao diện.
+ * Một workflow bắt đầu từ một conversation với Agent ("Turn into
+ * Workflow"), không có nút tạo tay ở đây. Publish và Run nằm trong trang của từng workflow.
  */
 export default function WorkflowsPage() {
   const { organization, workspace } = useTenant();

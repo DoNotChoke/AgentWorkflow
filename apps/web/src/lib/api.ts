@@ -375,7 +375,10 @@ export type IrNode = {
   code?: string;
   input?: Record<string, IrBinding>;
   args?: Record<string, IrBinding>;
-  input_schema?: { properties?: Record<string, unknown> };
+  input_schema?: {
+    properties?: Record<string, { type?: string; description?: string }>;
+    required?: string[];
+  };
   over?: IrBinding;
   filter?: Record<string, IrBinding>;
   body?: IrNode[];
@@ -472,3 +475,75 @@ export type CompileSseEvent =
   | { event: "status"; data: { text: string } }
   | { event: "session"; data: CompileSession }
   | { event: "error"; data: { message: string; category: string } };
+
+// ─── Version và lần chạy ────────────────────────────────────────────────────
+
+export type WorkflowVersionSummary = {
+  id: string;
+  number: number;
+  ir_sha256: string;
+  published_by: string;
+  published_at: string;
+};
+
+export type WorkflowVersion = WorkflowVersionSummary & {
+  workflow_id: string;
+  ir: WorkflowIr;
+  intent: WorkflowIntent | null;
+  compiled_from: string | null;
+};
+
+export type RunStatus =
+  | "pending"
+  | "running"
+  | "waiting"
+  | "waiting_for_approval"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "timed_out";
+
+export type StepStatus = "pending" | "running" | "succeeded" | "failed" | "skipped";
+
+export type RunFailure = { category: string; message: string };
+
+export type Run = {
+  id: string;
+  workflow_id: string;
+  workflow_version_id: string;
+  status: RunStatus;
+  trigger_type: string;
+  initiated_by: string;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  error: RunFailure | null;
+};
+
+export type RunSummary = Run & {
+  /** Số bước đã ghi. Vòng lặp chưa tới thì các lượt của nó chưa được đếm. */
+  steps: number;
+  steps_done: number;
+  input_tokens: number;
+  output_tokens: number;
+};
+
+export type RunStep = {
+  /** `dang` ở tầng ngoài, `moi_cau[2].dang` ở lượt 2 (đếm từ 0) của vòng lặp. */
+  node_path: string;
+  node_id: string;
+  node_type: IrNode["type"];
+  status: StepStatus;
+  attempt: number;
+  started_at: string | null;
+  finished_at: string | null;
+  error: RunFailure | null;
+  usage: { input_tokens?: number; output_tokens?: number; model_calls?: number } | null;
+};
+
+export type RunDetail = Run & {
+  inputs: Record<string, unknown>;
+  /** Node tool → connection mà lần chạy này dùng. */
+  connections: Record<string, string>;
+  nodes: RunStep[];
+};

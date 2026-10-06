@@ -71,6 +71,12 @@ function Notion({ size }: { size: number }) {
   );
 }
 
+const LOGOS: ReadonlySet<string> = new Set(["slack", "google", "notion"]);
+
+export function hasProviderLogo(provider: string): boolean {
+  return LOGOS.has(provider);
+}
+
 export function ProviderIcon({ provider, size = 19 }: { provider: string; size?: number }) {
   if (provider === "slack") return <Slack size={size} />;
   if (provider === "google") return <Google size={size} />;
