@@ -10,7 +10,7 @@ import pytest
 
 from app.core.errors import WorkflowDefinitionError
 from app.domains.workflow.domain.ir import parse
-from app.domains.workflow.domain.plan import NodePath, build_plan
+from app.domains.workflow.domain.plan import NodePath, Plan, build_plan
 
 EXAMPLES = Path(__file__).resolve().parents[3] / "packages" / "schemas" / "workflow" / "examples"
 
@@ -125,3 +125,61 @@ def test_node_path_loop_va_luot_di_cung_nhau() -> None:
         NodePath("b1", iteration=0)
     with pytest.raises(ValueError):
         NodePath.in_loop("n3", -1, "b1")
+
+
+# ─── Nhánh của condition ─────────────────────────────────────────────────────
+
+
+def _re_nhanh() -> Plan:
+    """`t → c`, rồi `c` rẽ: nhánh true tới `a → a2`, nhánh false tới `b`; cả hai gặp nhau ở `z`."""
+    tool = {"type": "tool", "tool_id": "slack.list_channels", "tool_version": "1.0", "input": {}}
+    return build_plan(
+        parse(
+            {
+                "schema_version": "2.0",
+                "nodes": [
+                    {
+                        "id": "t",
+                        "type": "trigger",
+                        "trigger": "manual",
+                        "input_schema": {"type": "object", "properties": {}},
+                    },
+                    {"id": "c", "type": "condition", "left": {"const": 1}, "op": "exists"},
+                    {"id": "a", **tool},
+                    {"id": "a2", **tool},
+                    {"id": "b", **tool},
+                    {"id": "z", **tool},
+                ],
+                "edges": [
+                    {"from": "t", "to": "c"},
+                    {"from": "c", "to": "a", "branch": "true"},
+                    {"from": "a", "to": "a2"},
+                    {"from": "c", "to": "b", "branch": "false"},
+                    {"from": "a2", "to": "z"},
+                    {"from": "b", "to": "z"},
+                ],
+            }
+        )
+    )
+
+
+def test_node_tren_nhanh_khong_duoc_chon_bi_cat() -> None:
+    plan = _re_nhanh()
+
+    assert not plan.is_cut_off("a", {"c": True}, set())
+    assert plan.is_cut_off("b", {"c": True}, set())
+    assert plan.is_cut_off("a", {"c": False}, set())
+    assert not plan.is_cut_off("b", {"c": False}, set())
+
+
+def test_bi_cat_lan_theo_chuoi_va_dung_o_cho_hai_nhanh_gap_nhau() -> None:
+    plan = _re_nhanh()
+
+    assert plan.is_cut_off("a2", {"c": False}, {"a"})
+    # `z` còn một đường sống qua `b`.
+    assert not plan.is_cut_off("z", {"c": False}, {"a", "a2"})
+    assert plan.is_cut_off("z", {"c": False}, {"a", "a2", "b"})
+
+
+def test_node_khong_co_canh_vao_khong_bao_gio_bi_cat() -> None:
+    assert not _re_nhanh().is_cut_off("t", {}, set())

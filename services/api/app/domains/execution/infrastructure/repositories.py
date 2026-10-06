@@ -59,6 +59,7 @@ def _to_node(row: NodeExecutionModel) -> NodeExecution:
         started_at=row.started_at,
         finished_at=row.finished_at,
         failure=_failure(row.error_category, row.error_message),
+        usage=row.usage,
     )
 
 
@@ -74,6 +75,7 @@ def _node_values(node: NodeExecution) -> dict[str, object]:
         "attempt": node.attempt,
         "error_category": None if node.failure is None else str(node.failure.category),
         "error_message": None if node.failure is None else node.failure.message,
+        "usage": None if node.usage is None else dict(node.usage),
         "updated_at": node.updated_at,
         "started_at": node.started_at,
         "finished_at": node.finished_at,

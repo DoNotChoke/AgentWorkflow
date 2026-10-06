@@ -162,6 +162,7 @@ class ExecutionService:
         at: datetime,
         attempt: int | None = None,
         failure: Failure | None = None,
+        usage: Mapping[str, int] | None = None,
     ) -> NodeExecution:
         await self._open(tenant_id, execution_id)
         current = await self._executions.get_node(
@@ -182,7 +183,7 @@ class ExecutionService:
                 status=NodeStatus.PENDING,
                 updated_at=at,
             )
-        moved = move_node(current, status, at=at, attempt=attempt, failure=failure)
+        moved = move_node(current, status, at=at, attempt=attempt, failure=failure, usage=usage)
         if is_new or moved is not current:
             await self._executions.save_node(moved)
         return moved
@@ -200,6 +201,7 @@ class ExecutionService:
         attempt: int | None = None,
         error_category: str | None = None,
         error_message: str | None = None,
+        usage: Mapping[str, int] | None = None,
     ) -> None:
         await self.record_node(
             tenant_id=tenant_id,
@@ -209,6 +211,7 @@ class ExecutionService:
             at=at,
             attempt=attempt,
             failure=_failure(error_category, error_message),
+            usage=usage,
         )
 
     async def finish_as(

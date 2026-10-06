@@ -35,7 +35,6 @@ from app.domains.workflow.domain.entities import (
     unarchive,
 )
 from app.domains.workflow.domain.ir import CURRENT_MAJOR, TriggerNode, parse
-from app.domains.workflow.domain.plan import unsupported_nodes
 from app.domains.workflow.domain.validation import Issue, ValidationReport, ensure_valid
 
 log = get_logger(__name__)
@@ -271,12 +270,6 @@ class WorkflowService:
             chosen = current
 
         ir = parse(chosen.ir)
-        unsupported = unsupported_nodes(ir)
-        if unsupported:
-            raise ValidationError(
-                f"Node {', '.join(unsupported)} là loại chưa chạy được ở bản này.",
-                details={"nodes": unsupported},
-            )
 
         trigger = next(node for node in ir.nodes if isinstance(node, TriggerNode))
         try:

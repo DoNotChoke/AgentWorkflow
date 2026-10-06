@@ -17,6 +17,8 @@ SEED_NODES: Final = "seed_nodes"
 RECORD_NODE: Final = "record_node"
 RECORD_EXECUTION: Final = "record_execution"
 RUN_TOOL_NODE: Final = "run_tool_node"
+RUN_TRANSFORM_NODE: Final = "run_transform_node"
+RUN_LLM_NODE: Final = "run_llm_node"
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,9 @@ class ExecutorQueues:
     processing: str
     integration_read: str
     integration_write: str
+    #: Queue của node `llm`. Mặc định rỗng để lịch sử cũ vẫn decode được; rỗng thì
+    #: executor dùng `processing`.
+    ai: str = ""
 
 
 @dataclass(frozen=True)
@@ -70,6 +75,8 @@ class RecordNodeInput:
     attempt: int | None = None
     error_category: str | None = None
     error_message: str | None = None
+    #: Token model đã dùng, với node `llm`.
+    usage: dict[str, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -91,3 +98,33 @@ class RunToolInput:
     tool_id: str
     tool_version: str
     input: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RunTransformInput:
+    tenant_id: str
+    execution_id: str
+    node_path: str
+    code: str
+    args: dict[str, Any] = field(default_factory=dict)
+    output_schema: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RunLlmInput:
+    tenant_id: str
+    execution_id: str
+    node_path: str
+    model: str
+    instructions: str
+    input: dict[str, Any] = field(default_factory=dict)
+    output_schema: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class LlmNodeResult:
+    output: dict[str, Any]
+    input_tokens: int = 0
+    output_tokens: int = 0
+    #: Số lần đã hỏi model, kể cả những lần kết quả sai `output_schema`.
+    attempts: int = 1

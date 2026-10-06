@@ -139,13 +139,6 @@ async def test_chua_publish_hoac_dang_luu_tru_thi_khong_chay() -> None:
         await _prepare(service)
 
 
-async def test_node_chua_ho_tro_bi_chan_truoc_khi_chay() -> None:
-    service, _ = _setup(_example("kb5-re-nhanh"))
-    with pytest.raises(ValidationError) as caught:
-        await _prepare(service, inputs={})
-    assert caught.value.details == {"nodes": ["dem", "du_nhieu"]}
-
-
 async def test_input_sai_la_loi_cua_request_khong_phai_500() -> None:
     service, _ = _setup(_example("kb1-slack-ghi"))
     with pytest.raises(ValidationError) as caught:

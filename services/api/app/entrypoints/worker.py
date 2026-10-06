@@ -50,11 +50,12 @@ def worker_specs(settings: Settings, executor: ExecutorActivities) -> list[Worke
                 executor.seed_nodes,
                 executor.record_node,
                 executor.record_execution,
+                executor.run_transform_node,
             ),
         ),
         WorkerSpec(settings.temporal_task_queue_integration_read, activities=(run_tool_node,)),
         WorkerSpec(settings.temporal_task_queue_integration_write, activities=(run_tool_node,)),
-        WorkerSpec(settings.temporal_task_queue_ai),
+        WorkerSpec(settings.temporal_task_queue_ai, activities=(executor.run_llm_node,)),
     ]
     return [spec for spec in specs if spec.workflows or spec.activities]
 
@@ -86,7 +87,7 @@ async def run_worker(settings: Settings, stop: asyncio.Event) -> None:
         namespace=settings.temporal_namespace,
     )
 
-    specs = worker_specs(settings, build_executor_activities())
+    specs = worker_specs(settings, build_executor_activities(settings=settings))
     async with AsyncExitStack() as stack:
         for worker in build_workers(client, specs):
             await stack.enter_async_context(worker)

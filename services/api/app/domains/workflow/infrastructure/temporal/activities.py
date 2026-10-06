@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
+import jsonschema
 from temporalio import activity
 
 from app.core.db import session_scope
 from app.core.errors import WorkflowExecutionError
-from app.domains.workflow.application.ports import ExecutionRecorder, NodeRef, ToolCatalogReader
+from app.domains.workflow.application.llm_node import run_llm_node
+from app.domains.workflow.application.ports import (
+    ExecutionRecorder,
+    NodeModel,
+    NodeRef,
+    ToolCatalogReader,
+    TransformRunner,
+)
 from app.domains.workflow.application.runtime import LoadedPlan, PlanLoader
 from app.domains.workflow.infrastructure.repositories import SqlAlchemyWorkflowRepository
 from app.domains.workflow.infrastructure.temporal.errors import as_temporal_errors
@@ -16,13 +25,18 @@ from app.domains.workflow.infrastructure.temporal.messages import (
     LOAD_PLAN,
     RECORD_EXECUTION,
     RECORD_NODE,
+    RUN_LLM_NODE,
     RUN_TOOL_NODE,
+    RUN_TRANSFORM_NODE,
     SEED_NODES,
+    LlmNodeResult,
     LoadPlanInput,
     NodeRefMessage,
     RecordExecutionInput,
     RecordNodeInput,
+    RunLlmInput,
     RunToolInput,
+    RunTransformInput,
     SeedNodesInput,
 )
 
@@ -34,11 +48,23 @@ def _ref(node: NodeRefMessage) -> NodeRef:
 
 
 class ExecutorActivities:
-    """Activity cần dữ liệu và bản ghi — chạy ở queue `data-processing`."""
+    """Activity cần dữ liệu và bản ghi — chạy ở queue `data-processing`. Riêng
+    `run_llm_node` chạy ở queue `ai-tasks`."""
 
-    def __init__(self, *, recorder: ExecutionRecorder, catalog: ToolCatalogReader) -> None:
+    def __init__(
+        self,
+        *,
+        recorder: ExecutionRecorder,
+        catalog: ToolCatalogReader,
+        runner: TransformRunner,
+        models: NodeModel,
+        llm_max_attempts: int = 3,
+    ) -> None:
         self._recorder = recorder
         self._catalog = catalog
+        self._runner = runner
+        self._models = models
+        self._llm_max_attempts = llm_max_attempts
 
     @activity.defn(name=LOAD_PLAN)
     async def load_plan(self, request: LoadPlanInput) -> LoadedPlan:
@@ -74,6 +100,42 @@ class ExecutorActivities:
                 attempt=request.attempt,
                 error_category=request.error_category,
                 error_message=request.error_message,
+                usage=request.usage,
+            )
+
+    @activity.defn(name=RUN_TRANSFORM_NODE)
+    async def run_transform_node(self, request: RunTransformInput) -> dict[str, Any]:
+        """Kết quả bọc trong `value`: code có thể trả về số, chuỗi hay mảng."""
+        with as_temporal_errors():
+            # Sandbox chạy code trong một tiến trình con và chờ nó.
+            value = await asyncio.to_thread(self._runner.run, request.code, request.args)
+            error = jsonschema.exceptions.best_match(
+                jsonschema.Draft202012Validator(request.output_schema).iter_errors(value)
+            )
+            if error is not None:
+                raise WorkflowExecutionError(
+                    f"Code của {request.node_path} trả về kết quả không khớp kiểu đã khai: "
+                    f"{error.message}",
+                    details={"node_path": request.node_path},
+                )
+            return {"value": value}
+
+    @activity.defn(name=RUN_LLM_NODE)
+    async def run_llm_node(self, request: RunLlmInput) -> LlmNodeResult:
+        with as_temporal_errors():
+            outcome = await run_llm_node(
+                self._models,
+                model=request.model,
+                instructions=request.instructions,
+                data=request.input,
+                output_schema=request.output_schema,
+                max_attempts=self._llm_max_attempts,
+            )
+            return LlmNodeResult(
+                output=outcome.output,
+                input_tokens=outcome.input_tokens,
+                output_tokens=outcome.output_tokens,
+                attempts=outcome.attempts,
             )
 
     @activity.defn(name=RECORD_EXECUTION)

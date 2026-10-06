@@ -94,6 +94,7 @@ class ExecutionRecorder(Protocol):
         attempt: int | None = None,
         error_category: str | None = None,
         error_message: str | None = None,
+        usage: Mapping[str, int] | None = None,
     ) -> None: ...
 
     async def finish(
@@ -205,6 +206,41 @@ class DraftWriter(Protocol):
 
 #: Báo một dòng tiến độ cho người đang chờ.
 Progress = Callable[[str], Awaitable[None]]
+
+
+@dataclass(frozen=True, slots=True)
+class ModelAnswer:
+    """Một lần model trả lời cho một node `llm`."""
+
+    #: Thứ model nộp qua tool kết quả. `None` khi nó không gọi tool.
+    output: Mapping[str, Any] | None
+    text: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    #: Câu trả lời bị cắt ở trần token: hỏi lại chỉ ra đúng thứ đó.
+    truncated: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class Rejected:
+    """Một lần trả lời đã bị từ chối, và lý do — để model sửa."""
+
+    output: Mapping[str, Any] | None
+    reason: str
+
+
+class NodeModel(Protocol):
+    """Model mà node `llm` gọi. Hiện thực ở `entrypoints`: Model Gateway thuộc domain `agent`."""
+
+    async def answer(
+        self,
+        *,
+        model: str,
+        system: str,
+        data: str,
+        output_schema: Mapping[str, Any],
+        rejected: Sequence[Rejected],
+    ) -> ModelAnswer: ...
 
 
 class TransformRunner(Protocol):

@@ -144,6 +144,12 @@ class Settings(BaseSettings):
     compiler_rate_limit: int = 10
     compiler_rate_window_seconds: int = 300
 
+    # ─── Node `llm` của workflow ──────────────────────────────────────
+    #: Trần token cho một câu trả lời. Với model suy luận, trần này gồm cả phần suy luận.
+    workflow_llm_max_tokens: int = 8192
+    #: Số lần hỏi model cho một node khi kết quả sai `output_schema`, kể cả lần đầu.
+    workflow_llm_max_attempts: int = 3
+
     # ─── Agent Runtime ──────────────────────────────────────────────────
     #: Nơi Agent Runtime gọi tool — luôn là Control Plane.
     control_plane_internal_base_url: str = "http://localhost:8000"

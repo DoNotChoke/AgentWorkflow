@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.db import session_scope
 from app.core.errors import ValidationError
-from app.core.sandbox import DEFAULT_LIMITS, Limits, run
 from app.domains.agent.application.ports import (
     ModelClient,
     ModelToolCall,
@@ -51,6 +50,9 @@ from app.domains.workflow.infrastructure.compile_repositories import (
     SqlAlchemyCompileSessionRepository,
 )
 from app.domains.workflow.infrastructure.repositories import SqlAlchemyWorkflowRepository
+from app.entrypoints.sandbox_runner import SandboxRunner
+
+__all__ = ["SandboxRunner"]
 
 #: Với model suy luận, trần này gồm cả phần suy luận, không chỉ phần trả lời.
 _INTENT_MAX_TOKENS = 4096
@@ -162,16 +164,6 @@ class ModelAnswerAdvisor:
 
 def _call(calls: Sequence[ModelToolCall], name: str) -> ModelToolCall | None:
     return next((call for call in calls if call.name == name), None)
-
-
-class SandboxRunner:
-    """`TransformRunner` của domain `workflow`, bằng sandbox của Agent Runtime."""
-
-    def __init__(self, limits: Limits = DEFAULT_LIMITS) -> None:
-        self._limits = limits
-
-    def run(self, code: str, args: Mapping[str, Any]) -> Any:
-        return run(code, dict(args), self._limits).value
 
 
 class TraceCompileSourceReader:

@@ -141,6 +141,8 @@ class NodeExecution:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     failure: Failure | None = None
+    #: Token model mà node đã dùng: `input_tokens`, `output_tokens`, `model_calls`.
+    usage: Mapping[str, int] | None = None
 
 
 def ensure_inputs_size(inputs: Mapping[str, Any]) -> None:
@@ -182,6 +184,7 @@ def move_node(
     at: datetime,
     attempt: int | None = None,
     failure: Failure | None = None,
+    usage: Mapping[str, int] | None = None,
 ) -> NodeExecution:
     """Như `move_execution`. `running → running` với lần thử lớn hơn là một lần retry."""
     if failure is not None and to is not NodeStatus.FAILED:
@@ -207,6 +210,7 @@ def move_node(
         started_at=node.started_at or (at if to is NodeStatus.RUNNING else None),
         finished_at=at if to in NODE_TERMINAL else None,
         failure=failure,
+        usage=usage if usage is not None else node.usage,
     )
 
 

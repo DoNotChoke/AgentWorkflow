@@ -1,17 +1,31 @@
-"""Nối worker (domain `workflow`) với domain `execution` và catalog tool."""
+"""Nối worker (domain `workflow`) với domain `execution`, catalog tool, sandbox và
+Model Gateway (ADR-0011)."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
+from typing import Any
 
+from app.core.config import Settings, get_settings
 from app.core.db import session_scope
+from app.domains.agent.application.ports import (
+    ModelClient,
+    ModelToolCall,
+    ModelToolResult,
+    ModelToolSpec,
+    ModelTurn,
+    StopReason,
+)
+from app.domains.agent.infrastructure.gateway_factory import build_model_gateway
 from app.domains.execution.application.service import ExecutionService, NodeSeed
 from app.domains.execution.infrastructure.repositories import SqlAlchemyExecutionRepository
 from app.domains.integration.infrastructure.catalog_view import tool_rows
-from app.domains.workflow.application.ports import NodeRef
+from app.domains.workflow.application.llm_node import RESULT_TOOL
+from app.domains.workflow.application.ports import ModelAnswer, NodeModel, NodeRef, Rejected
 from app.domains.workflow.infrastructure.catalog import RowToolCatalog
 from app.domains.workflow.infrastructure.temporal.activities import ExecutorActivities
+from app.entrypoints.sandbox_runner import SandboxRunner
 
 
 def _seed(node: NodeRef) -> NodeSeed:
@@ -49,6 +63,7 @@ class ExecutionServiceRecorder:
         attempt: int | None = None,
         error_category: str | None = None,
         error_message: str | None = None,
+        usage: Mapping[str, int] | None = None,
     ) -> None:
         async with session_scope() as session:
             service = ExecutionService(repository=SqlAlchemyExecutionRepository(session))
@@ -61,6 +76,7 @@ class ExecutionServiceRecorder:
                 attempt=attempt,
                 error_category=error_category,
                 error_message=error_message,
+                usage=usage,
             )
 
     async def finish(
@@ -85,7 +101,84 @@ class ExecutionServiceRecorder:
             )
 
 
-def build_executor_activities() -> ExecutorActivities:
+class GatewayNodeModel:
+    """`NodeModel` của domain `workflow`, bằng một `ModelClient`.
+
+    Model nộp kết quả qua một tool mà `input_schema` chính là `output_schema` của node:
+    kiểu của kết quả do provider ép một lần, rồi `run_llm_node` kiểm lại."""
+
+    def __init__(self, models: ModelClient, *, max_tokens: int) -> None:
+        self._models = models
+        self._max_tokens = max_tokens
+
+    async def answer(
+        self,
+        *,
+        model: str,
+        system: str,
+        data: str,
+        output_schema: Mapping[str, Any],
+        rejected: Sequence[Rejected],
+    ) -> ModelAnswer:
+        turns = [ModelTurn(role="user", text=data)]
+        for number, attempt in enumerate(rejected, start=1):
+            if attempt.output is None:
+                turns.append(ModelTurn(role="user", text=attempt.reason))
+                continue
+            call_id = f"lan_{number}"
+            turns.append(
+                ModelTurn(
+                    role="assistant",
+                    tool_calls=(
+                        ModelToolCall(call_id=call_id, name=RESULT_TOOL, input=attempt.output),
+                    ),
+                )
+            )
+            turns.append(
+                ModelTurn(
+                    role="user",
+                    tool_results=(
+                        ModelToolResult(call_id=call_id, content=attempt.reason, is_error=True),
+                    ),
+                )
+            )
+
+        response = await self._models.complete(
+            model=model,
+            system=system,
+            turns=turns,
+            tools=(
+                ModelToolSpec(
+                    name=RESULT_TOOL,
+                    description="Nộp kết quả của bước này.",
+                    input_schema=output_schema,
+                    version="1",
+                ),
+            ),
+            max_tokens=self._max_tokens,
+        )
+        call = next((found for found in response.tool_calls if found.name == RESULT_TOOL), None)
+        return ModelAnswer(
+            output=None if call is None else call.input,
+            text=response.text,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            truncated=response.stop_reason is StopReason.MAX_TOKENS,
+        )
+
+
+def build_executor_activities(
+    *, settings: Settings | None = None, models: NodeModel | None = None
+) -> ExecutorActivities:
+    """`models` để test đưa model giả vào; mặc định là Model Gateway thật."""
+    settings = settings or get_settings()
     return ExecutorActivities(
-        recorder=ExecutionServiceRecorder(), catalog=RowToolCatalog(tool_rows())
+        recorder=ExecutionServiceRecorder(),
+        catalog=RowToolCatalog(tool_rows()),
+        runner=SandboxRunner(),
+        models=models
+        or GatewayNodeModel(
+            build_model_gateway(settings), max_tokens=settings.workflow_llm_max_tokens
+        ),
+        llm_max_attempts=settings.workflow_llm_max_attempts,
     )

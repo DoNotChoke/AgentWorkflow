@@ -438,6 +438,7 @@ class TemporalExecutionLauncher:
                 processing=settings.temporal_task_queue_processing,
                 integration_read=settings.temporal_task_queue_integration_read,
                 integration_write=settings.temporal_task_queue_integration_write,
+                ai=settings.temporal_task_queue_ai,
             ),
             connections=dict(connections),
         )

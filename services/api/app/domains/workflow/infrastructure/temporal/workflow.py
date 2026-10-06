@@ -25,6 +25,7 @@ with workflow.unsafe.imports_passed_through():
         loop_items,
         resolve_inputs,
     )
+    from app.domains.workflow.domain.conditions import holds
     from app.domains.workflow.domain.ir import (
         ConditionNode,
         LlmNode,
@@ -35,20 +36,25 @@ with workflow.unsafe.imports_passed_through():
         TriggerNode,
         parse,
     )
-    from app.domains.workflow.domain.plan import NodePath, Plan, build_plan, unsupported_nodes
+    from app.domains.workflow.domain.plan import NodePath, Plan, build_plan
     from app.domains.workflow.infrastructure.temporal.messages import (
         EXECUTOR_WORKFLOW,
         LOAD_PLAN,
         RECORD_EXECUTION,
         RECORD_NODE,
+        RUN_LLM_NODE,
         RUN_TOOL_NODE,
+        RUN_TRANSFORM_NODE,
         SEED_NODES,
         ExecutorInput,
+        LlmNodeResult,
         LoadPlanInput,
         NodeRefMessage,
         RecordExecutionInput,
         RecordNodeInput,
+        RunLlmInput,
         RunToolInput,
+        RunTransformInput,
         SeedNodesInput,
     )
 
@@ -63,6 +69,17 @@ _DATA_RETRY: Final = RetryPolicy(
 _TOOL_TIMEOUT: Final = timedelta(seconds=60)
 _TOOL_RETRY: Final = RetryPolicy(
     initial_interval=timedelta(seconds=1),
+    backoff_coefficient=2.0,
+    maximum_interval=timedelta(seconds=30),
+    maximum_attempts=3,
+)
+#: Code của node `transform` tất định: chạy lại chỉ có ích khi sandbox không dựng được.
+_TRANSFORM_TIMEOUT: Final = timedelta(seconds=30)
+_TRANSFORM_RETRY: Final = RetryPolicy(initial_interval=timedelta(seconds=1), maximum_attempts=2)
+#: Một lần chạy activity `llm` có thể hỏi model vài lượt khi kết quả sai kiểu.
+_LLM_TIMEOUT: Final = timedelta(minutes=5)
+_LLM_RETRY: Final = RetryPolicy(
+    initial_interval=timedelta(seconds=2),
     backoff_coefficient=2.0,
     maximum_interval=timedelta(seconds=30),
     maximum_attempts=3,
@@ -108,6 +125,8 @@ class GenericWorkflowExecutor:
     @workflow.run
     async def run(self, request: ExecutorInput) -> None:
         self._request = request
+        #: Token của node `llm` vừa chạy, chờ ghi cùng trạng thái `succeeded`.
+        self._usage: dict[str, dict[str, int]] = {}
         try:
             plan, mutating = await self._prepare()
             await self._record_execution("running")
@@ -139,12 +158,6 @@ class GenericWorkflowExecutor:
         except AppError as error:
             raise _NodeFailedError.of(error) from None
 
-        unsupported = unsupported_nodes(ir)
-        if unsupported:
-            raise _NodeFailedError(
-                str(ErrorCategory.WORKFLOW_DEFINITION),
-                f"Node {', '.join(unsupported)} là loại chưa chạy được ở bản này.",
-            )
         return plan, frozenset(loaded.mutating_tools)
 
     # ─── Chạy ────────────────────────────────────────────────────────────────
@@ -155,25 +168,102 @@ class GenericWorkflowExecutor:
 
         outputs: dict[str, Any] = {}
         settled: set[str] = set()
+        #: Kết quả của các `condition` đã chạy, và các node không còn đường nào dẫn tới.
+        taken: dict[str, bool] = {}
+        skipped: set[str] = set()
         while ready := plan.runnable(settled):
             node = plan.node(ready[0])
             path = NodePath(node.id)
+            settled.add(node.id)
+            if plan.is_cut_off(node.id, taken, skipped):
+                skipped.add(node.id)
+                await self._record_node(_ref(path, node), "skipped")
+                continue
             scope = Scope(inputs=self._request.inputs, outputs=outputs)
 
             work: Callable[[], Awaitable[Any]]
             if isinstance(node, TriggerNode):
                 work = partial(self._trigger, node)
-            elif isinstance(node, ToolNode):
-                work = partial(self._tool, path, node, scope, mutating)
             elif isinstance(node, LoopNode):
                 work = partial(self._loop, plan, node, scope, mutating)
+            elif isinstance(node, ConditionNode):
+                work = partial(self._condition, node, scope)
             else:
-                raise AssertionError(f"{node.id}: _prepare đã chặn node này.")
+                work = partial(self._step, path, node, scope, mutating)
             outputs[node.id] = await self._node(path, node, work)
-            settled.add(node.id)
+            if isinstance(node, ConditionNode):
+                taken[node.id] = outputs[node.id]
 
     async def _trigger(self, trigger: TriggerNode) -> None:
         check_inputs(trigger, self._request.inputs)
+
+    async def _condition(self, condition: ConditionNode, scope: Scope) -> bool:
+        return holds(condition, scope)
+
+    async def _step(
+        self,
+        path: NodePath,
+        node: ToolNode | LlmNode | TransformNode,
+        scope: Scope,
+        mutating: frozenset[str],
+    ) -> Any:
+        """Một node gọi ra ngoài workflow. Dùng chung cho tầng ngoài và thân loop."""
+        if isinstance(node, ToolNode):
+            return await self._tool(path, node, scope, mutating)
+        if isinstance(node, TransformNode):
+            return await self._transform(path, node, scope)
+        return await self._llm(path, node, scope)
+
+    async def _transform(self, path: NodePath, node: TransformNode, scope: Scope) -> Any:
+        request = RunTransformInput(
+            tenant_id=self._request.tenant_id,
+            execution_id=self._request.execution_id,
+            node_path=str(path),
+            code=node.code,
+            args=resolve_inputs(node.args, scope, node=str(path)),
+            output_schema=dict(node.output_schema),
+        )
+        try:
+            result: dict[str, Any] = await workflow.execute_activity(
+                RUN_TRANSFORM_NODE,
+                request,
+                result_type=dict,
+                task_queue=self._request.queues.processing,
+                start_to_close_timeout=_TRANSFORM_TIMEOUT,
+                retry_policy=_TRANSFORM_RETRY,
+            )
+        except ActivityError as error:
+            raise _NodeFailedError.of_activity(error) from None
+        return result["value"]
+
+    async def _llm(self, path: NodePath, node: LlmNode, scope: Scope) -> Any:
+        queues = self._request.queues
+        request = RunLlmInput(
+            tenant_id=self._request.tenant_id,
+            execution_id=self._request.execution_id,
+            node_path=str(path),
+            model=node.model,
+            instructions=node.instructions,
+            input=resolve_inputs(node.input, scope, node=str(path)),
+            output_schema=dict(node.output_schema),
+        )
+        try:
+            result: LlmNodeResult = await workflow.execute_activity(
+                RUN_LLM_NODE,
+                request,
+                result_type=LlmNodeResult,
+                task_queue=queues.ai or queues.processing,
+                start_to_close_timeout=_LLM_TIMEOUT,
+                retry_policy=_LLM_RETRY,
+            )
+        except ActivityError as error:
+            raise _NodeFailedError.of_activity(error) from None
+        self._usage[str(path)] = {
+            "input_tokens": result.input_tokens,
+            "output_tokens": result.output_tokens,
+            "model_calls": result.attempts,
+        }
+        return result.output
 
     async def _tool(
         self, path: NodePath, tool: ToolNode, scope: Scope, mutating: frozenset[str]
@@ -217,11 +307,9 @@ class GenericWorkflowExecutor:
         for turn, item in enumerate(items):
             done: dict[str, Any] = {}
             for path, inner in zip(plan.iteration_paths(loop.id, turn), body, strict=True):
-                if not isinstance(inner, ToolNode):
-                    raise AssertionError(f"{inner.id}: _prepare đã chặn node này.")
                 here = scope.with_item(item, {**scope.outputs, **done})
                 done[inner.id] = await self._node(
-                    path, inner, partial(self._tool, path, inner, here, mutating)
+                    path, inner, partial(self._step, path, inner, here, mutating)
                 )
             collected.append(done[loop.collect])
         return collected
@@ -239,7 +327,7 @@ class GenericWorkflowExecutor:
         except _NodeFailedError as error:
             failed = error
         else:
-            await self._record_node(ref, "succeeded")
+            await self._record_node(ref, "succeeded", usage=self._usage.pop(str(path), None))
             return output
         await self._record_node(ref, "failed", failed)
         raise failed
@@ -263,6 +351,7 @@ class GenericWorkflowExecutor:
         failed: _NodeFailedError | None = None,
         *,
         attempt: int | None = None,
+        usage: dict[str, int] | None = None,
     ) -> None:
         await self._data(
             RECORD_NODE,
@@ -275,6 +364,7 @@ class GenericWorkflowExecutor:
                 attempt=attempt,
                 error_category=None if failed is None else failed.category,
                 error_message=None if failed is None else failed.message,
+                usage=usage,
             ),
         )
 

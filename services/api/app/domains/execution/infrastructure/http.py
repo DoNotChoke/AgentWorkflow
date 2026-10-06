@@ -143,6 +143,8 @@ class NodeResponse(BaseModel):
     started_at: datetime | None
     finished_at: datetime | None
     error: FailureResponse | None
+    #: Token model đã dùng, với node `llm`.
+    usage: dict[str, int] | None = None
 
 
 class ExecutionDetailResponse(ExecutionResponse):
@@ -183,6 +185,7 @@ def _node(node: NodeExecution) -> NodeResponse:
         started_at=node.started_at,
         finished_at=node.finished_at,
         error=_failure(node.failure),
+        usage=None if node.usage is None else dict(node.usage),
     )
 
 

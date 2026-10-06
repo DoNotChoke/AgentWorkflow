@@ -909,6 +909,29 @@ xanh, contract 1–8 giữ.
 17. `feat(api): a prompt the workflow can run on its own` — ADR-0011; chạy lại
     kịch bản 4 với node `llm` thay cho 22 literal do model viết.
 
+**GĐ 6 đã làm trước GĐ 5, 2026-10-05** — vì Workflow Compiler (WP-D) đã lắp ra cả ba
+loại node, còn executor mới chạy được `trigger`, `tool` và `loop` có thân toàn `tool`.
+
+- *`transform`*: activity `run_transform_node` trên queue `data-processing`, chạy code
+  trong sandbox qua cổng `TransformRunner`, rồi kiểm kết quả với `output_schema` của node.
+- *`condition`*: `Plan.is_cut_off` — một node bị bỏ qua khi mọi cạnh vào nó đều đi ra từ
+  một node đã bị bỏ qua, hoặc từ nhánh mà `condition` nguồn không chọn. Node đó được ghi
+  `skipped`, và lần chạy vẫn `succeeded`. Hai nhánh gặp lại nhau thì node ở chỗ gặp vẫn
+  chạy nếu còn một đường sống.
+- *`llm`*: activity `run_llm_node` trên queue `ai-tasks`; **worker gọi model trực tiếp**,
+  không qua Agent Runtime như Q4 từng nghiêng về — ADR-0011.
+- Thân `loop` giờ chạy được cả ba loại node gọi ra ngoài (`tool`, `llm`, `transform`).
+- `unsupported_nodes` bị bỏ: không còn loại node nào bị chặn ở `prepare_run` hay ở đầu
+  lần chạy.
+- Token của node `llm` nằm ở `node_executions.usage` (migration 0018).
+
+Lịch sử kịch bản 3 đã ghi vẫn phát lại được: workflow code không đổi thứ tự lệnh của các
+lần chạy chỉ có `tool` và `loop`.
+
+**Chưa có: node `tool` chạy thật.** `run_tool_node` vẫn là chỗ giữ của GĐ 4 — mọi test ở
+trên dùng tool giả. Cho tới khi GĐ 5 xong, không workflow nào gọi được Slack hay Notion
+thật, kể cả workflow chỉ có `tool`.
+
 **GĐ 7 — Quan sát và đóng sổ**
 
 18. `feat(api): a workflow run leaves an execution trace` — chạy lại kịch bản 3 dưới

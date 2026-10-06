@@ -4,17 +4,15 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Set
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final
 
 from app.core.errors import WorkflowDefinitionError
 from app.domains.workflow.domain.ir import (
     BodyNode,
-    ConditionNode,
-    LlmNode,
+    Edge,
     LoopNode,
     Node,
-    TransformNode,
     WorkflowIR,
 )
 from app.domains.workflow.domain.validation import ensure_valid, validate_structure
@@ -22,15 +20,6 @@ from app.domains.workflow.domain.validation import ensure_valid, validate_struct
 _PATH: Final = re.compile(
     r"^(?:(?P<loop>[a-z][a-z0-9_]*)\[(?P<iteration>\d+)\]\.)?(?P<node>[a-z][a-z0-9_]*)$"
 )
-
-
-#: Loại node mà executor bản này chưa chạy được.
-_UNSUPPORTED: Final = (ConditionNode, LlmNode, TransformNode)
-
-
-def unsupported_nodes(ir: WorkflowIR) -> list[str]:
-    """Id các node chưa chạy được, kể cả trong thân loop, theo thứ tự tên."""
-    return sorted(node.id for _, node in ir.walk() if isinstance(node, _UNSUPPORTED))
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +64,8 @@ class Plan:
     #: Node tầng ngoài theo thứ tự topo; hoà thì theo thứ tự khai báo.
     order: tuple[str, ...]
     predecessors: Mapping[str, frozenset[str]]
+    #: Cạnh đi vào từng node, kèm nhánh nếu nguồn là một `condition`.
+    incoming: Mapping[str, tuple[Edge, ...]] = field(default_factory=dict)
 
     def node(self, node_id: str) -> Node:
         for node in self.ir.nodes:
@@ -88,6 +79,19 @@ class Plan:
             node_id
             for node_id in self.order
             if node_id not in settled and self.predecessors[node_id] <= settled
+        )
+
+    def is_cut_off(self, node_id: str, taken: Mapping[str, bool], skipped: Set[str]) -> bool:
+        """Không đường nào còn dẫn tới node này: mọi cạnh vào nó đều đi ra từ một node bị
+        bỏ qua, hoặc từ nhánh mà `condition` nguồn đã không chọn.
+
+        `taken` là kết quả của các `condition` đã chạy. Node không có cạnh vào thì không
+        bao giờ bị cắt."""
+        edges = self.incoming.get(node_id, ())
+        return bool(edges) and all(
+            edge.source in skipped
+            or (edge.branch is not None and taken.get(edge.source) != (edge.branch == "true"))
+            for edge in edges
         )
 
     def iteration_paths(self, loop_id: str, iteration: int) -> tuple[NodePath, ...]:
@@ -127,4 +131,7 @@ def build_plan(ir: WorkflowIR) -> Plan:
         ir=ir,
         order=tuple(order),
         predecessors={node_id: frozenset(sources) for node_id, sources in predecessors.items()},
+        incoming={
+            node.id: tuple(edge for edge in ir.edges if edge.target == node.id) for node in ir.nodes
+        },
     )

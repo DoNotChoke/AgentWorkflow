@@ -15,7 +15,7 @@ import copy
 import json
 import os
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -32,8 +32,10 @@ from temporalio.worker import Worker
 
 from app.core.config import get_settings
 from app.core.db import dispose_engine, init_engine, session_scope
+from app.core.errors import ProviderUnavailableError
 from app.domains.execution.application.service import ExecutionService
 from app.domains.execution.infrastructure.repositories import SqlAlchemyExecutionRepository
+from app.domains.workflow.application.ports import ModelAnswer, Rejected
 from app.domains.workflow.domain.entities import Workflow, WorkflowVersion, fingerprint
 from app.domains.workflow.infrastructure.repositories import SqlAlchemyWorkflowRepository
 from app.domains.workflow.infrastructure.temporal.messages import (
@@ -110,6 +112,42 @@ async def fake_tool(request: RunToolInput) -> dict[str, Any]:
     return _script[request.tool_id](request.input)
 
 
+# ─── Model giả ───────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class Asked:
+    model: str
+    system: str
+    data: dict[str, Any]
+    rejected: tuple[str, ...]
+
+
+Reply = dict[str, Any] | Exception | None
+_asked: list[Asked] = []
+#: Lần lượt từng câu model sẽ trả; hết thì lặp lại câu cuối.
+_replies: list[Reply] = []
+
+
+class FakeModel:
+    """`NodeModel` giả. Mỗi lần được hỏi tốn 100 token vào, 20 token ra."""
+
+    async def answer(
+        self,
+        *,
+        model: str,
+        system: str,
+        data: str,
+        output_schema: Mapping[str, Any],
+        rejected: Sequence[Rejected],
+    ) -> ModelAnswer:
+        _asked.append(Asked(model, system, json.loads(data), tuple(r.reason for r in rejected)))
+        reply = _replies.pop(0) if len(_replies) > 1 else _replies[0]
+        if isinstance(reply, Exception):
+            raise reply
+        return ModelAnswer(output=reply, input_tokens=100, output_tokens=20)
+
+
 # ─── Hạ tầng ─────────────────────────────────────────────────────────────────
 
 
@@ -126,6 +164,8 @@ async def engine() -> AsyncIterator[None]:
     _calls.clear()
     _script.clear()
     _script.update(DEFAULT_SCRIPT)
+    _asked.clear()
+    _replies.clear()
     yield
 
     async with session_scope() as session:
@@ -150,6 +190,8 @@ class Outcome:
     nodes: dict[str, str]
     error: WorkflowFailureError | None
     history_json: str = field(default="", repr=False)
+    #: Token model đã dùng, theo node.
+    usage: dict[str, Mapping[str, int]] = field(default_factory=dict)
 
 
 @dataclass
@@ -204,6 +246,7 @@ class Harness:
             nodes={n.node_path: str(n.status) for n in progress.nodes},
             error=error,
             history_json=history.to_json(),
+            usage={n.node_path: n.usage for n in progress.nodes if n.usage is not None},
         )
 
 
@@ -222,8 +265,9 @@ async def harness() -> AsyncIterator[Harness]:
         processing=f"{prefix}-processing",
         integration_read=f"{prefix}-read",
         integration_write=f"{prefix}-write",
+        ai=f"{prefix}-ai",
     )
-    executor = build_executor_activities()
+    executor = build_executor_activities(models=FakeModel())
     workers = [
         Worker(client, task_queue=f"{prefix}-workflow", workflows=[GenericWorkflowExecutor]),
         Worker(
@@ -234,8 +278,10 @@ async def harness() -> AsyncIterator[Harness]:
                 executor.seed_nodes,
                 executor.record_node,
                 executor.record_execution,
+                executor.run_transform_node,
             ],
         ),
+        Worker(client, task_queue=queues.ai, activities=[executor.run_llm_node]),
         Worker(client, task_queue=queues.integration_read, activities=[fake_tool]),
         Worker(client, task_queue=queues.integration_write, activities=[fake_tool]),
     ]
@@ -398,13 +444,296 @@ async def test_input_sai_schema_thi_trigger_hong_va_khong_goi_tool(harness: Harn
     assert _calls == []
 
 
-async def test_node_chua_ho_tro_thi_hong_truoc_khi_goi_tool_nao(harness: Harness) -> None:
+# ─── transform và condition ──────────────────────────────────────────────────
+
+
+def _lich_su(count: int) -> Behaviour:
+    return lambda _: {"messages": [{"ts": str(n), "text": f"tin {n}"} for n in range(count)]}
+
+
+async def test_dieu_kien_dung_thi_nhanh_true_chay(harness: Harness) -> None:
+    """Kịch bản 5: đếm tin nhắn bằng code, hơn 5 tin thì mới đăng."""
+    _script["slack.get_channel_history"] = _lich_su(6)
+
     outcome = await harness.run(_example("kb5-re-nhanh"), {})
+
+    assert outcome.status == "succeeded"
+    assert outcome.nodes == {
+        "t": "succeeded",
+        "lich_su": "succeeded",
+        "dem": "succeeded",
+        "du_nhieu": "succeeded",
+        "dang": "succeeded",
+    }
+    assert _tools() == ["slack.get_channel_history", "slack.post_message"]
+
+
+async def test_dieu_kien_sai_thi_node_sau_no_bi_bo_qua_va_lan_chay_van_xong(
+    harness: Harness,
+) -> None:
+    _script["slack.get_channel_history"] = _lich_su(3)
+
+    outcome = await harness.run(_example("kb5-re-nhanh"), {})
+
+    assert outcome.status == "succeeded"
+    assert outcome.nodes["du_nhieu"] == "succeeded"
+    assert outcome.nodes["dang"] == "skipped"
+    assert _tools() == ["slack.get_channel_history"]
+
+
+async def test_bo_qua_lan_xuong_moi_node_chi_toi_duoc_qua_nhanh_do(harness: Harness) -> None:
+    ir = copy.deepcopy(_example("kb5-re-nhanh"))
+    ir["nodes"].append(
+        {
+            "id": "dang_tiep",
+            "type": "tool",
+            "tool_id": "slack.post_message",
+            "tool_version": "1.0",
+            "input": {"channel": {"const": "C0VIDU0001"}, "text": {"const": "Thêm một tin."}},
+        }
+    )
+    ir["edges"].append({"from": "dang", "to": "dang_tiep"})
+    _script["slack.get_channel_history"] = _lich_su(1)
+
+    outcome = await harness.run(ir, {})
+
+    assert outcome.status == "succeeded"
+    assert (outcome.nodes["dang"], outcome.nodes["dang_tiep"]) == ("skipped", "skipped")
+    assert _tools() == ["slack.get_channel_history"]
+
+
+async def test_ket_qua_cua_transform_di_vao_node_sau(harness: Harness) -> None:
+    ir = copy.deepcopy(_example("kb5-re-nhanh"))
+    dem = next(node for node in ir["nodes"] if node["id"] == "dem")
+    dem["code"] = "return f\"Kênh có {len(args['messages'])} tin nhắn.\""
+    dem["output_schema"] = {"type": "string"}
+    ir["nodes"] = [node for node in ir["nodes"] if node["id"] != "du_nhieu"]
+    ir["edges"] = [
+        {"from": "t", "to": "lich_su"},
+        {"from": "lich_su", "to": "dem"},
+        {"from": "dem", "to": "dang"},
+    ]
+    dang = next(node for node in ir["nodes"] if node["id"] == "dang")
+    dang["input"]["text"] = {"from_node": {"node": "dem", "path": []}}
+    _script["slack.get_channel_history"] = _lich_su(4)
+
+    outcome = await harness.run(ir, {})
+
+    assert outcome.status == "succeeded"
+    assert _calls[-1].input["text"] == "Kênh có 4 tin nhắn."
+
+
+async def test_code_hong_thi_node_transform_hong_va_node_sau_van_pending(harness: Harness) -> None:
+    ir = copy.deepcopy(_example("kb5-re-nhanh"))
+    next(node for node in ir["nodes"] if node["id"] == "dem")["code"] = "return args['khong_co']"
+    _script["slack.get_channel_history"] = _lich_su(6)
+
+    outcome = await harness.run(ir, {})
+
     assert outcome.status == "failed"
-    assert outcome.failure[0] == "WorkflowDefinitionError"
-    assert "du_nhieu" in (outcome.failure[1] or "")
-    assert outcome.nodes == {}
-    assert _calls == []
+    assert outcome.failure[0] == "ValidationError"
+    assert (outcome.nodes["dem"], outcome.nodes["du_nhieu"], outcome.nodes["dang"]) == (
+        "failed",
+        "pending",
+        "pending",
+    )
+
+
+async def test_transform_tra_sai_kieu_da_khai_thi_hong(harness: Harness) -> None:
+    ir = copy.deepcopy(_example("kb5-re-nhanh"))
+    next(node for node in ir["nodes"] if node["id"] == "dem")["code"] = "return 'sáu'"
+    _script["slack.get_channel_history"] = _lich_su(6)
+
+    outcome = await harness.run(ir, {})
+
+    assert outcome.status == "failed"
+    assert outcome.failure[0] == "WorkflowExecutionError"
+    assert "không khớp kiểu đã khai" in (outcome.failure[1] or "")
+    assert outcome.nodes["dem"] == "failed"
+
+
+# ─── llm ─────────────────────────────────────────────────────────────────────
+
+TOM_TAT = {
+    "schema_version": "2.0",
+    "nodes": [
+        {
+            "id": "t",
+            "type": "trigger",
+            "trigger": "manual",
+            "input_schema": {"type": "object", "properties": {}},
+        },
+        {
+            "id": "kenh",
+            "type": "tool",
+            "tool_id": "slack.list_channels",
+            "tool_version": "1.0",
+            "input": {},
+        },
+        {
+            "id": "tom_tat",
+            "type": "llm",
+            "model": "gpt-6.1-sol",
+            "instructions": "Viết một câu nêu tên các kênh trong `kenh`.",
+            "input": {"kenh": {"from_node": {"node": "kenh", "path": ["channels"]}}},
+            "output_schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["text"],
+                "properties": {"text": {"type": "string", "minLength": 1}},
+            },
+        },
+        {
+            "id": "dang",
+            "type": "tool",
+            "tool_id": "slack.post_message",
+            "tool_version": "1.0",
+            "input": {
+                "channel": {"const": "C0VIDU0001"},
+                "text": {"from_node": {"node": "tom_tat", "path": ["text"]}},
+            },
+        },
+    ],
+    "edges": [
+        {"from": "t", "to": "kenh"},
+        {"from": "kenh", "to": "tom_tat"},
+        {"from": "tom_tat", "to": "dang"},
+    ],
+}
+
+
+async def test_node_llm_doc_du_lieu_cua_node_truoc_va_nuoi_node_sau(harness: Harness) -> None:
+    _replies.append({"text": "Có hai kênh: general và test."})
+
+    outcome = await harness.run(copy.deepcopy(TOM_TAT), {})
+
+    assert outcome.status == "succeeded"
+    (asked,) = _asked
+    assert asked.model == "gpt-6.1-sol"
+    assert asked.data == {"kenh": KENH["channels"]}
+    assert "Viết một câu nêu tên các kênh trong `kenh`." in asked.system
+    assert _calls[-1].input["text"] == "Có hai kênh: general và test."
+    assert outcome.usage == {
+        "tom_tat": {"input_tokens": 100, "output_tokens": 20, "model_calls": 1}
+    }
+
+
+async def test_ket_qua_sai_kieu_thi_hoi_lai_model_va_token_duoc_cong_don(harness: Harness) -> None:
+    _replies.extend([{"text": 5}, {"text": "Có hai kênh."}])
+
+    outcome = await harness.run(copy.deepcopy(TOM_TAT), {})
+
+    assert outcome.status == "succeeded"
+    assert len(_asked) == 2
+    assert "Kết quả sai kiểu ở text" in _asked[1].rejected[0]
+    assert outcome.usage["tom_tat"] == {
+        "input_tokens": 200,
+        "output_tokens": 40,
+        "model_calls": 2,
+    }
+
+
+async def test_sai_kieu_mai_thi_node_llm_hong_sau_ba_lan_hoi(harness: Harness) -> None:
+    _replies.append({"khac": "không đúng trường"})
+
+    outcome = await harness.run(copy.deepcopy(TOM_TAT), {})
+
+    assert outcome.status == "failed"
+    assert outcome.failure[0] == "WorkflowExecutionError"
+    assert "sau 3 lần" in (outcome.failure[1] or "")
+    assert (outcome.nodes["tom_tat"], outcome.nodes["dang"]) == ("failed", "pending")
+    # Sai kiểu là lỗi không thử lại ở tầng Temporal: ba lần hỏi, không phải chín.
+    assert len(_asked) == 3
+    assert _tools() == ["slack.list_channels"]
+
+
+async def test_provider_hong_tam_thoi_thi_temporal_thu_lai_node_llm(harness: Harness) -> None:
+    _replies.extend([ProviderUnavailableError("Provider đang quá tải."), {"text": "Có hai kênh."}])
+
+    outcome = await harness.run(copy.deepcopy(TOM_TAT), {})
+
+    assert outcome.status == "succeeded"
+    assert len(_asked) == 2
+    assert _asked[1].rejected == ()
+
+
+async def test_than_loop_chay_tool_llm_va_transform_cho_tung_phan_tu(harness: Harness) -> None:
+    """Hình dạng của kb8: mỗi phần tử đọc, soạn bằng model, gọt bằng code, rồi đăng."""
+    ir = {
+        "schema_version": "2.1",
+        "nodes": [
+            TOM_TAT["nodes"][0],
+            {
+                "id": "khoi",
+                "type": "tool",
+                "tool_id": "notion.get_block_children",
+                "tool_version": "1.0",
+                "input": {"block_id": {"const": "trang_goc"}},
+            },
+            {
+                "id": "moi_trang",
+                "type": "loop",
+                "over": {"from_node": {"node": "khoi", "path": ["results"]}},
+                "filter": {"type": {"const": "child_page"}},
+                "max_items": 10,
+                "collect": "dang",
+                "body": [
+                    {
+                        "id": "doc",
+                        "type": "tool",
+                        "tool_id": "notion.get_page",
+                        "tool_version": "1.0",
+                        "input": {"page_id": {"from_item": ["id"]}},
+                    },
+                    {
+                        "id": "soan",
+                        "type": "llm",
+                        "model": "gpt-6.1-sol",
+                        "instructions": "Viết một dòng giới thiệu trang trong `trang`.",
+                        "input": {"trang": {"from_node": {"node": "doc", "path": []}}},
+                        "output_schema": {
+                            "type": "object",
+                            "required": ["text"],
+                            "properties": {"text": {"type": "string"}},
+                        },
+                    },
+                    {
+                        "id": "gon",
+                        "type": "transform",
+                        "code": "return args['text'].strip().upper()",
+                        "args": {"text": {"from_node": {"node": "soan", "path": ["text"]}}},
+                        "output_schema": {"type": "string"},
+                    },
+                    {
+                        "id": "dang",
+                        "type": "tool",
+                        "tool_id": "slack.post_message",
+                        "tool_version": "1.0",
+                        "input": {
+                            "channel": {"const": "C0VIDU0001"},
+                            "text": {"from_node": {"node": "gon", "path": []}},
+                        },
+                    },
+                ],
+            },
+        ],
+        "edges": [{"from": "t", "to": "khoi"}, {"from": "khoi", "to": "moi_trang"}],
+    }
+    _replies.extend([{"text": " trang một "}, {"text": "trang hai"}, {"text": "trang ba"}])
+
+    outcome = await harness.run(ir, {})
+
+    assert outcome.status == "succeeded"
+    assert [asked.data["trang"]["id"] for asked in _asked] == ["p1", "p2", "p3"]
+    posted = [call.input["text"] for call in _calls if call.tool_id == "slack.post_message"]
+    assert posted == ["TRANG MỘT", "TRANG HAI", "TRANG BA"]
+    assert {path: status for path, status in outcome.nodes.items() if "[1]" in path} == {
+        "moi_trang[1].doc": "succeeded",
+        "moi_trang[1].soan": "succeeded",
+        "moi_trang[1].gon": "succeeded",
+        "moi_trang[1].dang": "succeeded",
+    }
+    assert sorted(outcome.usage) == ["moi_trang[0].soan", "moi_trang[1].soan", "moi_trang[2].soan"]
 
 
 async def test_lich_su_vua_chay_replay_lai_duoc(harness: Harness) -> None:

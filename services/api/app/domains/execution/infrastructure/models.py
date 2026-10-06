@@ -81,6 +81,7 @@ class NodeExecutionModel(Base):
     attempt: Mapped[int] = mapped_column(Integer, nullable=False)
     error_category: Mapped[str | None] = mapped_column(String(64))
     error_message: Mapped[str | None] = mapped_column(Text)
+    usage: Mapped[dict[str, int] | None] = mapped_column(JSONB)
 
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

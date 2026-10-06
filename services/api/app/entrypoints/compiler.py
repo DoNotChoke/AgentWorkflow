@@ -1,13 +1,4 @@
-"""HTTP của Workflow Compiler, mount vào Agent Runtime (ADR-0015).
-
-Ba thao tác có gọi model trả về SSE: `status` trong lúc chờ, rồi `session` mang phiên
-sau thao tác, hoặc `error`. Bốn thao tác còn lại không gọi model và trả JSON.
-
-Router được dựng bằng `create_router` thay vì import thẳng dependency của
-`entrypoints/agent.py`: module đó import module này. Vì dependency được khai trong thân
-hàm, module này không dùng `from __future__ import annotations`: FastAPI phải thấy kiểu
-thật của tham số, không phải một chuỗi trỏ tới tên cục bộ.
-"""
+"""HTTP của Workflow Compiler, mount vào Agent Runtime"""
 
 import asyncio
 import json
@@ -262,4 +253,3 @@ def create_router(
         return _response(await service.abandon(**on(ctx, session_id)))
 
     return router
-

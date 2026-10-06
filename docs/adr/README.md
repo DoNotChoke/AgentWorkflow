@@ -23,6 +23,7 @@ Những thay đổi thông thường không cần ADR. Việc lạm dụng ADR l
 | [0006](0006-payload-cua-execution-trace.md) | Payload của Execution Trace: khoá theo nội dung, hai tầng lưu, trần cứng | Accepted |
 | [0007](0007-so-idempotency-co-lease-va-trang-thai-khong-ro.md) | Sổ idempotency có lease, và `unknown` là một trạng thái riêng | Accepted |
 | [0008](0008-workflow-compiler-la-hybrid.md) | Workflow Compiler là hybrid: LLM quyết định tổng quát hoá, code tất định dựng IR | Accepted |
+| [0011](0011-worker-goi-model-truc-tiep-cho-node-llm.md) | Worker nạp Model Gateway và gọi provider model trực tiếp cho node `llm`; không đi vòng qua Agent Runtime | Accepted |
 | [0014](0014-connection-gan-theo-lan-chay.md) | Workflow không lưu connection; mỗi lần chạy chọn connection cho từng node | Accepted |
 | [0015](0015-compiler-xac-nhan-y-do-truoc-khi-dung-workflow.md) | Compiler xác nhận ý đồ với người dùng trước khi dựng workflow; ý đồ quyết định bước nào ở lại (mở rộng ADR-0008) | Accepted |
 | [0016](0016-llm-bien-dich-duoc-viet-node-transform.md) | LLM biên dịch được viết node `transform`; code phải tái tạo được lần chạy mẫu | Accepted |

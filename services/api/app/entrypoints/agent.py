@@ -12,8 +12,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Annotated, Any
 
-import anthropic
-import openai
 from fastapi import APIRouter, Depends, FastAPI, Header, Path, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,12 +38,9 @@ from app.domains.agent.application.ports import (
     ToolCallContext,
 )
 from app.domains.agent.application.service import AgentRuntime, TurnResult
-from app.domains.agent.infrastructure.anthropic_client import AnthropicModelClient
 from app.domains.agent.infrastructure.connection_client import ConnectionResolverClient
+from app.domains.agent.infrastructure.gateway_factory import build_model_gateway
 from app.domains.agent.infrastructure.integration_client import IntegrationClient
-from app.domains.agent.infrastructure.model_catalog import ModelProvider
-from app.domains.agent.infrastructure.model_gateway import ModelGateway
-from app.domains.agent.infrastructure.openai_client import OpenAIModelClient
 from app.domains.agent.infrastructure.repositories import (
     SqlAlchemyAgentRepository,
     SqlAlchemyConnectionSelectionRepository,
@@ -193,21 +188,7 @@ def get_admin_service(
 
 
 def get_model_client(settings: Annotated[Settings, Depends(get_settings)]) -> ModelClient:
-    """Chỉ ghi nhận provider nào có API key — thiếu key thì `ModelGateway` báo
-    `UnconfiguredProviderError` rõ ràng thay vì một SDK lỗi khó hiểu lúc gọi."""
-    clients: dict[ModelProvider, ModelClient] = {}
-
-    anthropic_key = settings.anthropic_api_key.get_secret_value()
-    if anthropic_key:
-        clients[ModelProvider.ANTHROPIC] = AnthropicModelClient(
-            anthropic.AsyncAnthropic(api_key=anthropic_key)
-        )
-
-    openai_key = settings.openai_api_key.get_secret_value()
-    if openai_key:
-        clients[ModelProvider.OPENAI] = OpenAIModelClient(openai.AsyncOpenAI(api_key=openai_key))
-
-    return ModelGateway(clients)
+    return build_model_gateway(settings)
 
 
 def get_integration_client(
