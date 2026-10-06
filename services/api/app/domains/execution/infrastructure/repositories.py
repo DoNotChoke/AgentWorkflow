@@ -122,6 +122,14 @@ class SqlAlchemyExecutionRepository:
         row = await self._session.scalar(statement)
         return None if row is None else _to_execution(row)
 
+    async def find(self, execution_id: str) -> Execution | None:
+        """Không lọc theo tenant: người gọi là Gateway đang phân giải một token của lần
+        chạy, và tenant chính là thứ nó đọc ra từ hàng này (ADR-0010)."""
+        row = await self._session.scalar(
+            select(ExecutionModel).where(ExecutionModel.id == execution_id)
+        )
+        return None if row is None else _to_execution(row)
+
     async def update(self, execution: Execution) -> None:
         failure = execution.failure
         await self._session.execute(

@@ -16,6 +16,7 @@ from app.domains.workflow.application.ports import (
     NodeModel,
     NodeRef,
     ToolCatalogReader,
+    ToolInvoker,
     TransformRunner,
 )
 from app.domains.workflow.application.runtime import LoadedPlan, PlanLoader
@@ -49,7 +50,7 @@ def _ref(node: NodeRefMessage) -> NodeRef:
 
 class ExecutorActivities:
     """Activity cần dữ liệu và bản ghi — chạy ở queue `data-processing`. Riêng
-    `run_llm_node` chạy ở queue `ai-tasks`."""
+    `run_llm_node` chạy ở queue `ai-tasks`, `run_tool_node` ở hai queue integration."""
 
     def __init__(
         self,
@@ -58,12 +59,14 @@ class ExecutorActivities:
         catalog: ToolCatalogReader,
         runner: TransformRunner,
         models: NodeModel,
+        tools: ToolInvoker,
         llm_max_attempts: int = 3,
     ) -> None:
         self._recorder = recorder
         self._catalog = catalog
         self._runner = runner
         self._models = models
+        self._tools = tools
         self._llm_max_attempts = llm_max_attempts
 
     @activity.defn(name=LOAD_PLAN)
@@ -102,6 +105,20 @@ class ExecutorActivities:
                 error_message=request.error_message,
                 usage=request.usage,
             )
+
+    @activity.defn(name=RUN_TOOL_NODE)
+    async def run_tool_node(self, request: RunToolInput) -> dict[str, Any]:
+        """Chạy ở queue `integration-read` hoặc `integration-write`, theo side effect của tool."""
+        with as_temporal_errors():
+            output = await self._tools.invoke(
+                execution_id=request.execution_id,
+                node_id=request.node_id,
+                tool_id=request.tool_id,
+                tool_version=request.tool_version,
+                tool_input=request.input,
+                idempotency_key=request.idempotency_key,
+            )
+            return dict(output)
 
     @activity.defn(name=RUN_TRANSFORM_NODE)
     async def run_transform_node(self, request: RunTransformInput) -> dict[str, Any]:
@@ -154,13 +171,3 @@ class ExecutorActivities:
                 error_category=request.error_category,
                 error_message=request.error_message,
             )
-
-
-@activity.defn(name=RUN_TOOL_NODE)
-async def run_tool_node(request: RunToolInput) -> dict[str, Any]:
-    """Chỗ giữ cho GĐ 5, khi worker gọi Integration Gateway qua HTTP."""
-    with as_temporal_errors():
-        raise WorkflowExecutionError(
-            f"Node tool chưa chạy được ở bản này ({request.tool_id}).",
-            details={"node_path": request.node_path, "tool_id": request.tool_id},
-        )

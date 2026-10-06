@@ -23,7 +23,9 @@ from app.domains.connection.infrastructure.repositories import (
     SqlAlchemyConnectionRepository,
 )
 from app.domains.execution.application.ports import RunnableVersion as ExecutionRunnable
+from app.domains.execution.infrastructure.repositories import SqlAlchemyExecutionRepository
 from app.domains.identity.infrastructure.repositories import SqlAlchemyUserRepository
+from app.domains.integration.application.ports import RunIdentity
 from app.domains.integration.infrastructure.catalog_view import tool_rows
 from app.domains.tenant.application.ports import UserDirectory, UserProfile
 from app.domains.tenant.application.service import TenantService
@@ -266,6 +268,30 @@ def build_workflow_connection_reader(session: AsyncSession) -> WorkflowConnectio
 def build_workflow_tool_catalog() -> RowToolCatalog:
     """Catalog tool cho validator của domain `workflow`."""
     return RowToolCatalog(tool_rows())
+
+
+class ExecutionRunLookup:
+    """`RunLookup` của Integration, bằng bản ghi lần chạy của domain `execution`."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def find(self, execution_id: str) -> RunIdentity | None:
+        found = await SqlAlchemyExecutionRepository(self._session).find(execution_id)
+        if found is None:
+            return None
+        return RunIdentity(
+            execution_id=found.id,
+            tenant_id=found.tenant_id,
+            workspace_id=found.workspace_id,
+            initiated_by=found.initiated_by,
+            is_running=str(found.status) == "running",
+            connections=dict(found.connection_bindings),
+        )
+
+
+def build_run_lookup(session: AsyncSession) -> ExecutionRunLookup:
+    return ExecutionRunLookup(session)
 
 
 def build_integration_tenant_guard(session: AsyncSession) -> TenantGuard:

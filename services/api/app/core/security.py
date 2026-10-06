@@ -156,6 +156,56 @@ def decode_access_token(settings: Settings, token: str) -> AccessTokenClaims:
     )
 
 
+#: Token của một lần chạy workflow. Loại riêng và khoá ký riêng: `decode_access_token`
+#: không bao giờ nhận nó, và nó không bao giờ mang danh một người.
+_TOKEN_TYPE_RUN: Final = "run"  # noqa: S105 — nhãn phân loại token, không phải bí mật
+
+
+def issue_run_token(settings: Settings, *, execution_id: str) -> str:
+    """Ký token cho một lời gọi tool của lần chạy `execution_id`."""
+    secret = settings.workflow_token_secret.get_secret_value()
+    if not secret:
+        raise RuntimeError("Chưa đặt AW_WORKFLOW_TOKEN_SECRET: worker không gọi được tool.")
+    now = datetime.now(tz=UTC)
+    payload: dict[str, Any] = {
+        "sub": execution_id,
+        "jti": f"jti_{uuid.uuid4().hex}",
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(seconds=settings.workflow_token_ttl_seconds)).timestamp()),
+        "iss": settings.jwt_issuer,
+        "typ": _TOKEN_TYPE_RUN,
+        "pk": "workflow",
+    }
+    return jwt.encode(payload, secret, algorithm=_require_supported_algorithm(settings))
+
+
+def decode_run_token(settings: Settings, token: str) -> AccessTokenClaims:
+    """Xác minh token của một lần chạy. `subject` là `execution_id`."""
+    secret = settings.workflow_token_secret.get_secret_value()
+    if not secret:
+        raise AuthenticationError("Token không hợp lệ.")
+    try:
+        payload = jwt.decode(
+            token,
+            secret,
+            algorithms=[_require_supported_algorithm(settings)],
+            issuer=settings.jwt_issuer,
+            leeway=_CLOCK_SKEW_LEEWAY_SECONDS,
+            options={"require": ["sub", "jti", "iat", "exp", "iss"]},
+        )
+    except jwt.PyJWTError as exc:
+        raise AuthenticationError("Token không hợp lệ.", cause=exc) from exc
+    if payload.get("typ") != _TOKEN_TYPE_RUN or payload.get("pk") != "workflow":
+        raise AuthenticationError("Token không hợp lệ.")
+    return AccessTokenClaims(
+        subject=str(payload["sub"]),
+        token_id=str(payload["jti"]),
+        issued_at=datetime.fromtimestamp(payload["iat"], tz=UTC),
+        expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),
+        principal_kind="workflow",
+    )
+
+
 def _require_supported_algorithm(settings: Settings) -> str:
     if settings.jwt_algorithm not in _ALLOWED_ALGORITHMS:
         raise RuntimeError(

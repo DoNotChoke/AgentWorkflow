@@ -98,6 +98,10 @@ class RunToolInput:
     tool_id: str
     tool_version: str
     input: dict[str, Any] = field(default_factory=dict)
+    #: Id của node trong IR: Gateway tra connection của lần chạy theo nó.
+    node_id: str = ""
+    #: Có với tool ghi ra ngoài. Mang `node_path`, tức cả chỉ số lượt của loop (ADR-0012).
+    idempotency_key: str | None = None
 
 
 @dataclass(frozen=True)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
 
@@ -239,6 +240,27 @@ class InvocationContext(Protocol):
 
     @property
     def roles(self) -> frozenset[str]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class RunIdentity:
+    """Một lần chạy workflow, đủ để Gateway biết nó gọi tool thay ai và bằng connection nào."""
+
+    execution_id: str
+    tenant_id: str
+    workspace_id: str
+    #: Người khởi chạy. Connection riêng chỉ dùng được khi nó là của người này.
+    initiated_by: str
+    is_running: bool
+    #: Node tool → connection đã chọn lúc tạo lần chạy. Bất biến.
+    connections: Mapping[str, str]
+
+
+class RunLookup(Protocol):
+    """Đọc bản ghi lần chạy theo id trong token. Hiện thực ở `entrypoints`: bản ghi thuộc
+    domain `execution`."""
+
+    async def find(self, execution_id: str) -> RunIdentity | None: ...
 
 
 class TenantGuard(Protocol):

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from app.core.config import Settings
-from app.domains.workflow.infrastructure.temporal.activities import run_tool_node
 from app.domains.workflow.infrastructure.temporal.workflow import GenericWorkflowExecutor
 from app.entrypoints.worker import worker_specs
 from app.entrypoints.worker_wiring import build_executor_activities
@@ -28,8 +27,8 @@ def test_moi_queue_chay_dung_workflow_va_activity_cua_no() -> None:
                 EXECUTOR.run_transform_node,
             ),
         ),
-        "integration-read": ((), (run_tool_node,)),
-        "integration-write": ((), (run_tool_node,)),
+        "integration-read": ((), (EXECUTOR.run_tool_node,)),
+        "integration-write": ((), (EXECUTOR.run_tool_node,)),
         "ai-tasks": ((), (EXECUTOR.run_llm_node,)),
     }
 

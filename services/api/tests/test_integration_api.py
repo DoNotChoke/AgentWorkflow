@@ -21,6 +21,7 @@ from conftest import InMemoryPayloadStore, infra_unavailable
 
 os.environ.setdefault("AW_JWT_SECRET", "test-secret-khong-dung-that-nhung-du-dai-32")
 os.environ.setdefault("AW_KMS_LOCAL_MASTER_KEY", "test-master-key-khong-dung-that")
+os.environ.setdefault("AW_WORKFLOW_TOKEN_SECRET", "khoa-ky-token-lan-chay-chi-de-test-32b")
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
@@ -707,3 +708,206 @@ def test_khong_khai_caller_thi_khong_ghi_trace_nao_nhung_van_thanh_cong(
 
     assert reply.status_code == 200, reply.text
     assert an.get(f"/v1/traces/{trace_id}").json()["steps"] == []
+
+
+# ─── Một lần chạy workflow gọi tool bằng danh tính của chính nó (ADR-0010) ───
+
+
+async def _seed_run(
+    org: str, workspace: str, initiated_by: str, bindings: dict[str, str], *, running: bool = True
+) -> str:
+    from datetime import UTC, datetime
+
+    from app.domains.execution.application.service import ExecutionService
+    from app.domains.execution.infrastructure.repositories import SqlAlchemyExecutionRepository
+    from app.domains.workflow.domain.entities import Workflow, WorkflowVersion, fingerprint
+    from app.domains.workflow.infrastructure.repositories import SqlAlchemyWorkflowRepository
+
+    now = datetime.now(UTC)
+    ir: dict[str, Any] = {"schema_version": "2.0", "nodes": [], "edges": []}
+    workflow = Workflow(
+        id=f"wf_{uuid.uuid4().hex}",
+        tenant_id=org,
+        workspace_id=workspace,
+        name="gọi tool",
+        created_by=initiated_by,
+        created_at=now,
+        updated_at=now,
+    )
+    version = WorkflowVersion(
+        id=f"wfv_{uuid.uuid4().hex}",
+        workflow_id=workflow.id,
+        tenant_id=org,
+        number=1,
+        ir=ir,
+        ir_sha256=fingerprint(ir),
+        published_at=now,
+        published_by=initiated_by,
+    )
+    async with session_scope() as session:
+        repository = SqlAlchemyWorkflowRepository(session)
+        await repository.add(workflow)
+        await repository.add_version(version)
+        service = ExecutionService(repository=SqlAlchemyExecutionRepository(session))
+        execution = await service.create(
+            tenant_id=org,
+            workspace_id=workspace,
+            workflow_id=workflow.id,
+            workflow_version_id=version.id,
+            trigger_type="manual",
+            inputs={},
+            initiated_by=initiated_by,
+            at=now,
+            connection_bindings=bindings,
+        )
+        if running:
+            await service.mark_running(tenant_id=org, execution_id=execution.id, at=now)
+    return execution.id
+
+
+def seed_run(client: TestClient, *args: Any, **kwargs: Any) -> str:
+    assert client.portal is not None
+    return str(client.portal.call(lambda: _seed_run(*args, **kwargs)))
+
+
+def _as_run(client: TestClient, execution_id: str, tool: str, **body: Any) -> Any:
+    from app.core.config import get_settings
+    from app.core.security import issue_run_token
+
+    token = issue_run_token(get_settings(), execution_id=execution_id)
+    return client.post(
+        f"{TOOLS}/{tool}/invoke", headers={"authorization": f"Bearer {token}"}, json=body
+    )
+
+
+def test_lan_chay_goi_tool_bang_connection_da_chon_cho_node(
+    client: TestClient, slack: FakeSlack
+) -> None:
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    connection = seed(client, _user_id(an), org, workspace, "workspace")
+    run = seed_run(client, org, workspace, _user_id(an), {"kenh": connection})
+    slack.next(json={"ok": True, "channels": [{"id": "C1", "name": "general"}]})
+
+    reply = _as_run(client, run, "slack.list_channels", input={}, caller={"node_id": "kenh"})
+
+    assert reply.status_code == 200, reply.text
+    assert reply.json()["output"]["channels"] == [{"id": "C1", "name": "general"}]
+    assert slack.requests[0].headers["authorization"] == "Bearer xoxb-token-that"
+
+
+def test_worker_khong_chon_duoc_connection_khac(client: TestClient, slack: FakeSlack) -> None:
+    """`connection_id` trong thân request bị bỏ qua: connection là thứ người chạy đã chọn."""
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    da_chon = seed(client, _user_id(an), org, workspace, "workspace")
+    run = seed_run(client, org, workspace, _user_id(an), {"kenh": da_chon})
+
+    khong_co_binding = _as_run(
+        client, run, "slack.list_channels", input={}, caller={"node_id": "node_khac"}
+    )
+    assert khong_co_binding.status_code == 403
+
+    slack.next(json={"ok": True, "channels": []})
+    khai_connection_la = _as_run(
+        client,
+        run,
+        "slack.list_channels",
+        connection_id="conn_khong_co_that",
+        input={},
+        caller={"node_id": "kenh"},
+    )
+    assert khai_connection_la.status_code == 200, khai_connection_la.text
+    assert len(slack.requests) == 1
+
+
+def test_lan_chay_da_ket_thuc_hoac_chua_bat_dau_thi_token_vo_dung(
+    client: TestClient, slack: FakeSlack
+) -> None:
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    connection = seed(client, _user_id(an), org, workspace, "workspace")
+    chua_chay = seed_run(client, org, workspace, _user_id(an), {"kenh": connection}, running=False)
+
+    reply = _as_run(client, chua_chay, "slack.list_channels", input={}, caller={"node_id": "kenh"})
+    khong_ton_tai = _as_run(
+        client, "exe_khong_co", "slack.list_channels", input={}, caller={"node_id": "kenh"}
+    )
+
+    assert (reply.status_code, khong_ton_tai.status_code) == (401, 401)
+    assert slack.requests == []
+
+
+def test_token_lan_chay_khong_vao_duoc_endpoint_cua_nguoi_dung(client: TestClient) -> None:
+    from app.core.config import get_settings
+    from app.core.security import issue_run_token
+
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    run = seed_run(client, org, workspace, _user_id(an), {})
+    token = issue_run_token(get_settings(), execution_id=run)
+
+    for path in ("/v1/organizations", "/v1/auth/me", "/v1/workflows"):
+        reply = client.get(path, headers={"authorization": f"Bearer {token}"})
+        assert reply.status_code == 401, path
+
+
+def test_khoa_ky_cua_nguoi_dung_khong_ky_duoc_token_lan_chay(client: TestClient) -> None:
+    """Và ngược lại: mỗi khoá chỉ ký được đúng loại token của nó."""
+    from app.core.config import get_settings
+    from app.core.security import issue_access_token
+
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    run = seed_run(client, org, workspace, _user_id(an), {})
+    gia, _ = issue_access_token(get_settings(), subject=run, principal_kind="workflow")
+
+    reply = client.post(
+        f"{TOOLS}/slack.list_channels/invoke",
+        headers={"authorization": f"Bearer {gia}"},
+        json={"input": {}, "caller": {"node_id": "kenh"}},
+    )
+
+    assert reply.status_code == 401
+
+
+def test_lan_chay_dung_duoc_ket_noi_rieng_cua_nguoi_khoi_chay_va_chi_cua_ho(
+    client: TestClient, slack: FakeSlack
+) -> None:
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    cua_an = seed(client, _user_id(an), org, workspace, "private")
+    cua_nguoi_khac = seed(client, "usr_nguoi_khac", org, workspace, "private")
+    run = seed_run(
+        client, org, workspace, _user_id(an), {"cua_minh": cua_an, "cua_nguoi": cua_nguoi_khac}
+    )
+    slack.next(json={"ok": True, "channels": []})
+
+    duoc = _as_run(client, run, "slack.list_channels", input={}, caller={"node_id": "cua_minh"})
+    khong = _as_run(client, run, "slack.list_channels", input={}, caller={"node_id": "cua_nguoi"})
+
+    assert (duoc.status_code, khong.status_code) == (200, 403)
+    assert len(slack.requests) == 1
+
+
+def test_cung_khoa_idempotency_thi_lan_chay_chi_dang_mot_tin(
+    client: TestClient, slack: FakeSlack
+) -> None:
+    """Temporal thử lại một activity: cùng khoá, Slack chỉ bị gọi một lần."""
+    an = Nguoi(client, "An")
+    org, workspace = _tenant_of(an)
+    connection = seed(client, _user_id(an), org, workspace, "workspace")
+    run = seed_run(client, org, workspace, _user_id(an), {"dang": connection})
+    slack.next(json={"ok": True, "channel": "C123", "ts": "1.0"})
+    body = {
+        "input": {"channel": "C123", "text": "xin chào"},
+        "idempotency_key": f"idm_{run}:moi_cau[0].dang:slack.post_message",
+        "caller": {"node_id": "dang"},
+    }
+
+    lan_dau = _as_run(client, run, "slack.post_message", **body)
+    thu_lai = _as_run(client, run, "slack.post_message", **body)
+
+    assert (lan_dau.status_code, thu_lai.status_code) == (200, 200), thu_lai.text
+    assert thu_lai.json()["replayed"] is True
+    assert len(slack.requests) == 1

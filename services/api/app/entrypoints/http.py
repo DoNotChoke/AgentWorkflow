@@ -37,6 +37,7 @@ from app.domains.identity.infrastructure.http import router as identity_router
 from app.domains.integration.infrastructure.http import (
     CREDENTIAL_PROVIDER_FACTORY,
     INTEGRATION_TENANT_GUARD_FACTORY,
+    RUN_LOOKUP_FACTORY,
     TRACE_SINK_FACTORY,
 )
 from app.domains.integration.infrastructure.http import public_router as tool_catalog_router
@@ -62,6 +63,7 @@ from app.entrypoints.wiring import (
     build_execution_run_source,
     build_execution_trace_sink,
     build_integration_tenant_guard,
+    build_run_lookup,
     build_tenant_guard,
     build_user_directory,
     build_workflow_connection_reader,
@@ -132,6 +134,8 @@ def create_app() -> FastAPI:
     # contract 6 cấm `entrypoints/agent.py` chạm tới `wiring` (ADR-0002).
     setattr(app.state, CREDENTIAL_PROVIDER_FACTORY, build_credential_provider)
     setattr(app.state, INTEGRATION_TENANT_GUARD_FACTORY, build_integration_tenant_guard)
+    # Integration ← Execution: một lần chạy workflow gọi tool bằng danh tính của chính nó.
+    setattr(app.state, RUN_LOOKUP_FACTORY, build_run_lookup)
 
     # Trace ← Integration: sink thật ghi TOOL_CALL vào Execution Trace, thay
     # `LoggingToolInvocationSink` của Phase 2 (xem entrypoints/wiring.py).

@@ -25,7 +25,6 @@ from app.domains.execution.application.service import ExecutionService
 from app.domains.execution.infrastructure.repositories import SqlAlchemyExecutionRepository
 from app.domains.workflow.domain.entities import Workflow, WorkflowVersion, fingerprint
 from app.domains.workflow.infrastructure.repositories import SqlAlchemyWorkflowRepository
-from app.domains.workflow.infrastructure.temporal.activities import run_tool_node
 from app.domains.workflow.infrastructure.temporal.messages import (
     LoadPlanInput,
     NodeRefMessage,
@@ -203,10 +202,57 @@ async def test_tenant_khac_khong_ghi_duoc() -> None:
     assert (caught.value.type, caught.value.non_retryable) == ("AuthorizationError", True)
 
 
-async def test_node_tool_chua_chay_duoc_o_ban_nay() -> None:
+class _Invoker:
+    """`ToolInvoker` giả: ghi lại lời gọi, trả output hoặc ném lỗi đã định."""
+
+    def __init__(self, outcome: Any) -> None:
+        self.outcome = outcome
+        self.calls: list[dict[str, Any]] = []
+
+    async def invoke(self, **call: Any) -> Any:
+        self.calls.append(call)
+        if isinstance(self.outcome, Exception):
+            raise self.outcome
+        return self.outcome
+
+
+_REQUEST = RunToolInput(
+    TENANT,
+    "exe_1",
+    "moi_cau[2].dang",
+    "slack.post_message",
+    "1.0",
+    {"text": "xin chào"},
+    node_id="dang",
+    idempotency_key="idm_exe_1:moi_cau[2].dang:slack.post_message",
+)
+
+
+async def test_node_tool_goi_gateway_voi_node_va_khoa_cua_no() -> None:
+    invoker = _Invoker({"message_ts": "1.0"})
+    activities = build_executor_activities(tools=invoker)
+
+    output = await ENV.run(activities.run_tool_node, _REQUEST)
+
+    assert output == {"message_ts": "1.0"}
+    assert invoker.calls == [
+        {
+            "execution_id": "exe_1",
+            "node_id": "dang",
+            "tool_id": "slack.post_message",
+            "tool_version": "1.0",
+            "tool_input": {"text": "xin chào"},
+            "idempotency_key": "idm_exe_1:moi_cau[2].dang:slack.post_message",
+        }
+    ]
+
+
+async def test_loi_cua_gateway_thanh_loi_temporal_mang_dung_hang_loi() -> None:
+    from app.core.errors import OutcomeUnknownError
+
+    activities = build_executor_activities(tools=_Invoker(OutcomeUnknownError("không rõ")))
+
     with pytest.raises(ApplicationError) as caught:
-        await ENV.run(
-            run_tool_node, RunToolInput(TENANT, "exe_1", "dang", "slack.post_message", "1.0")
-        )
-    assert (caught.value.type, caught.value.non_retryable) == ("WorkflowExecutionError", True)
-    assert "chưa chạy được" in caught.value.message
+        await ENV.run(activities.run_tool_node, _REQUEST)
+
+    assert (caught.value.type, caught.value.non_retryable) == ("OutcomeUnknown", True)

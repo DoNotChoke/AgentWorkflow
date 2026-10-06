@@ -1,17 +1,8 @@
-"""Router của Integration Plane.
-
-`POST /internal/v1/tools/{tool_id}/invoke` là **cửa duy nhất** ra Integration
-Gateway, và nó tồn tại vì contract 6 (ADR-0002): `entrypoints/agent.py` không
-được với tới `wiring`, nên Agent Runtime ở Phase 3 buộc phải gọi qua HTTP thay
-vì gọi trong tiến trình. Đây không phải endpoint để thử nghiệm — nó là ranh
-giới tiến trình mà §2.4 dựng nên.
-
-Tiền tố `/internal` chứ không phải `/v1`: đây không phải API sản phẩm, và nó
-không xuất hiện trong `/docs`.
-"""
+"""Router của Integration Plane."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, Path, Request
@@ -19,16 +10,24 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.context import RequestContext, current_context, set_context
+from app.core.context import (
+    Principal,
+    PrincipalKind,
+    RequestContext,
+    current_context,
+    set_context,
+)
 from app.core.db import get_session
-from app.core.errors import AuthorizationError
-from app.core.http_auth import require_user_id, user_principal
+from app.core.errors import AuthenticationError, AuthorizationError, ValidationError
+from app.core.http_auth import require_principal, require_user_id, user_principal
 from app.core.logging import get_logger
 from app.core.redis import enforce_rate_limit, global_key
 from app.domains.integration.application.gateway import IntegrationGateway
 from app.domains.integration.application.policy_engine import PolicyEngine
 from app.domains.integration.application.ports import (
     CredentialProvider,
+    RunIdentity,
+    RunLookup,
     TenantGuard,
     ToolInvocationSink,
 )
@@ -52,15 +51,12 @@ router = APIRouter(prefix="/internal/v1/tools", tags=["integration"], include_in
 ORGANIZATION_HEADER = "x-organization-id"
 WORKSPACE_HEADER = "x-workspace-id"
 
-#: Khoá trong ``app.state``. Cả ba do `entrypoints/http.py` gắn vào — router
-#: không tự dựng được cái nào. Với credential đó là điều kiện của §2.4; với
-#: trace sink là vì Contract 1 cấm `integration` import domain `trace`.
 CREDENTIAL_PROVIDER_FACTORY = "credential_provider_factory"
 INTEGRATION_TENANT_GUARD_FACTORY = "integration_tenant_guard_factory"
 TRACE_SINK_FACTORY = "trace_sink_factory"
+RUN_LOOKUP_FACTORY = "integration_run_lookup_factory"
 
-#: Rate limit ở tầng vận chuyển, đếm theo người gọi. Khác hẳn hạn mức provider
-#: ở §22 — cái này chặn một client hỏng, không liên quan quota của Slack.
+#: Rate limit ở tầng vận chuyển, đếm theo người gọi.
 _INVOKES_PER_USER = 120
 _INVOKE_WINDOW_SECONDS = 60
 
@@ -130,22 +126,64 @@ def get_trace_sink(
     return sink
 
 
+def get_run_lookup(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RunLookup:
+    factory = _from_state(
+        request,
+        RUN_LOOKUP_FACTORY,
+        "chỉ Control Plane API được nối domain Execution vào (xem entrypoints/wiring.py).",
+    )
+    lookup: RunLookup = factory(session)
+    return lookup
+
+
+@dataclass(frozen=True, slots=True)
+class Caller:
+    """Ai đang gọi, đã phân giải xong. Không trường nào đến từ thân request (§19)."""
+
+    #: Người mà quyền của lời gọi được tính theo: người đã xác thực, hoặc người khởi chạy
+    #: lần chạy workflow.
+    user_id: str
+    organization_id: str
+    workspace_id: str
+    roles: frozenset[str]
+    principal_kind: PrincipalKind = "user"
+    #: Có khi người gọi là một lần chạy workflow.
+    run: RunIdentity | None = None
+
+
 async def resolve_context(
-    user_id: Annotated[str, Depends(require_user_id)],
+    principal: Annotated[Principal, Depends(require_principal)],
     guard: Annotated[TenantGuard, Depends(get_tenant_guard)],
+    runs: Annotated[RunLookup, Depends(get_run_lookup)],
     header_organization_id: Annotated[str | None, Header(alias=ORGANIZATION_HEADER)] = None,
     header_workspace_id: Annotated[str | None, Header(alias=WORKSPACE_HEADER)] = None,
-) -> Any:
-    """Phân giải tenant từ token và membership, **không** từ thân request.
-
-    §19. Người gọi không khai được mình thuộc tenant nào; nó được suy ra từ
-    access token cộng một lần đọc membership.
-    """
-    context = await guard.require_workspace_context(
-        user_id=user_id,
-        organization_id=header_organization_id,
-        workspace_id=header_workspace_id,
-    )
+) -> Caller:
+    """Phân giải tenant từ token, không từ thân request."""
+    run: RunIdentity | None = None
+    if principal.kind == "workflow":
+        run = await runs.find(principal.id)
+        # Lần chạy đã kết thúc thì token của nó hết tác dụng, kể cả khi chưa hết hạn.
+        if run is None or not run.is_running:
+            raise AuthenticationError("Token không hợp lệ.")
+        # Người khởi chạy phải còn quyền vào workspace: rời tổ chức thì lần chạy dừng ở đây.
+        context = await guard.require_workspace_context(
+            user_id=run.initiated_by,
+            organization_id=run.tenant_id,
+            workspace_id=run.workspace_id,
+        )
+        acting = run.initiated_by
+        identity = Principal(kind="workflow", id=run.execution_id, roles=context.roles)
+    else:
+        context = await guard.require_workspace_context(
+            user_id=principal.id,
+            organization_id=header_organization_id,
+            workspace_id=header_workspace_id,
+        )
+        acting = principal.id
+        identity = user_principal(principal.id, context.roles)
 
     ctx = current_context()
     if ctx is not None:
@@ -155,10 +193,17 @@ async def resolve_context(
                 correlation_id=ctx.correlation_id,
                 tenant_id=context.organization_id,
                 workspace_id=context.workspace_id,
-                principal=user_principal(user_id, context.roles),
+                principal=identity,
             )
         )
-    return context
+    return Caller(
+        user_id=acting,
+        organization_id=context.organization_id,
+        workspace_id=context.workspace_id,
+        roles=context.roles,
+        principal_kind=principal.kind,
+        run=run,
+    )
 
 
 def get_gateway(
@@ -180,7 +225,7 @@ def get_gateway(
     )
 
 
-CurrentContext = Annotated[Any, Depends(resolve_context)]
+CurrentContext = Annotated[Caller, Depends(resolve_context)]
 
 
 # ─── Schema vào/ra ───────────────────────────────────────────────────────────
@@ -205,7 +250,9 @@ class CallerRequest(BaseModel):
 
 
 class InvokeRequest(BaseModel):
-    connection_id: str = Field(max_length=64)
+    #: Bắt buộc với người dùng. Với một lần chạy workflow thì bị bỏ qua: connection lấy
+    #: từ lựa chọn đã ghi của lần chạy cho node `caller.node_id` (ADR-0014).
+    connection_id: str | None = Field(default=None, max_length=64)
     input: dict[str, Any] = Field(default_factory=dict)
     tool_version: str | None = Field(default=None, max_length=16)
     idempotency_key: str | None = Field(default=None, max_length=255)
@@ -286,16 +333,33 @@ async def invoke(
         window_seconds=_INVOKE_WINDOW_SECONDS,
     )
 
+    execution_id = payload.caller.execution_id
+    if context.run is not None:
+        # Worker không chọn connection. Nó chỉ nói node nào đang chạy; connection là thứ
+        # người chạy đã chọn cho node đó lúc tạo lần chạy.
+        connection_id = context.run.connections.get(payload.caller.node_id or "")
+        if connection_id is None:
+            raise AuthorizationError(
+                "Lần chạy này không có connection nào cho node đang gọi tool.",
+                details={"node_id": payload.caller.node_id},
+            )
+        execution_id = context.run.execution_id
+    elif payload.connection_id is None:
+        raise ValidationError("Thiếu connection_id.")
+    else:
+        connection_id = payload.connection_id
+
     result = await gateway.invoke(
         ToolInvocation(
             tool_id=tool_id,
-            connection_id=payload.connection_id,
+            connection_id=connection_id,
             tenant_id=context.organization_id,
             workspace_id=context.workspace_id,
             # Người đang hành động là người đã xác thực, không phải một trường
             # trong thân request. Kết nối PRIVATE dựa hoàn toàn vào điều này.
             acting_user_id=context.user_id,
-            principal_kind="user",
+            # Tool `DESTRUCTIVE` gọi bởi một lần chạy bị policy đòi phê duyệt.
+            principal_kind=context.principal_kind,
             principal_roles=context.roles,
             input=payload.input,
             tool_version=payload.tool_version,
@@ -303,7 +367,7 @@ async def invoke(
             caller=CallerRef(
                 agent_id=payload.caller.agent_id,
                 workflow_id=payload.caller.workflow_id,
-                execution_id=payload.caller.execution_id,
+                execution_id=execution_id,
                 node_id=payload.caller.node_id,
                 execution_trace_id=payload.caller.execution_trace_id,
                 parent_step_id=payload.caller.parent_step_id,

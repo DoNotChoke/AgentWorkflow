@@ -22,9 +22,16 @@ from app.domains.execution.application.service import ExecutionService, NodeSeed
 from app.domains.execution.infrastructure.repositories import SqlAlchemyExecutionRepository
 from app.domains.integration.infrastructure.catalog_view import tool_rows
 from app.domains.workflow.application.llm_node import RESULT_TOOL
-from app.domains.workflow.application.ports import ModelAnswer, NodeModel, NodeRef, Rejected
+from app.domains.workflow.application.ports import (
+    ModelAnswer,
+    NodeModel,
+    NodeRef,
+    Rejected,
+    ToolInvoker,
+)
 from app.domains.workflow.infrastructure.catalog import RowToolCatalog
 from app.domains.workflow.infrastructure.temporal.activities import ExecutorActivities
+from app.domains.workflow.infrastructure.temporal.tool_client import GatewayToolInvoker
 from app.entrypoints.sandbox_runner import SandboxRunner
 
 
@@ -168,9 +175,13 @@ class GatewayNodeModel:
 
 
 def build_executor_activities(
-    *, settings: Settings | None = None, models: NodeModel | None = None
+    *,
+    settings: Settings | None = None,
+    models: NodeModel | None = None,
+    tools: ToolInvoker | None = None,
 ) -> ExecutorActivities:
-    """`models` để test đưa model giả vào; mặc định là Model Gateway thật."""
+    """`models` và `tools` để test đưa bản giả vào; mặc định là Model Gateway và Integration
+    Gateway thật."""
     settings = settings or get_settings()
     return ExecutorActivities(
         recorder=ExecutionServiceRecorder(),
@@ -180,5 +191,6 @@ def build_executor_activities(
         or GatewayNodeModel(
             build_model_gateway(settings), max_tokens=settings.workflow_llm_max_tokens
         ),
+        tools=tools or GatewayToolInvoker(settings),
         llm_max_attempts=settings.workflow_llm_max_attempts,
     )

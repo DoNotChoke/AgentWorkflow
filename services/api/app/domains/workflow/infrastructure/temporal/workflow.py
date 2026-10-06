@@ -18,6 +18,7 @@ from temporalio.exceptions import TimeoutError as TemporalTimeoutError
 
 with workflow.unsafe.imports_passed_through():
     from app.core.errors import AppError, ErrorCategory
+    from app.core.ids import idempotency_key
     from app.domains.workflow.application.runtime import LoadedPlan, tool_key
     from app.domains.workflow.domain.bindings import (
         Scope,
@@ -277,6 +278,18 @@ class GenericWorkflowExecutor:
             tool_id=tool.tool_id,
             tool_version=tool.tool_version,
             input=resolve_inputs(tool.input, scope, node=str(path)),
+            node_id=tool.id,
+            # Ổn định qua mọi lần Temporal thử lại activity, và khác nhau giữa các lượt
+            # của một loop: `moi_cau[2].dang` không phải `moi_cau[1].dang`.
+            idempotency_key=(
+                idempotency_key(
+                    execution_id=self._request.execution_id,
+                    node_id=str(path),
+                    operation=tool.tool_id,
+                )
+                if writes
+                else None
+            ),
         )
         try:
             return await workflow.execute_activity(

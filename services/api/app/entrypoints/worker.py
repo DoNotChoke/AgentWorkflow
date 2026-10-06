@@ -20,10 +20,7 @@ from app.core.config import Settings, get_settings
 from app.core.db import dispose_engine, init_engine
 from app.core.logging import configure_logging, get_logger
 from app.core.observability import configure_tracing
-from app.domains.workflow.infrastructure.temporal.activities import (
-    ExecutorActivities,
-    run_tool_node,
-)
+from app.domains.workflow.infrastructure.temporal.activities import ExecutorActivities
 from app.domains.workflow.infrastructure.temporal.workflow import GenericWorkflowExecutor
 from app.entrypoints.worker_wiring import build_executor_activities
 
@@ -53,8 +50,12 @@ def worker_specs(settings: Settings, executor: ExecutorActivities) -> list[Worke
                 executor.run_transform_node,
             ),
         ),
-        WorkerSpec(settings.temporal_task_queue_integration_read, activities=(run_tool_node,)),
-        WorkerSpec(settings.temporal_task_queue_integration_write, activities=(run_tool_node,)),
+        WorkerSpec(
+            settings.temporal_task_queue_integration_read, activities=(executor.run_tool_node,)
+        ),
+        WorkerSpec(
+            settings.temporal_task_queue_integration_write, activities=(executor.run_tool_node,)
+        ),
         WorkerSpec(settings.temporal_task_queue_ai, activities=(executor.run_llm_node,)),
     ]
     return [spec for spec in specs if spec.workflows or spec.activities]

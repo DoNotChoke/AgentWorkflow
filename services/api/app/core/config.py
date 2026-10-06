@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_issuer: str = "agentworkflow"
     access_token_ttl_seconds: int = 3600
+    #: Khoá ký token của một lần chạy workflow (ADR-0010). Khác `jwt_secret`: worker chỉ
+    #: giữ khoá này, nên không ký được token của người dùng. Rỗng là tắt loại token đó.
+    workflow_token_secret: SecretStr = SecretStr("")
+    #: Token cấp cho từng lời gọi tool, sống vừa đủ một lời gọi.
+    workflow_token_ttl_seconds: int = 180
 
     refresh_token_ttl_seconds: int = 30 * 24 * 3600
 
@@ -175,6 +180,13 @@ class Settings(BaseSettings):
             problems.append("AW_JWT_SECRET vẫn là giá trị mặc định")
         elif len(self.jwt_secret.get_secret_value().encode()) < 32:
             problems.append("AW_JWT_SECRET ngắn hơn 32 byte (RFC 7518 §3.2)")
+        run_secret = self.workflow_token_secret.get_secret_value()
+        if run_secret and len(run_secret.encode()) < 32:
+            problems.append("AW_WORKFLOW_TOKEN_SECRET ngắn hơn 32 byte (RFC 7518 §3.2)")
+        if run_secret and run_secret == self.jwt_secret.get_secret_value():
+            problems.append(
+                "AW_WORKFLOW_TOKEN_SECRET trùng AW_JWT_SECRET: worker sẽ ký được token người dùng"
+            )
         if self.kms_local_master_key.get_secret_value() == placeholder:
             problems.append("AW_KMS_LOCAL_MASTER_KEY vẫn là giá trị mặc định")
         if self.kms_provider == "local":

@@ -932,6 +932,35 @@ lần chạy chỉ có `tool` và `loop`.
 trên dùng tool giả. Cho tới khi GĐ 5 xong, không workflow nào gọi được Slack hay Notion
 thật, kể cả workflow chỉ có `tool`.
 
+**GĐ 5 đã làm, 2026-10-06.** Node `tool` gọi provider thật.
+
+- *Danh tính của lần chạy* (ADR-0010): token loại `run`, ký bằng `AW_WORKFLOW_TOKEN_SECRET`
+  riêng, cấp cho từng lời gọi tool. `require_principal` chỉ có ở router Integration.
+  Gateway đọc tenant, workspace và người khởi chạy từ bản ghi lần chạy; lần chạy không
+  `running` thì token vô dụng.
+- *Connection* lấy từ `connection_bindings` của lần chạy theo `caller.node_id`. Worker
+  không chọn; `connection_id` nó gửi bị bỏ qua.
+- *Activity* `run_tool_node` giờ là method của `ExecutorActivities`, gọi cổng `ToolInvoker`;
+  `GatewayToolInvoker` gọi `POST /internal/v1/tools/{tool_id}/invoke`. Client HTTP và phần
+  đọc lỗi dùng chung với Agent Runtime, chuyển lên `core/control_plane.py`.
+- *Khoá idempotency* (ADR-0012): `idm_{execution}:{node_path}:{tool}`, chỉ với tool ghi.
+- *Thử lại*: `to_application_error` đưa `retry_after_seconds` thành `next_retry_delay`;
+  `OutcomeUnknown` là `non_retryable`.
+
+Chưa làm so với kế hoạch gốc: `run_tool_node` chưa trả số lần thử về cho `node_executions`;
+timeout của activity vẫn là 60 giây cố định, chưa lấy từ catalog; test tương tác ADR-0007
+× Temporal cancel.
+
+**Chạy thật.** Draft kb7 (`slack.list_channels` → `notion.search` → `slack.post_message`,
+chọn kênh `test` theo tên) publish thành version 1 rồi chạy qua `POST /v1/executions`, với
+hai connection riêng của người chạy: bốn node `succeeded`, một tin lên kênh `test`.
+
+**Một minor cũ của tool phải ở lại.** Lần chạy thật lộ ra rằng nâng `notion.search` lên 1.2
+tại chỗ đã làm mọi draft ghim 1.1 không publish được (`tool_khong_ton_tai`). Bản 1.1 được
+khôi phục thành `search.v1.1.json` cạnh `search.v1.json` (1.2). Quy ước tên file: không có
+minor là minor mới nhất của major đó; có minor là một bản cũ được giữ vì có thứ đã ghim
+nó. Compiler chỉ nâng version của trace khi bản đã ghi không còn trong catalog.
+
 **GĐ 7 — Quan sát và đóng sổ**
 
 18. `feat(api): a workflow run leaves an execution trace` — chạy lại kịch bản 3 dưới

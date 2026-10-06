@@ -243,6 +243,23 @@ class NodeModel(Protocol):
     ) -> ModelAnswer: ...
 
 
+class ToolInvoker(Protocol):
+    """Gọi một tool cho một node của lần chạy. Hiện thực gọi Integration Gateway qua HTTP:
+    worker không có đường nào tới credential (contract 7)."""
+
+    async def invoke(
+        self,
+        *,
+        execution_id: str,
+        node_id: str,
+        tool_id: str,
+        tool_version: str,
+        tool_input: Mapping[str, Any],
+        idempotency_key: str | None,
+    ) -> Mapping[str, Any]:
+        """Output của tool. Ném `AppError` mang đúng hạng lỗi Gateway trả về."""
+
+
 class TransformRunner(Protocol):
     """Chạy code của một node `transform` trong sandbox. Hiện thực ở tiến trình được phép
     nạp sandbox — Agent Runtime, worker — không bao giờ ở Control Plane (contract 8)."""

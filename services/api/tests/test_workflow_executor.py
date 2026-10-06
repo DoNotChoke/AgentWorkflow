@@ -76,6 +76,8 @@ class Call:
     input: dict[str, Any]
     queue: str
     node_path: str
+    node_id: str = ""
+    idempotency_key: str | None = None
 
 
 Behaviour = Callable[[dict[str, Any]], dict[str, Any]]
@@ -107,7 +109,14 @@ DEFAULT_SCRIPT: dict[str, Behaviour] = {
 @activity.defn(name=RUN_TOOL_NODE)
 async def fake_tool(request: RunToolInput) -> dict[str, Any]:
     _calls.append(
-        Call(request.tool_id, dict(request.input), activity.info().task_queue, request.node_path)
+        Call(
+            request.tool_id,
+            dict(request.input),
+            activity.info().task_queue,
+            request.node_path,
+            request.node_id,
+            request.idempotency_key,
+        )
     )
     return _script[request.tool_id](request.input)
 
@@ -341,6 +350,8 @@ async def test_kich_ban_mot_chay_het_va_tool_ghi_di_queue_ghi(harness: Harness) 
             {"channel": "C0VIDU0001", "text": "xin chào"},
             harness.queues.integration_write,
             "dang",
+            "dang",
+            f"idm_{outcome.execution_id}:dang:slack.post_message",
         )
     ]
 
@@ -442,6 +453,39 @@ async def test_input_sai_schema_thi_trigger_hong_va_khong_goi_tool(harness: Harn
     assert outcome.status == "failed"
     assert outcome.nodes == {"t": "failed", "kenh": "pending", "dang": "pending"}
     assert _calls == []
+
+
+# ─── Khoá idempotency (ADR-0012) ─────────────────────────────────────────────
+
+
+async def test_moi_luot_cua_loop_co_khoa_rieng_va_tool_doc_thi_khong_co_khoa(
+    harness: Harness,
+) -> None:
+    """Ba lượt `post_message` là ba tin: cùng một khoá thì lượt 2 và 3 chỉ là phát lại."""
+    ir = copy.deepcopy(_example("kb3-notion-doc-sau"))
+    loop = next(node for node in ir["nodes"] if node["type"] == "loop")
+    loop["body"] = [
+        {
+            "id": "bao",
+            "type": "tool",
+            "tool_id": "slack.post_message",
+            "tool_version": "1.0",
+            "input": {"channel": {"const": "C1"}, "text": {"from_item": ["id"]}},
+        }
+    ]
+    loop["collect"] = "bao"
+
+    outcome = await harness.run(ir, {"ten_trang": "Ghi chú AWS"})
+
+    assert outcome.status == "succeeded"
+    posts = [call for call in _calls if call.tool_id == "slack.post_message"]
+    assert [call.idempotency_key for call in posts] == [
+        f"idm_{outcome.execution_id}:{loop['id']}[{turn}].bao:slack.post_message"
+        for turn in range(3)
+    ]
+    assert {call.node_id for call in posts} == {"bao"}
+    reads = [call for call in _calls if call.tool_id != "slack.post_message"]
+    assert reads and all(call.idempotency_key is None for call in reads)
 
 
 # ─── transform và condition ──────────────────────────────────────────────────
