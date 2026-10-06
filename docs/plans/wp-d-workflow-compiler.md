@@ -790,6 +790,16 @@ của Next với `gpt-6.1-sol` (mở → `current` → chấp nhận ý đồ �
 đọc lại phiên). **Chưa ai nhìn giao diện trên trình duyệt**: web chưa có bộ test, và lần
 này không nối được trình duyệt.
 
+**Chọn trang Notion theo tên, 2026-10-05.** `notion.search` lên 1.2 và trả thêm
+`title_text`: các đoạn của `title` ghép thành một chuỗi (selector có thêm `join` trong tài
+liệu tool). Bộ dò vì vậy thấy `title_text` = tên người dùng đã nói như một khoá `where`, và
+binding thành *"phần tử của `results` có `title_text` = đầu vào"* thay vì `results.0.id`.
+Không thêm phép so nào vào IR, đúng hướng WP-B đã ghi.
+
+Chỉ có tác dụng với conversation chạy **sau** thay đổi này: trace cũ không có `title_text`,
+nên biên dịch lại chúng vẫn ra chọn theo vị trí. Khớp là khớp nguyên văn: người dùng nói
+"VPC" mà trang tên "VPC notes" thì không có khoá, và lại về vị trí kèm cảnh báo.
+
 **GĐ 8 — Web**
 
 18. `feat(web): turn a conversation into a workflow` — nút, cửa sổ chat bật lên, thẻ giả định, nút

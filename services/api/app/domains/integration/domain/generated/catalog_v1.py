@@ -1128,8 +1128,8 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         tool_id="notion.search",
         provider="notion",
-        version="1.1",
-        description="Tìm trang và database trong Notion theo tiêu đề. Chỉ thấy những thứ người dùng đã chia sẻ với integration này — kết quả rỗng thường nghĩa là chưa được chia sẻ, không phải không tồn tại. Bỏ trống `query` để liệt kê mọi thứ đang thấy được. Trả về id, tiêu đề và đường dẫn của từng mục.",
+        version="1.2",
+        description="Tìm trang và database trong Notion theo tiêu đề. Chỉ thấy những thứ người dùng đã chia sẻ với integration này — kết quả rỗng thường nghĩa là chưa được chia sẻ, không phải không tồn tại. Bỏ trống `query` để liệt kê mọi thứ đang thấy được. Trả về id, tiêu đề và đường dẫn của từng mục. Việc tìm là khớp gần đúng và có thể ra nhiều mục: đối chiếu `title_text` với tên người dùng nói trước khi dùng `id`.",
         input_schema=PayloadSchema(
             version="1.0",
             json_schema={
@@ -1155,7 +1155,7 @@ TOOLS: tuple[ToolSpec, ...] = (
             },
         ),
         output_schema=PayloadSchema(
-            version="1.1",
+            version="1.2",
             json_schema={
                 "type": "object",
                 "additionalProperties": False,
@@ -1184,6 +1184,10 @@ TOOLS: tuple[ToolSpec, ...] = (
                                     "items": {
                                         "type": "string",
                                     },
+                                },
+                                "title_text": {
+                                    "type": "string",
+                                    "description": "Tiêu đề đầy đủ, là các đoạn của `title` ghép lại. Vắng mặt khi mục không có tiêu đề.",
                                 },
                                 "created_time": {
                                     "type": "string",
@@ -1250,6 +1254,23 @@ TOOLS: tuple[ToolSpec, ...] = (
                                 "plain_text",
                             ),
                         ),
+                    ),
+                    "title_text": ItemSelector(
+                        paths=(
+                            (
+                                "properties",
+                                "title",
+                                "title",
+                                "*",
+                                "plain_text",
+                            ),
+                            (
+                                "title",
+                                "*",
+                                "plain_text",
+                            ),
+                        ),
+                        join="",
                     ),
                     "created_time": ItemSelector(
                         paths=(("created_time",),),

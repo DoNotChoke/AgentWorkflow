@@ -106,7 +106,9 @@ def _selector(raw: Sequence[Any] | Mapping[str, Any]) -> ItemSelector:
     đường, object có `any_of` là nhiều đường.
     """
     if isinstance(raw, Mapping):
-        return ItemSelector(paths=tuple(_path(path) for path in raw["any_of"]))
+        return ItemSelector(
+            paths=tuple(_path(path) for path in raw["any_of"]), join=raw.get("join")
+        )
     return ItemSelector(paths=(_path(raw),))
 
 

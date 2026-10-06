@@ -183,12 +183,12 @@ def test_version_tool_khong_con_trong_catalog_thi_len_minor_moi_nhat() -> None:
     skeleton, _ = _questions("kb3-notion-doc-sau")
 
     assert skeleton.step("l1.b1").tool_version == "1.0"
-    assert _node(_assemble("kb3-notion-doc-sau").document, "tim")["tool_version"] == "1.1"
+    assert _node(_assemble("kb3-notion-doc-sau").document, "tim")["tool_version"] == "1.2"
 
 
 @pytest.mark.parametrize(
     ("recorded", "expected"),
-    [("1.0", "1.1"), ("1.1", "1.1"), ("2.0", "2.0"), ("0.9", "0.9")],
+    [("1.0", "1.2"), ("1.1", "1.2"), ("1.2", "1.2"), ("2.0", "2.0"), ("0.9", "0.9")],
 )
 def test_khac_major_thi_giu_nguyen_de_validator_bao(recorded: str, expected: str) -> None:
     assert current_version(TOOLS, "notion.search", recorded) == expected

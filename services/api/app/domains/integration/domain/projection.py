@@ -48,8 +48,13 @@ def select(payload: object, selector: ItemSelector) -> Any:
     """Giá trị của đường đầu tiên đi tới nơi."""
     for path in selector.paths:
         value = select_path(payload, path)
-        if value is not None:
-            return value
+        if value is None:
+            continue
+        if selector.join is not None and _is_array(value):
+            # Mảng rỗng là "không có tiêu đề", không phải một tiêu đề rỗng.
+            parts = [part for part in value if isinstance(part, str)]
+            return selector.join.join(parts) if parts else None
+        return value
     return None
 
 

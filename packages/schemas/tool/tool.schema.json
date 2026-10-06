@@ -128,8 +128,13 @@
           "properties": {
             "any_of": {
               "type": "array",
-              "minItems": 2,
+              "minItems": 1,
               "items": { "$ref": "#/$defs/path" }
+            },
+            "join": {
+              "description": "Đường trả về một mảng chuỗi thì ghép chúng lại bằng chuỗi này, ra một chuỗi duy nhất. Dùng khi provider cắt một giá trị thành nhiều đoạn (tiêu đề trang Notion) mà người dùng và workflow lại nói tới nó như một cái tên.",
+              "type": "string",
+              "maxLength": 8
             }
           }
         }

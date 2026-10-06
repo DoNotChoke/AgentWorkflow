@@ -23,7 +23,7 @@
       "id": "tim",
       "type": "tool",
       "tool_id": "notion.search",
-      "tool_version": "1.1",
+      "tool_version": "1.2",
       "input": {
         "query": {
           "from_input": "ten_trang"

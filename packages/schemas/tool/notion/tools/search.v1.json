@@ -2,8 +2,8 @@
   "schema_version": "1.0",
   "tool_id": "notion.search",
   "provider": "notion",
-  "version": "1.1",
-  "description": "Tìm trang và database trong Notion theo tiêu đề. Chỉ thấy những thứ người dùng đã chia sẻ với integration này — kết quả rỗng thường nghĩa là chưa được chia sẻ, không phải không tồn tại. Bỏ trống `query` để liệt kê mọi thứ đang thấy được. Trả về id, tiêu đề và đường dẫn của từng mục.",
+  "version": "1.2",
+  "description": "Tìm trang và database trong Notion theo tiêu đề. Chỉ thấy những thứ người dùng đã chia sẻ với integration này — kết quả rỗng thường nghĩa là chưa được chia sẻ, không phải không tồn tại. Bỏ trống `query` để liệt kê mọi thứ đang thấy được. Trả về id, tiêu đề và đường dẫn của từng mục. Việc tìm là khớp gần đúng và có thể ra nhiều mục: đối chiếu `title_text` với tên người dùng nói trước khi dùng `id`.",
   "input_schema": {
     "version": "1.0",
     "json_schema": {
@@ -15,17 +15,27 @@
           "description": "Khớp theo tiêu đề. Bỏ trống thì trả về mọi mục thấy được.",
           "maxLength": 500
         },
-        "page_size": { "type": "integer", "minimum": 1, "maximum": 100, "default": 50 },
-        "start_cursor": { "type": "string", "maxLength": 512 }
+        "page_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50
+        },
+        "start_cursor": {
+          "type": "string",
+          "maxLength": 512
+        }
       }
     }
   },
   "output_schema": {
-    "version": "1.1",
+    "version": "1.2",
     "json_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["results"],
+      "required": [
+        "results"
+      ],
       "properties": {
         "results": {
           "type": "array",
@@ -33,22 +43,47 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "id": { "type": "string" },
-              "object": { "type": "string" },
-              "url": { "type": "string" },
+              "id": {
+                "type": "string"
+              },
+              "object": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
               "title": {
                 "type": "array",
                 "description": "Các đoạn của tiêu đề, ghép lại theo thứ tự thì ra tiêu đề đầy đủ. Vắng mặt với dòng của một database: ở đó tiêu đề nằm dưới tên cột do người dùng đặt.",
-                "items": { "type": "string" }
+                "items": {
+                  "type": "string"
+                }
               },
-              "created_time": { "type": "string" },
-              "last_edited_time": { "type": "string" },
-              "archived": { "type": "boolean" }
+              "title_text": {
+                "type": "string",
+                "description": "Tiêu đề đầy đủ, là các đoạn của `title` ghép lại. Vắng mặt khi mục không có tiêu đề."
+              },
+              "created_time": {
+                "type": "string"
+              },
+              "last_edited_time": {
+                "type": "string"
+              },
+              "archived": {
+                "type": "boolean"
+              }
             }
           }
         },
-        "next_cursor": { "type": ["string", "null"] },
-        "has_more": { "type": "boolean" }
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "has_more": {
+          "type": "boolean"
+        }
       }
     }
   },
@@ -60,32 +95,98 @@
     "max_backoff_seconds": 20,
     "multiplier": 2
   },
-  "timeout": { "attempt_seconds": 15, "total_seconds": 60 },
-  "rate_limits": { "tool": { "limit": 30, "window_seconds": 60 } },
-  "idempotency": { "strategy": "none", "required": false },
+  "timeout": {
+    "attempt_seconds": 15,
+    "total_seconds": 60
+  },
+  "rate_limits": {
+    "tool": {
+      "limit": 30,
+      "window_seconds": 60
+    }
+  },
+  "idempotency": {
+    "strategy": "none",
+    "required": false
+  },
   "permissions": [],
-  "approval": { "required": false },
-  "request": { "method": "POST", "path": "/search", "body": "json" },
+  "approval": {
+    "required": false
+  },
+  "request": {
+    "method": "POST",
+    "path": "/search",
+    "body": "json"
+  },
   "output_mapping": {
     "results": {
-      "path": ["results"],
+      "path": [
+        "results"
+      ],
       "items": {
-        "id": ["id"],
-        "object": ["object"],
-        "url": ["url"],
+        "id": [
+          "id"
+        ],
+        "object": [
+          "object"
+        ],
+        "url": [
+          "url"
+        ],
         "title": {
           "any_of": [
-            ["properties", "title", "title", "*", "plain_text"],
-            ["title", "*", "plain_text"]
+            [
+              "properties",
+              "title",
+              "title",
+              "*",
+              "plain_text"
+            ],
+            [
+              "title",
+              "*",
+              "plain_text"
+            ]
           ]
         },
-        "created_time": ["created_time"],
-        "last_edited_time": ["last_edited_time"],
-        "archived": ["archived"]
+        "title_text": {
+          "any_of": [
+            [
+              "properties",
+              "title",
+              "title",
+              "*",
+              "plain_text"
+            ],
+            [
+              "title",
+              "*",
+              "plain_text"
+            ]
+          ],
+          "join": ""
+        },
+        "created_time": [
+          "created_time"
+        ],
+        "last_edited_time": [
+          "last_edited_time"
+        ],
+        "archived": [
+          "archived"
+        ]
       }
     },
-    "next_cursor": { "path": ["next_cursor"] },
-    "has_more": { "path": ["has_more"] }
+    "next_cursor": {
+      "path": [
+        "next_cursor"
+      ]
+    },
+    "has_more": {
+      "path": [
+        "has_more"
+      ]
+    }
   },
   "enabled": true
 }

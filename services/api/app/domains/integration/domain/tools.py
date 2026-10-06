@@ -189,6 +189,8 @@ class ItemSelector:
     """Chỗ lấy một trường của phần tử. Đường đầu tiên tới nơi sẽ thắng."""
 
     paths: tuple[tuple[str, ...], ...]
+    #: Có thì một mảng chuỗi được ghép lại thành một chuỗi bằng dấu nối này.
+    join: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

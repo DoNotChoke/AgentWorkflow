@@ -699,3 +699,79 @@ def test_mot_node_llm_khong_sinh_duoc_hai_noi_dung_khac_nhau() -> None:
     (error,) = checked.report.errors
     assert (error.tier, error.code, error.node) == (Tier.REPLAY, "khong_tai_tao_duoc", "l1_b2")
     assert error.question.startswith("N")
+
+
+# ─── Chọn trang Notion theo tên ──────────────────────────────────────────────
+
+
+def _tim_trang() -> tuple[Skeleton, QuestionSet]:
+    """`notion.search` khớp gần đúng: tìm "VPC" ra cả "VPC cũ". Trang cần là trang thứ hai."""
+    return _made(
+        "Đọc trang VPC trên Notion",
+        [
+            _call(
+                "l1.b1",
+                "notion.search",
+                {"query": "VPC"},
+                {
+                    "results": [
+                        {
+                            "id": "00000000000000000000000000000001",
+                            "title": ["VPC", " cũ"],
+                            "title_text": "VPC cũ",
+                        },
+                        {
+                            "id": "00000000000000000000000000000002",
+                            "title": ["VPC"],
+                            "title_text": "VPC",
+                        },
+                    ]
+                },
+                "1.2",
+            ),
+            _call(
+                "l1.b2",
+                "notion.get_block_children",
+                {"block_id": "00000000000000000000000000000002"},
+                {"results": []},
+            ),
+        ],
+    )
+
+
+def test_trang_notion_chon_duoc_theo_ten_thay_vi_theo_vi_tri() -> None:
+    skeleton, questions = _tim_trang()
+    by_field = {(q.step, q.field): q for q in questions.sources}
+    block = by_field[("l1.b2", "block_id")]
+
+    (candidate,) = block.candidates
+    assert candidate.element is not None
+    assert [(key.field, key.value) for key in candidate.element.keys] == [("title_text", "VPC")]
+
+    raw = {
+        "ten": "Đọc một trang Notion",
+        "buoc": {"l1.b1": {"chon": "giu", "id": "tim"}, "l1.b2": {"chon": "giu", "id": "doc"}},
+        "gia_tri": {
+            by_field[("l1.b1", "query")].id: {"chon": "workflow_input", "ten": "ten_trang"},
+            block.id: {
+                "chon": "from_step",
+                "ung_vien": 1,
+                "khoa": "title_text",
+                "nguon_khoa": {"chon": "workflow_input", "ten": "ten_trang"},
+            },
+        },
+    }
+    checked = _check(skeleton, questions, raw)
+
+    assert _errors(checked) == []
+    assert checked.assembled is not None
+    assert _node(checked.assembled.document, "doc")["input"]["block_id"] == {
+        "from_node": {
+            "node": "tim",
+            "path": ["results"],
+            "where": {"title_text": {"from_input": "ten_trang"}},
+            "pick": ["id"],
+        }
+    }
+    # Không còn cảnh báo chọn theo vị trí.
+    assert checked.report.warnings == ()

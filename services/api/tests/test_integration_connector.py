@@ -584,8 +584,13 @@ async def test_tim_kiem_tra_ve_tieu_de_cua_ca_trang_lan_database(
     result = await call_notion(transport, "notion.search")
 
     assert result.output["results"] == [
-        {"id": "p1", "object": "page", "title": ["Ghi chú ", "AWS"]},
-        {"id": "d1", "object": "database", "title": ["Việc cần làm"]},
+        {"id": "p1", "object": "page", "title": ["Ghi chú ", "AWS"], "title_text": "Ghi chú AWS"},
+        {
+            "id": "d1",
+            "object": "database",
+            "title": ["Việc cần làm"],
+            "title_text": "Việc cần làm",
+        },
         {"id": "r1", "object": "page"},
     ]
 
