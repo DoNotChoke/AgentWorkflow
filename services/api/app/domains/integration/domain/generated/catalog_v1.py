@@ -1128,6 +1128,157 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         tool_id="notion.search",
         provider="notion",
+        version="1.1",
+        description="Tìm trang và database trong Notion theo tiêu đề. Chỉ thấy những thứ người dùng đã chia sẻ với integration này — kết quả rỗng thường nghĩa là chưa được chia sẻ, không phải không tồn tại. Bỏ trống `query` để liệt kê mọi thứ đang thấy được. Trả về id, tiêu đề và đường dẫn của từng mục.",
+        input_schema=PayloadSchema(
+            version="1.0",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Khớp theo tiêu đề. Bỏ trống thì trả về mọi mục thấy được.",
+                        "maxLength": 500,
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 50,
+                    },
+                    "start_cursor": {
+                        "type": "string",
+                        "maxLength": 512,
+                    },
+                },
+            },
+        ),
+        output_schema=PayloadSchema(
+            version="1.1",
+            json_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "results",
+                ],
+                "properties": {
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                },
+                                "object": {
+                                    "type": "string",
+                                },
+                                "url": {
+                                    "type": "string",
+                                },
+                                "title": {
+                                    "type": "array",
+                                    "description": "Các đoạn của tiêu đề, ghép lại theo thứ tự thì ra tiêu đề đầy đủ. Vắng mặt với dòng của một database: ở đó tiêu đề nằm dưới tên cột do người dùng đặt.",
+                                    "items": {
+                                        "type": "string",
+                                    },
+                                },
+                                "created_time": {
+                                    "type": "string",
+                                },
+                                "last_edited_time": {
+                                    "type": "string",
+                                },
+                                "archived": {
+                                    "type": "boolean",
+                                },
+                            },
+                        },
+                    },
+                    "next_cursor": {
+                        "type": [
+                            "string",
+                            "null",
+                        ],
+                    },
+                    "has_more": {
+                        "type": "boolean",
+                    },
+                },
+            },
+        ),
+        required_scopes=frozenset(),
+        side_effect=SideEffect.READ,
+        retry=RetryPolicy(
+            max_backoff_seconds=20.0,
+        ),
+        timeout=TimeoutPolicy(),
+        idempotency=IdempotencyPolicy(),
+        approval=ApprovalPolicy(),
+        request=ProviderRequest(
+            method="POST",
+            path="/search",
+            body="json",
+        ),
+        output_mapping={
+            "results": FieldMapping(
+                path=("results",),
+                items={
+                    "id": ItemSelector(
+                        paths=(("id",),),
+                    ),
+                    "object": ItemSelector(
+                        paths=(("object",),),
+                    ),
+                    "url": ItemSelector(
+                        paths=(("url",),),
+                    ),
+                    "title": ItemSelector(
+                        paths=(
+                            (
+                                "properties",
+                                "title",
+                                "title",
+                                "*",
+                                "plain_text",
+                            ),
+                            (
+                                "title",
+                                "*",
+                                "plain_text",
+                            ),
+                        ),
+                    ),
+                    "created_time": ItemSelector(
+                        paths=(("created_time",),),
+                    ),
+                    "last_edited_time": ItemSelector(
+                        paths=(("last_edited_time",),),
+                    ),
+                    "archived": ItemSelector(
+                        paths=(("archived",),),
+                    ),
+                },
+            ),
+            "next_cursor": FieldMapping(
+                path=("next_cursor",),
+            ),
+            "has_more": FieldMapping(
+                path=("has_more",),
+            ),
+        },
+        rate_limits=RateLimitProfile(
+            tool=RateLimitRule(
+                limit=30,
+                window_seconds=60,
+            ),
+        ),
+    ),
+    ToolSpec(
+        tool_id="notion.search",
+        provider="notion",
         version="1.2",
         description="Tìm trang và database trong Notion theo tiêu đề. Chỉ thấy những thứ người dùng đã chia sẻ với integration này — kết quả rỗng thường nghĩa là chưa được chia sẻ, không phải không tồn tại. Bỏ trống `query` để liệt kê mọi thứ đang thấy được. Trả về id, tiêu đề và đường dẫn của từng mục. Việc tìm là khớp gần đúng và có thể ra nhiều mục: đối chiếu `title_text` với tên người dùng nói trước khi dùng `id`.",
         input_schema=PayloadSchema(

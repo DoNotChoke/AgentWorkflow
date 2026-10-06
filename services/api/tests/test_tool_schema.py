@@ -93,11 +93,16 @@ def test_ten_file_khop_voi_tool_id_va_major(path: Path) -> None:
     file mang tên sai, và §41 (hai major cùng tồn tại) trở nên khó rà bằng mắt.
     """
     document = _load(path)
-    stem, _, raw_major = path.stem.partition(".v")
+    stem, _, raw_version = path.stem.partition(".v")
     assert document["tool_id"].endswith(f".{stem}"), (
         f"{path.name} chứa tool_id {document['tool_id']!r}"
     )
-    assert document["version"].split(".")[0] == raw_major
+    # `search.v1.json` là minor mới nhất của major 1. `search.v1.1.json` là một minor cũ hơn
+    # được giữ lại: draft và version đã ghim nó, và một version đã publish là bất biến.
+    major, _, minor = raw_version.partition(".")
+    assert document["version"].split(".")[0] == major
+    if minor:
+        assert document["version"] == raw_version
     assert document["provider"] == path.parents[1].name
 
 

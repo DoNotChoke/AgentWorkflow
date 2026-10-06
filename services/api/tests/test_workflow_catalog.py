@@ -55,5 +55,6 @@ def test_mang_du_moi_version_chu_khong_chi_minor_moi_nhat() -> None:
     for tool in default_registry().list_tools():
         assert catalog.find(tool.tool_id, tool.version) is not None
 
-    assert catalog.find("notion.search", "1.2") is not None
-    assert "1.2" in catalog.versions("notion.search")
+    # `notion.search` đã lên 1.2; draft và version biên dịch trước đó vẫn ghim 1.1.
+    assert catalog.versions("notion.search") == ("1.1", "1.2")
+    assert catalog.find("notion.search", "1.1") is not None
