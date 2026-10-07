@@ -103,7 +103,11 @@ class _NodeFailedError(Exception):
     def of_activity(cls, error: ActivityError) -> _NodeFailedError:
         cause = error.cause
         if isinstance(cause, ApplicationError):
-            return cls(cause.type or str(ErrorCategory.INTERNAL), cause.message)
+            # Một exception không phải `AppError` tới đây với `type` là tên lớp của nó.
+            known = cause.type in ErrorCategory._value2member_map_
+            return cls(
+                cause.type if known and cause.type else str(ErrorCategory.INTERNAL), cause.message
+            )
         if isinstance(cause, TemporalTimeoutError):
             return cls(str(ErrorCategory.TIMEOUT), str(cause))
         return cls(str(ErrorCategory.INTERNAL), str(cause or error))

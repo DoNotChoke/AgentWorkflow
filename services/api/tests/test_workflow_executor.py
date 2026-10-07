@@ -408,6 +408,18 @@ async def test_tool_hong_thi_node_sau_van_pending(harness: Harness) -> None:
     }
 
 
+async def test_loi_khong_phai_cua_platform_van_ket_thuc_lan_chay(harness: Harness) -> None:
+    def crash(_: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError("Chưa đặt khoá ký")
+
+    _script["notion.get_block_children"] = crash
+    outcome = await harness.run(_example("kb3-notion-doc-sau"), {"ten_trang": "Ghi chú AWS"})
+
+    assert outcome.status == "failed"
+    assert outcome.failure == ("InternalError", "Chưa đặt khoá ký")
+    assert outcome.nodes["con"] == "failed"
+
+
 async def test_luot_giua_hong_thi_luot_sau_pending_va_loop_hong(harness: Harness) -> None:
     def page(inp: dict[str, Any]) -> dict[str, Any]:
         if inp["page_id"] == "p2":
