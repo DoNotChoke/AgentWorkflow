@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from app.domains.workflow.application.ports import ToolContract
+from app.domains.workflow.application.ports import DEFAULT_TOOL_TIMEOUT_SECONDS, ToolContract
 
 
 class RowToolCatalog:
@@ -29,6 +29,7 @@ class RowToolCatalog:
                 mutates=bool(row["mutates"]),
                 needs_approval=bool(row["needs_approval"]),
                 enabled=bool(row.get("enabled", True)),
+                timeout_seconds=float(row.get("timeout_seconds", DEFAULT_TOOL_TIMEOUT_SECONDS)),
             )
             self._by_key[(contract.tool_id, contract.version)] = contract
             self._versions.setdefault(contract.tool_id, []).append(contract.version)

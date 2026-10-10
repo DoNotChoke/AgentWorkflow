@@ -10,6 +10,9 @@ from typing import Any, Literal, Protocol
 from app.domains.workflow.domain.compiler.session import CompileSession
 from app.domains.workflow.domain.entities import Workflow, WorkflowDraft, WorkflowVersion
 
+#: Thời hạn của một lời gọi tool khi catalog không nói gì.
+DEFAULT_TOOL_TIMEOUT_SECONDS = 60.0
+
 
 @dataclass(frozen=True, slots=True)
 class ToolContract:
@@ -25,6 +28,8 @@ class ToolContract:
     #: v1 nên workflow gọi nó tự động sẽ không bao giờ đi qua được policy.
     needs_approval: bool
     enabled: bool = True
+    #: Gateway bỏ cuộc sau ngần này giây, tính cả các lần nó tự thử lại.
+    timeout_seconds: float = DEFAULT_TOOL_TIMEOUT_SECONDS
 
 
 class ToolCatalogReader(Protocol):
@@ -296,8 +301,11 @@ class ToolInvoker(Protocol):
         idempotency_key: str | None,
         trace_id: str | None = None,
         parent_step_id: str | None = None,
+        timeout_seconds: float = DEFAULT_TOOL_TIMEOUT_SECONDS,
     ) -> Mapping[str, Any]:
         """Output của tool. Ném `AppError` mang đúng hạng lỗi Gateway trả về.
+
+        `timeout_seconds` là thời hạn của chính tool; bên gọi chờ lâu hơn thế một chút.
 
         Có `trace_id` thì Gateway ghi bước của nó vào trace đó, dưới `parent_step_id`."""
 

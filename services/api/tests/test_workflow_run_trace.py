@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from dataclasses import replace as dataclasses_replace
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -368,3 +369,65 @@ async def test_khong_mo_duoc_trace_thi_lan_chay_van_bat_dau() -> None:
 
     await ActivityEnvironment().run(_activities(trace).record_execution, _execution("running"))
     await ActivityEnvironment().run(_activities(trace).record_execution, _execution("succeeded"))
+
+
+# ─── Số lần thử ──────────────────────────────────────────────────────────────
+
+
+class CountingRecorder(FakeRecorder):
+    def __init__(self) -> None:
+        self.nodes: list[dict[str, Any]] = []
+
+    async def record_node(self, **node: Any) -> None:
+        self.nodes.append(node)
+
+
+def _on_attempt(attempt: int) -> ActivityEnvironment:
+    import dataclasses
+
+    env = ActivityEnvironment()
+    env.info = dataclasses.replace(env.info, attempt=attempt)
+    return env
+
+
+def _counting(recorder: CountingRecorder, trace: FakeTrace) -> ExecutorActivities:
+    return ExecutorActivities(
+        recorder=cast(ExecutionRecorder, recorder),
+        catalog=cast(ToolCatalogReader, None),
+        runner=FakeRunner(),
+        models=FakeModel(),
+        tools=FakeTools(),
+        trace=trace,
+    )
+
+
+async def test_lan_thu_dau_khong_ghi_gi_them_vao_node() -> None:
+    recorder = CountingRecorder()
+
+    await _on_attempt(1).run(_counting(recorder, FakeTrace()).run_tool_node, _tool_request())
+
+    assert recorder.nodes == []
+
+
+async def test_lan_thu_lai_ghi_so_lan_thu_cua_node_truoc_khi_chay() -> None:
+    recorder, trace = CountingRecorder(), FakeTrace()
+
+    await _on_attempt(3).run(_counting(recorder, trace).run_tool_node, _tool_request())
+
+    (node,) = recorder.nodes
+    assert (node["status"], node["attempt"]) == ("running", 3)
+    assert (node["node"].node_path, node["node"].node_id, node["node"].node_type) == (
+        "moi_cau[2].dang",
+        "dang",
+        "tool",
+    )
+    assert trace.steps[0]["attributes"]["attempt"] == 3
+
+
+async def test_thoi_han_cua_tool_di_toi_ben_goi_gateway() -> None:
+    tools = FakeTools()
+    request = dataclasses_replace(_tool_request(), timeout_seconds=90.0)
+
+    await ActivityEnvironment().run(_activities(FakeTrace(), tools).run_tool_node, request)
+
+    assert tools.calls[0]["timeout_seconds"] == 90.0

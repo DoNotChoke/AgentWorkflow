@@ -32,7 +32,11 @@ from temporalio.worker import Worker
 
 from app.core.config import get_settings
 from app.core.db import dispose_engine, init_engine, session_scope
-from app.core.errors import ProviderUnavailableError
+from app.core.errors import (
+    InvocationInProgressError,
+    OutcomeUnknownError,
+    ProviderUnavailableError,
+)
 from app.domains.execution.application.service import ExecutionService
 from app.domains.execution.infrastructure.repositories import SqlAlchemyExecutionRepository
 from app.domains.trace.application.service import TraceDetail, TraceService
@@ -41,6 +45,7 @@ from app.domains.trace.infrastructure.repositories import SqlAlchemyExecutionTra
 from app.domains.workflow.application.ports import ModelAnswer, Rejected
 from app.domains.workflow.domain.entities import Workflow, WorkflowVersion, fingerprint
 from app.domains.workflow.infrastructure.repositories import SqlAlchemyWorkflowRepository
+from app.domains.workflow.infrastructure.temporal.errors import to_application_error
 from app.domains.workflow.infrastructure.temporal.messages import (
     EXECUTOR_WORKFLOW,
     RUN_TOOL_NODE,
@@ -803,6 +808,74 @@ def _loop_llm() -> dict[str, Any]:
 
 
 LOOP_LLM = _loop_llm()
+
+
+# ─── Temporal thử lại một tool ghi, và sổ idempotency (ADR-0007) ─────────────
+
+
+def _by_attempt(*outcomes: dict[str, Any] | Exception) -> Behaviour:
+    """Lần thử thứ n của activity nhận `outcomes[n-1]`."""
+
+    def behaviour(_: dict[str, Any]) -> dict[str, Any]:
+        outcome = outcomes[activity.info().attempt - 1]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    return behaviour
+
+
+async def test_goi_lai_gap_loi_goi_truoc_con_chay_thi_cho_roi_nhan_ket_qua_cu(
+    harness: Harness,
+) -> None:
+    """Lần thử đầu mất kết nối giữa chừng, nhưng Gateway vẫn đang gọi provider. Lần hai
+    được bảo chờ; lần ba nhận lại kết quả của lời gọi đầu. Một tin, không phải ba."""
+    _script["slack.post_message"] = _by_attempt(
+        to_application_error(ProviderUnavailableError("Mất kết nối tới Control Plane.")),
+        to_application_error(
+            InvocationInProgressError("Lời gọi trước còn đang chạy.", retry_after_seconds=1)
+        ),
+        {"ok": True, "channel": "C0VIDU0001", "ts": "1.0"},
+    )
+
+    outcome = await harness.run(_example("kb1-slack-ghi"), {"noi_dung": "xin chào"})
+
+    assert outcome.status == "succeeded"
+    assert outcome.nodes["dang"] == "succeeded"
+    # Cả ba lần mang cùng một khoá: Gateway nhận ra chúng là một thao tác.
+    assert [call.idempotency_key for call in _calls] == [
+        f"idm_{outcome.execution_id}:dang:slack.post_message"
+    ] * 3
+
+
+async def test_goi_lai_gap_ket_qua_khong_ro_thi_dung_va_node_hong(harness: Harness) -> None:
+    """Lời gọi trước chết khi đang giữ chỗ trong sổ: không ai biết tin đã đăng chưa.
+    Temporal còn lượt thử, nhưng không được dùng."""
+    _script["slack.post_message"] = _by_attempt(
+        to_application_error(ProviderUnavailableError("Mất kết nối tới Control Plane.")),
+        to_application_error(OutcomeUnknownError("Không rõ tin đã được đăng hay chưa.")),
+        {"ok": True, "channel": "C0VIDU0001", "ts": "1.0"},
+    )
+
+    outcome = await harness.run(_example("kb1-slack-ghi"), {"noi_dung": "xin chào"})
+
+    assert outcome.status == "failed"
+    assert outcome.failure == ("OutcomeUnknown", "Không rõ tin đã được đăng hay chưa.")
+    assert outcome.nodes["dang"] == "failed"
+    assert len(_calls) == 2
+
+
+async def test_activity_cho_lau_hon_thoi_han_cua_tool_trong_catalog(harness: Harness) -> None:
+    outcome = await harness.run(_example("kb1-slack-ghi"), {"noi_dung": "xin chào"})
+
+    scheduled = [
+        event["activityTaskScheduledEventAttributes"]
+        for event in json.loads(outcome.history_json)["events"]
+        if event.get("activityTaskScheduledEventAttributes", {}).get("activityType", {}).get("name")
+        == RUN_TOOL_NODE
+    ]
+    # `slack.post_message` khai 60 giây; activity chờ thêm 15.
+    assert [attributes["startToCloseTimeout"] for attributes in scheduled] == ["75s"]
 
 
 # ─── Execution Trace ─────────────────────────────────────────────────────────

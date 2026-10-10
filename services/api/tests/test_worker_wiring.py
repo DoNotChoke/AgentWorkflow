@@ -246,6 +246,7 @@ async def test_node_tool_goi_gateway_voi_node_va_khoa_cua_no() -> None:
             # `exe_1` không có trace nào đang mở.
             "trace_id": None,
             "parent_step_id": None,
+            "timeout_seconds": 60.0,
         }
     ]
 

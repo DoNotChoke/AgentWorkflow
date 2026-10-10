@@ -21,7 +21,7 @@ def test_hang_du_lieu_khong_mang_kieu_cua_integration() -> None:
     """Cả ranh giới này tồn tại để không kiểu nào đi qua — chỉ dữ liệu."""
     for row in tool_rows():
         for value in row.values():
-            assert isinstance(value, str | bool | dict | list), value
+            assert isinstance(value, str | bool | int | float | dict | list), value
 
 
 def test_tra_duoc_dung_ban_da_ghim() -> None:

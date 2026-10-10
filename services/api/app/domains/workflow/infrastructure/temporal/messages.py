@@ -104,6 +104,8 @@ class RunToolInput:
     node_id: str = ""
     #: Có với tool ghi ra ngoài. Mang `node_path`, tức cả chỉ số lượt của loop (ADR-0012).
     idempotency_key: str | None = None
+    #: Thời hạn của tool trong catalog.
+    timeout_seconds: float = 60.0
 
 
 @dataclass(frozen=True)

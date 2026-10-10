@@ -175,3 +175,11 @@ def test_khong_ro_ket_qua_thi_khong_bao_gio_tu_goi_lai() -> None:
 
 def test_loi_vinh_vien_thi_khong_thu_lai() -> None:
     assert to_application_error(ValidationError("sai input")).non_retryable
+
+
+async def test_http_cho_lau_hon_thoi_han_cua_tool_mot_chut() -> None:
+    gateway = Gateway()
+
+    await _invoke(gateway, timeout_seconds=90.0)
+
+    assert gateway.requests[0].extensions["timeout"]["read"] == 95.0

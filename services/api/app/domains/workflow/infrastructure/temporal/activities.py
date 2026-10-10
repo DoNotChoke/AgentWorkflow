@@ -160,6 +160,7 @@ class ExecutorActivities:
                     idempotency_key=request.idempotency_key,
                     trace_id=step.trace_id,
                     parent_step_id=step.id if step.trace_id else None,
+                    timeout_seconds=request.timeout_seconds,
                 )
                 step.output = output
             return dict(output)
@@ -271,14 +272,32 @@ class ExecutorActivities:
         attributes: dict[str, Any],
         sent: Mapping[str, Any],
     ) -> AsyncIterator[_Step]:
-        """Một lần thử của node thành một bước trace, kể cả khi nó hỏng."""
+        """Một lần thử của node thành một bước trace, kể cả khi nó hỏng. Lần thử lại thì
+        số lần thử của node được ghi trước khi nó chạy."""
         started_at = datetime.now(UTC)
+        attempt = activity.info().attempt
+        if attempt > 1:
+            # Workflow ghi `running` một lần, trước lần thử đầu; các lần sau chỉ activity biết.
+            await self._observed(
+                self._recorder.record_node(
+                    tenant_id=request.tenant_id,
+                    execution_id=request.execution_id,
+                    node=NodeRef(
+                        node_path=request.node_path,
+                        node_id=request.node_path.rsplit(".", 1)[-1],
+                        node_type=attributes["node_type"],
+                    ),
+                    status=_RUNNING,
+                    at=started_at,
+                    attempt=attempt,
+                )
+            )
         step = _Step(
             id=new_id(ResourceKind.TRACE_STEP),
             trace_id=await self._observed(
                 self._trace.find(tenant_id=request.tenant_id, execution_id=request.execution_id)
             ),
-            attributes={**attributes, "attempt": activity.info().attempt},
+            attributes={**attributes, "attempt": attempt},
         )
         failed: str | None = None
         try:

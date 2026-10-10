@@ -66,8 +66,11 @@ _DATA_RETRY: Final = RetryPolicy(
     maximum_interval=timedelta(seconds=30),
     maximum_attempts=5,
 )
-#: Tạm cho tới khi timeout của từng tool đến từ catalog.
-_TOOL_TIMEOUT: Final = timedelta(seconds=60)
+#: Thời hạn của tool khi plan không nói gì (plan nạp trước khi nó mang thời hạn).
+_TOOL_TIMEOUT_SECONDS: Final = 60.0
+#: Activity chờ lâu hơn thời hạn của tool ngần này: Gateway phải kịp trả lời — kết quả,
+#: hoặc lỗi của chính nó — trước khi Temporal bỏ lần thử và gọi lại.
+_TOOL_MARGIN_SECONDS: Final = 15.0
 _TOOL_RETRY: Final = RetryPolicy(
     initial_interval=timedelta(seconds=1),
     backoff_coefficient=2.0,
@@ -132,6 +135,7 @@ class GenericWorkflowExecutor:
         self._request = request
         #: Token của node `llm` vừa chạy, chờ ghi cùng trạng thái `succeeded`.
         self._usage: dict[str, dict[str, int]] = {}
+        self._tool_timeouts: dict[str, float] = {}
         try:
             plan, mutating = await self._prepare()
             await self._record_execution("running")
@@ -163,6 +167,7 @@ class GenericWorkflowExecutor:
         except AppError as error:
             raise _NodeFailedError.of(error) from None
 
+        self._tool_timeouts = dict(loaded.tool_timeouts)
         return plan, frozenset(loaded.mutating_tools)
 
     # ─── Chạy ────────────────────────────────────────────────────────────────
@@ -274,7 +279,9 @@ class GenericWorkflowExecutor:
         self, path: NodePath, tool: ToolNode, scope: Scope, mutating: frozenset[str]
     ) -> Any:
         queues = self._request.queues
-        writes = tool_key(tool.tool_id, tool.tool_version) in mutating
+        key = tool_key(tool.tool_id, tool.tool_version)
+        writes = key in mutating
+        timeout = self._tool_timeouts.get(key, _TOOL_TIMEOUT_SECONDS)
         request = RunToolInput(
             tenant_id=self._request.tenant_id,
             execution_id=self._request.execution_id,
@@ -294,6 +301,7 @@ class GenericWorkflowExecutor:
                 if writes
                 else None
             ),
+            timeout_seconds=timeout,
         )
         try:
             return await workflow.execute_activity(
@@ -301,7 +309,7 @@ class GenericWorkflowExecutor:
                 request,
                 result_type=dict,
                 task_queue=queues.integration_write if writes else queues.integration_read,
-                start_to_close_timeout=_TOOL_TIMEOUT,
+                start_to_close_timeout=timedelta(seconds=timeout + _TOOL_MARGIN_SECONDS),
                 retry_policy=_TOOL_RETRY,
             )
         except ActivityError as error:

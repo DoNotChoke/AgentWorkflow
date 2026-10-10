@@ -10,6 +10,9 @@ import httpx
 from app.core.config import Settings
 from app.core.control_plane import request_json
 from app.core.security import issue_run_token
+from app.domains.workflow.application.ports import DEFAULT_TOOL_TIMEOUT_SECONDS
+
+_HTTP_MARGIN_SECONDS = 5.0
 
 
 class GatewayToolInvoker:
@@ -22,12 +25,10 @@ class GatewayToolInvoker:
         self,
         settings: Settings,
         *,
-        timeout: float = 60.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._settings = settings
         self._base_url = settings.control_plane_internal_base_url.rstrip("/")
-        self._timeout = timeout
         self._transport = transport
 
     async def invoke(
@@ -41,6 +42,7 @@ class GatewayToolInvoker:
         idempotency_key: str | None,
         trace_id: str | None = None,
         parent_step_id: str | None = None,
+        timeout_seconds: float = DEFAULT_TOOL_TIMEOUT_SECONDS,
     ) -> Mapping[str, Any]:
         token = issue_run_token(self._settings, execution_id=execution_id)
         body = await request_json(
@@ -50,7 +52,8 @@ class GatewayToolInvoker:
             authorization=f"Bearer {token}",
             organization_id=None,
             workspace_id=None,
-            timeout_seconds=self._timeout,
+            # Lâu hơn thời hạn của tool: Gateway trả lời trước, không phải dây đứt trước.
+            timeout_seconds=timeout_seconds + _HTTP_MARGIN_SECONDS,
             json_body={
                 "input": dict(tool_input),
                 "tool_version": tool_version,

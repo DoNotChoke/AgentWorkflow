@@ -31,6 +31,8 @@ class LoadedPlan:
     ir: dict[str, Any]
     #: `tool_key` của những tool có side effect — executor gửi chúng sang queue ghi (Q12).
     mutating_tools: list[str] = field(default_factory=list)
+    #: `tool_key` → thời hạn của tool trong catalog, tính bằng giây.
+    tool_timeouts: dict[str, float] = field(default_factory=dict)
 
 
 class PlanLoader:
@@ -49,6 +51,7 @@ class PlanLoader:
             )
 
         mutating: set[str] = set()
+        timeouts: dict[str, float] = {}
         for _, node in parse(version.ir).walk():
             if not isinstance(node, ToolNode):
                 continue
@@ -59,13 +62,16 @@ class PlanLoader:
                     f"Tool {node.tool_id} {node.tool_version} không còn trong catalog.",
                     details={"node": node.id, "tool_id": node.tool_id},
                 )
+            key = tool_key(node.tool_id, node.tool_version)
+            timeouts[key] = contract.timeout_seconds
             if contract.mutates:
-                mutating.add(tool_key(node.tool_id, node.tool_version))
+                mutating.add(key)
 
         return LoadedPlan(
             workflow_version_id=version.id,
             ir=dict(version.ir),
             mutating_tools=sorted(mutating),
+            tool_timeouts=dict(sorted(timeouts.items())),
         )
 
 

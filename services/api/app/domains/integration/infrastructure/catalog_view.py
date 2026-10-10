@@ -22,6 +22,7 @@ def tool_rows() -> tuple[dict[str, Any], ...]:
             # node phê duyệt nên nó sẽ luôn bị policy chặn lúc chạy.
             "needs_approval": tool.approval.required or tool.side_effect is SideEffect.DESTRUCTIVE,
             "enabled": tool.enabled,
+            "timeout_seconds": tool.timeout.total_seconds,
         }
         for tool in catalog_v1.TOOLS
     )

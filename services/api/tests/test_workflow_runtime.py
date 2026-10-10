@@ -59,6 +59,19 @@ async def test_tool_ghi_thi_vao_bang_mutating() -> None:
     assert plan.ir == _example("kb1-slack-ghi")
 
 
+async def test_plan_mang_thoi_han_cua_tung_tool_trong_catalog() -> None:
+    plan = await _loader(_version(_example("kb3-notion-doc-sau"))).load(
+        tenant_id="org_1", workflow_version_id="wfv_1"
+    )
+
+    assert plan.tool_timeouts
+    for key, seconds in plan.tool_timeouts.items():
+        tool_id, _, version = key.partition("@")
+        contract = CATALOG.find(tool_id, version)
+        assert contract is not None
+        assert seconds == contract.timeout_seconds > 0
+
+
 async def test_tool_chi_doc_thi_khong_va_tool_trong_than_loop_cung_duoc_xet() -> None:
     plan = await _loader(_version(_example("kb3-notion-doc-sau"))).load(
         tenant_id="org_1", workflow_version_id="wfv_1"
