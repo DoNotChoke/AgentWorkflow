@@ -1,16 +1,20 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
   apiRequest,
   type IrNode,
+  type PayloadSide,
   type Run,
   type RunDetail,
   type RunStatus,
   type RunStep,
   type RunSummary,
+  type RunTrace,
   type StepStatus,
+  type TracePayload,
+  type TraceStep,
   type WorkflowIr,
   type WorkflowVersion,
   type WorkflowVersionSummary,
@@ -132,6 +136,65 @@ export function useRun(
       state.state.data && isFinished(state.state.data.status) ? false : POLL_MS,
     queryFn: () =>
       apiRequest<RunDetail>(`/v1/executions/${runId}`, {
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+      }),
+  });
+}
+
+/**
+ * Execution Trace của một lần chạy: mỗi lần thử của một bước là một bước trace.
+ * `null` khi lần chạy không để lại trace. Hỏi lại cùng nhịp với lần chạy, và thêm một
+ * lần khi nó kết thúc: bước cuối được ghi trước khi lần chạy đổi trạng thái.
+ */
+export function useRunTrace(
+  organizationId: string | null,
+  workspaceId: string | null,
+  runId: string | null,
+  live: boolean,
+) {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: [...queryKeys.runTrace(organizationId, runId), live],
+    enabled: status === "authenticated" && workspaceId !== null && runId !== null,
+    placeholderData: keepPreviousData,
+    refetchInterval: live ? POLL_MS : false,
+    queryFn: () =>
+      apiRequest<RunTrace | null>(`/v1/executions/${runId}/trace`, {
+        accessToken,
+        headers: workspaceHeaders(organizationId, workspaceId),
+      }),
+  });
+}
+
+/** Các lần thử của từng bước, theo `node_path`, lần cũ trước. Bước của Gateway nằm dưới
+ * bước của node và không có `node_path` riêng. */
+export function attemptsByPath(trace: RunTrace | null | undefined): Map<string, TraceStep[]> {
+  const found = new Map<string, TraceStep[]>();
+  for (const step of trace?.steps ?? []) {
+    const path = step.attributes.node_path;
+    if (typeof path !== "string") continue;
+    found.set(path, [...(found.get(path) ?? []), step]);
+  }
+  return found;
+}
+
+/** Nội dung một phía payload của một bước trace. Bước đã ghi thì không đổi. */
+export function useTracePayload(
+  organizationId: string | null,
+  workspaceId: string | null,
+  traceId: string,
+  stepId: string,
+  side: PayloadSide,
+  enabled: boolean,
+) {
+  const { accessToken, status } = useSession();
+  return useQuery({
+    queryKey: queryKeys.tracePayload(organizationId, traceId, stepId, side),
+    enabled: enabled && status === "authenticated" && workspaceId !== null,
+    staleTime: Infinity,
+    queryFn: () =>
+      apiRequest<TracePayload>(`/v1/traces/${traceId}/steps/${stepId}/payload/${side}`, {
         accessToken,
         headers: workspaceHeaders(organizationId, workspaceId),
       }),
@@ -273,6 +336,12 @@ export function formatDuration(ms: number): string {
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`;
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function formatTokens(count: number): string {

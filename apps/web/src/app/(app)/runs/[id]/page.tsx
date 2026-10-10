@@ -17,11 +17,21 @@ import {
 import { ErrorNote, Spinner } from "@/components/ui";
 import { WorkflowGraph } from "@/components/workflow-graph";
 import { Panel } from "@/components/workflow-outline";
-import type { IrNode, RunDetail, RunStep, WorkflowIr } from "@/lib/api";
+import type {
+  IrNode,
+  PayloadSide,
+  RunDetail,
+  RunStep,
+  StoredPayload,
+  TraceStep,
+  WorkflowIr,
+} from "@/lib/api";
 import { useConnections, useMembers, useTools, useWorkflow } from "@/lib/queries";
 import {
   allNodes,
+  attemptsByPath,
   elapsed,
+  formatBytes,
   formatClock,
   formatDuration,
   formatStarted,
@@ -32,6 +42,8 @@ import {
   readProgress,
   useNow,
   useRun,
+  useRunTrace,
+  useTracePayload,
   useWorkflowVersion,
   useWorkflowVersions,
 } from "@/lib/runs";
@@ -80,6 +92,8 @@ export default function RunPage() {
 
   const live = run.data ? !isFinished(run.data.status) : false;
   const now = useNow(live);
+  const trace = useRunTrace(organization.id, workspaceId, id, live);
+  const attempts = useMemo(() => attemptsByPath(trace.data), [trace.data]);
 
   if (!workspace) return <Spinner label="No workspace in this organisation." />;
   if (run.isPending) return <Spinner label="Loading run…" />;
@@ -216,6 +230,8 @@ export default function RunPage() {
               progress={progress}
               turns={turns}
               now={now}
+              traceId={trace.data?.id ?? null}
+              attempts={attempts}
             />
           ) : (
             <span className="px-1 text-[12.5px] text-ink-4">Select a step to see how it went.</span>
@@ -333,12 +349,16 @@ function StepFacts({
   progress,
   turns,
   now,
+  traceId,
+  attempts,
 }: {
   ir: WorkflowIr;
   nodeId: string;
   progress: Progress;
   turns: Record<string, number>;
   now: number;
+  traceId: string | null;
+  attempts: Map<string, TraceStep[]>;
 }) {
   const loop = ir.nodes.find((node) => node.body?.some((inner) => inner.id === nodeId)) ?? null;
   const node: IrNode | undefined = loop
@@ -352,6 +372,9 @@ function StepFacts({
   const step = progress.byPath.get(path);
   const took = step ? elapsed(step.started_at, step.finished_at, now) : null;
   const own = node.type === "loop" ? progress.loops.get(node.id) : undefined;
+  const tried = attempts.get(path) ?? [];
+  // Lần thử cuối là lần quyết định bước này ra sao.
+  const last = tried.at(-1);
 
   return (
     <Panel
@@ -390,7 +413,9 @@ function StepFacts({
         ) : null}
         <Fact name="Started">{step?.started_at ? formatClock(step.started_at) : "—"}</Fact>
         <Fact name="Took">{took === null ? "—" : formatDuration(took)}</Fact>
-        <Fact name="Attempts">{step?.attempt ? String(step.attempt) : "—"}</Fact>
+        <Fact name="Attempts">
+          {tried.length ? String(tried.length) : step?.attempt ? String(step.attempt) : "—"}
+        </Fact>
         {step?.usage ? (
           <Fact name="Model tokens">
             {(step.usage.input_tokens ?? 0).toLocaleString()} in ·{" "}
@@ -399,17 +424,110 @@ function StepFacts({
         ) : null}
       </Part>
 
-      {node.type === "tool" || node.type === "llm" || node.type === "transform" ? (
+      {node.type === "tool" ||
+      node.type === "llm" ||
+      node.type === "transform" ||
+      node.type === "condition" ? (
         <Part>
           <span className="text-[11px] font-semibold tracking-wide text-ink-4 uppercase">
-            Input and output
+            {node.type === "condition" ? "Result" : "Input and output"}
           </span>
-          <span className="rounded-control border border-dashed border-line-strong px-3 py-2 text-[12px] leading-relaxed text-ink-4">
-            What this step received and produced is not recorded yet.
-          </span>
+          {traceId && last ? (
+            // `key`: chọn bước khác hoặc lượt khác thì các ô đang mở đóng lại.
+            <div key={last.id} className="flex flex-col gap-1.5">
+              {tried.length > 1 ? (
+                <span className="text-[12px] leading-relaxed text-ink-4">
+                  From the last of {tried.length} attempts.
+                </span>
+              ) : null}
+              {node.type === "condition" ? null : (
+                <Payload traceId={traceId} step={last} side="input" stored={last.input_payload} />
+              )}
+              <Payload traceId={traceId} step={last} side="output" stored={last.output_payload} />
+            </div>
+          ) : (
+            <span className="rounded-control border border-dashed border-line-strong px-3 py-2 text-[12px] leading-relaxed text-ink-4">
+              {step && step.status !== "pending" && step.status !== "skipped"
+                ? "Nothing was recorded for this step."
+                : "This step has not run."}
+            </span>
+          )}
         </Part>
       ) : null}
     </Panel>
+  );
+}
+
+/** Một phía payload của một bước. Nội dung chỉ được tải khi mở ra. */
+function Payload({
+  traceId,
+  step,
+  side,
+  stored,
+}: {
+  traceId: string;
+  step: TraceStep;
+  side: PayloadSide;
+  stored: StoredPayload | null;
+}) {
+  const { organization, workspace } = useTenant();
+  const [open, setOpen] = useState(false);
+  const payload = useTracePayload(
+    organization.id,
+    workspace?.id ?? null,
+    traceId,
+    step.id,
+    side,
+    open && stored !== null,
+  );
+  const name = side === "input" ? "Input" : "Output";
+
+  if (stored === null) {
+    return (
+      <div className="flex items-baseline justify-between gap-3 rounded-control border border-line px-3 py-2">
+        <span className="text-[12px] font-medium text-ink-3">{name}</span>
+        <span className="text-[12px] text-ink-4">
+          {side === "output" && step.status === "failed" ? "none: the step failed" : "none"}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-control border border-line">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((shown) => !shown)}
+        className="flex w-full items-baseline justify-between gap-3 px-3 py-2 text-left hover:bg-sunken"
+      >
+        <span className="text-[12px] font-medium text-ink-2">{name}</span>
+        <span className="text-[11.5px] text-ink-4 tabular-nums">
+          {formatBytes(stored.byte_size)} · {open ? "Hide" : "Show"}
+        </span>
+      </button>
+      {open ? (
+        <div className="border-t border-line-soft bg-canvas">
+          {payload.isPending ? (
+            <span className="block px-3 py-2 text-[12px] text-ink-4">Loading…</span>
+          ) : payload.error ? (
+            <div className="px-3 py-2">
+              <ErrorNote error={payload.error} />
+            </div>
+          ) : payload.data?.payload ? (
+            <pre className="max-h-72 overflow-auto px-3 py-2 font-mono text-[11.5px] leading-relaxed break-words whitespace-pre-wrap text-ink-2">
+              {JSON.stringify(payload.data.payload, null, 2)}
+            </pre>
+          ) : (
+            <span className="block px-3 py-2 text-[12px] leading-relaxed text-ink-4">
+              {payload.data?.availability === "gone"
+                ? "This was stored, and is no longer kept."
+                : "Not kept: it was too large, or storing it failed. Only its size was recorded."}
+            </span>
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

@@ -547,3 +547,33 @@ export type RunDetail = Run & {
   connections: Record<string, string>;
   nodes: RunStep[];
 };
+
+/** Payload có ở đó không và to bằng nào; nội dung đọc riêng khi cần. */
+export type StoredPayload = { sha256: string; byte_size: number; location: string };
+
+export type TraceStep = {
+  id: string;
+  kind: "model_call" | "tool_call" | "decision" | "error" | "final_response";
+  status: "succeeded" | "failed" | "replayed";
+  parent_step_id: string | null;
+  started_at: string;
+  completed_at: string;
+  duration_ms: number;
+  /** Bước của một node workflow mang `node_path` và `attempt`. */
+  attributes: Record<string, unknown>;
+  error_category: string | null;
+  input_payload: StoredPayload | null;
+  output_payload: StoredPayload | null;
+};
+
+export type RunTrace = { id: string; status: string; steps: TraceStep[] };
+
+export type PayloadSide = "input" | "output";
+
+export type TracePayload = {
+  step_id: string;
+  side: PayloadSide;
+  availability: "available" | "not_stored" | "gone";
+  byte_size: number | null;
+  payload: Record<string, unknown> | null;
+};

@@ -71,6 +71,14 @@ export const queryKeys = {
     ["runs", organizationId, workspaceId] as const,
   run: (organizationId: string | null, runId: string | null) =>
     ["run", organizationId, runId] as const,
+  runTrace: (organizationId: string | null, runId: string | null) =>
+    ["run-trace", organizationId, runId] as const,
+  tracePayload: (
+    organizationId: string | null,
+    traceId: string,
+    stepId: string,
+    side: "input" | "output",
+  ) => ["trace-payload", organizationId, traceId, stepId, side] as const,
 };
 
 /** Header chọn tenant cho request hiện tại — bỏ trống thì backend lấy org đầu tiên. */
