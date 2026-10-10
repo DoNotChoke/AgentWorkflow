@@ -29,7 +29,7 @@ Quyết định kiến trúc: [`docs/adr/`](docs/adr/).
 
 - Python 3.13
 - Docker Desktop
-- Node.js 20+ (từ Phase 1, cho frontend)
+- Node.js 20+ (cho `apps/web`)
 
 ## Khởi động
 
@@ -42,6 +42,14 @@ pip install -r requirements.txt -r requirements-dev.txt
 
 docker compose up -d                   # postgres, redis, s3, temporal, otel, jaeger
 alembic upgrade head                   # tạo schema cho từng domain
+```
+
+Giao diện web:
+
+```bash
+cd apps/web
+npm install
+npm run dev                            # :3000, chuyển tiếp /v1 sang :8000 và :8001
 ```
 
 Chạy ứng dụng từ venv để có hot reload:
@@ -72,6 +80,7 @@ curl http://localhost:8000/readyz
 
 | Dịch vụ | Địa chỉ |
 |---|---|
+| Web | http://localhost:3000 |
 | Control Plane API | http://localhost:8000 (docs tại `/docs`) |
 | Agent Runtime | http://localhost:8001 |
 | Temporal UI | http://localhost:8233 |
@@ -109,7 +118,7 @@ một cảnh báo về phong cách code.
 
 ```
 AgentWorkflow/
-├── apps/web/                  Next.js (Phase 1)
+├── apps/web/                  Next.js: đăng nhập, kết nối, chat Agent, workflow, lần chạy
 ├── services/api/              Backend Python
 │   ├── alembic/               Migration database
 │   ├── app/
@@ -119,7 +128,9 @@ AgentWorkflow/
 │   └── tests/
 ├── packages/schemas/          JSON Schema: Workflow IR, Tool, Event
 ├── infra/                     Dockerfile, cấu hình otel, temporal
-└── docs/adr/                  Architecture Decision Record
+└── docs/
+    ├── adr/                   Architecture Decision Record
+    └── plans/                 Kế hoạch từng work package, kèm ghi chép lúc hiện thực
 ```
 
 ## Trạng thái
@@ -209,17 +220,68 @@ chết giữa chừng: tool đọc tiếp quản và chạy lại, tool ghi thì
 `unknown` rồi bảo người gọi đi kiểm tra kết quả, chứ không đăng tin nhắn lần thứ
 hai. Quyết định ở [ADR-0007](docs/adr/0007-so-idempotency-co-lease-va-trang-thai-khong-ro.md).
 
-Lộ trình các phase tiếp theo: xem `docs/adr/0001-*.md` và kế hoạch triển khai.
+**Phase 4 — hoàn tất, trừ một phép đối chiếu.** Workflow IR và Generic Executor. IR là
+JSON Schema có version trong `packages/schemas/workflow/` (hiện `2.1`), với sáu loại node:
+`trigger`, `tool`, `llm`, `transform`, `condition`, `loop`. Giá trị đi giữa các node bằng
+*binding* — dữ liệu, không phải một ngôn ngữ biểu thức. Draft lưu dễ tính; publish thì
+khắt khe và đóng băng thành một version không bao giờ đổi.
+
+Một lần chạy là một Temporal workflow chạy đúng một version. Workflow code chỉ quyết thứ
+tự; mọi thứ chạm ra ngoài là activity, trên queue riêng theo loại việc. Worker không giải
+mã được credential: node `tool` gọi Integration Gateway của Control Plane qua HTTP
+([ADR-0009](docs/adr/0009-worker-goi-gateway-qua-http.md)), bằng một token riêng của lần
+chạy ([ADR-0010](docs/adr/0010-lan-chay-workflow-co-danh-tinh-rieng.md)).
+
+- **Workflow không lưu connection.** Người chạy chọn một tài khoản cho từng node lúc bấm
+  Run, và chỉ chọn được tài khoản họ có quyền dùng
+  ([ADR-0014](docs/adr/0014-connection-gan-theo-lan-chay.md)).
+- **Temporal thử lại không đăng hai lần.** Khoá idempotency của một node mang cả chỉ số
+  lượt của vòng lặp: ba lượt là ba tin, một lượt thử lại ba lần vẫn là một tin
+  ([ADR-0012](docs/adr/0012-khoa-idempotency-cua-node-mang-chi-so-luot.md)).
+- **Node `llm` gọi model ngay trong worker**, không đi vòng qua Agent Runtime
+  ([ADR-0011](docs/adr/0011-worker-goi-model-truc-tiep-cho-node-llm.md)).
+- **Node `transform` chạy code trong sandbox hai lớp**, và sandbox không bao giờ được nạp
+  ở Control Plane ([ADR-0013](docs/adr/0013-transform-chay-code-trong-sandbox.md)).
+- **Lần chạy để lại Execution Trace**: mỗi lần thử của một bước là một bước trace có input
+  và output. Trang lần chạy theo dõi nó qua SSE và mở được từng bước ra xem.
+
+Chưa làm: huỷ, tạm dừng hay chạy lại từ giữa một lần chạy; và đối chiếu trace của một
+workflow với trace Agent mà nó được biên dịch ra.
+
+**Phase 5 — hoàn tất, chờ nghiệm thu.** Workflow Compiler: nút *Turn into Workflow* trên
+một conversation mở một phiên biên dịch và kết thúc bằng một draft.
+
+Compiler là hybrid ([ADR-0008](docs/adr/0008-workflow-compiler-la-hybrid.md)): **model
+không bao giờ viết IR.** Code tất định đọc conversation và trace, dò từng giá trị đến từ
+đâu, rồi đặt ra một tập câu hỏi đóng — giữ hay bỏ bước này, giá trị này là hằng, là đầu
+vào, hay lấy từ bước nào. Model trả lời; code lắp IR từ câu trả lời.
+
+- **Hai model, hai lần xác nhận**
+  ([ADR-0015](docs/adr/0015-compiler-xac-nhan-y-do-truoc-khi-dung-workflow.md)). Model thứ
+  nhất chỉ đọc lời nói và đề xuất *ý đồ*; người dùng sửa bằng lời hoặc chấp nhận. Model
+  thứ hai trả lời tập câu hỏi theo ý đồ đó. Người dùng đọc bảng giả định rồi bấm đồng ý,
+  và sau nút đó không còn lời gọi model nào.
+- **Ba tầng kiểm chạy trước khi người dùng thấy đề xuất**: câu trả lời có nhất quán
+  không, IR lắp ra có hợp lệ không, và IR đó có tái tạo được đúng lần chạy mẫu không. Lỗi
+  quay về model kèm id của câu hỏi đã gây ra nó, có trần số vòng.
+- **Model biên dịch được viết node `transform`** mà trace không có, như một phép đếm cho
+  một điều kiện; code đó phải tái tạo được lần chạy mẫu
+  ([ADR-0016](docs/adr/0016-llm-bien-dich-duoc-viet-node-transform.md)).
+
+Chưa làm: nghiệm thu từ nút bấm tới một lần chạy thật trên nhiều model; vòng lặp lồng
+nhau và chu kỳ không đều; sửa một workflow đã có bằng lời.
+
+Kế hoạch và ghi chép của từng work package nằm ở [`docs/plans/`](docs/plans/).
 
 | Phase | Nội dung |
 |---|---|
 | 0 | Nền móng, hạ tầng, ranh giới ✅ |
 | 1 | Identity, Tenant, Connection, OAuth ✅ |
-| 2 | Integration Plane, connector đầu tiên (Slack) ✅ |
+| 2 | Integration Plane, hai connector (Slack, Notion) ✅ |
 | 3 | Agent Runtime, Model Gateway, Execution Trace ✅ |
-| 4 | Workflow IR, Generic Executor trên Temporal |
-| 5 | Workflow Compiler (trace → IR) |
-| 6 | Workflow Editor, lifecycle draft/publish |
+| 4 | Workflow IR, Generic Executor trên Temporal ✅ |
+| 5 | Workflow Compiler (conversation và trace → IR) — chờ nghiệm thu |
+| 6 | Workflow Editor — mới có xem đồ thị, publish và chạy |
 | 7 | Schedule, webhook, billing, audit, hardening |
 
 ## Những ràng buộc không được vi phạm

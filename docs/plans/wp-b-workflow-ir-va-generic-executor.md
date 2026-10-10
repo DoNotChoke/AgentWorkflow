@@ -1009,6 +1009,21 @@ thật qua Gateway để thấy bước con của nó trong trace — test hiệ
 - *Web* ghi các sự kiện vào cache của trang lần chạy; luồng chưa nối được thì trang hỏi
   lại mỗi giây như trước, và nối lại với khoảng chờ tăng dần.
 
+**Commit 20 đã làm, 2026-10-10**, cùng ba việc GĐ 5 để lại.
+
+- ADR-0009 và ADR-0013 đã viết; README kể Phase 4 và Phase 5.
+- *Thời hạn của tool đến từ catalog.* Plan mang `tool_timeouts`; activity chờ thời hạn đó
+  cộng 15 giây, lời gọi HTTP cộng 5 giây. Gateway vì vậy trả lời trước khi Temporal bỏ lần
+  thử.
+- *Số lần thử là số thật.* Từ lần thử thứ hai, activity ghi số lần thử vào
+  `node_executions` trước khi chạy.
+- *ADR-0007 gặp Temporal* (rủi ro ở §6) có hai test trên Temporal: gặp lời gọi trước còn
+  chạy thì chờ rồi nhận kết quả cũ; gặp kết quả không rõ thì dừng dù còn lượt thử. Tool
+  trong hai test đó là giả, trả lời như Gateway sẽ trả lời.
+
+GĐ 7 còn lại một việc: đối chiếu trace của kịch bản 3 chạy dưới dạng `loop` với trace
+Agent gốc. Nó cần một lần chạy thật qua Gateway, và làm cùng nghiệm thu của WP-D (GĐ 9).
+
 Mỗi GĐ từ 5 trở đi kết thúc bằng việc **chạy lại một kịch bản của GĐ 0 dưới dạng
 workflow**. Sáu kịch bản vì vậy vừa là dữ liệu thiết kế IR, vừa là bộ nghiệm thu
 của Phase 4.
@@ -1065,11 +1080,11 @@ không có commit trong WP-B — ghi lại ở đây để không rơi mất.
 | # | Về gì | Đóng băng ở commit |
 |---|---|---|
 | **0008** | **Compiler là hybrid; LLM không bao giờ phát ra IR** | **đã viết, 2026-09-17** |
-| 0009 | Worker gọi Gateway qua HTTP, và contract 7 canh đường tới credential (Q5) | 14 |
+| 0009 | Worker gọi Gateway qua HTTP, và contract 7 canh đường tới credential (Q5) | **đã viết, 2026-10-10** |
 | 0010 | Workflow principal: token theo activity, tenant từ execution record, và vì sao không bao giờ mượn `pk="user"` (Q6) | 13 |
 | 0011 | Node `llm` với tới Model Gateway bằng đường nào (Q4) | 17 |
 | 0012 | `loop`: định danh node theo lượt lặp, và khoá idempotency mang chỉ số lượt (Q13) | 14 |
-| 0013 | `transform` chạy code trong sandbox, và sandbox không bao giờ chạy trong Control Plane | [WP-C](wp-c-transform-sandbox.md) |
+| 0013 | `transform` chạy code trong sandbox, và sandbox không bao giờ chạy trong Control Plane | **đã viết, 2026-10-10** |
 | **0014** | **Workflow không lưu connection; lần chạy chọn cho từng node (thay Q7)** | **đã viết, 2026-09-30** |
 
 ADR-0008 được viết **trước** WP-B chứ không phải trong nó, vì nó đặt hai ràng buộc
