@@ -243,6 +243,9 @@ async def test_node_tool_goi_gateway_voi_node_va_khoa_cua_no() -> None:
             "tool_version": "1.0",
             "tool_input": {"text": "xin chào"},
             "idempotency_key": "idm_exe_1:moi_cau[2].dang:slack.post_message",
+            # `exe_1` không có trace nào đang mở.
+            "trace_id": None,
+            "parent_step_id": None,
         }
     ]
 

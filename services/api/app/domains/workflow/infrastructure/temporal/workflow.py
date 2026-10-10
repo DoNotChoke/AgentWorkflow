@@ -344,7 +344,16 @@ class GenericWorkflowExecutor:
         except _NodeFailedError as error:
             failed = error
         else:
-            await self._record_node(ref, "succeeded", usage=self._usage.pop(str(path), None))
+            await self._record_node(
+                ref,
+                "succeeded",
+                usage=self._usage.pop(str(path), None),
+                detail=(
+                    {"op": str(node.op), "result": output}
+                    if isinstance(node, ConditionNode)
+                    else None
+                ),
+            )
             return output
         await self._record_node(ref, "failed", failed)
         raise failed
@@ -369,6 +378,7 @@ class GenericWorkflowExecutor:
         *,
         attempt: int | None = None,
         usage: dict[str, int] | None = None,
+        detail: dict[str, Any] | None = None,
     ) -> None:
         await self._data(
             RECORD_NODE,
@@ -382,6 +392,7 @@ class GenericWorkflowExecutor:
                 error_category=None if failed is None else failed.category,
                 error_message=None if failed is None else failed.message,
                 usage=usage,
+                detail=detail,
             ),
         )
 

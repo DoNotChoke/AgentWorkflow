@@ -18,6 +18,12 @@ class ExecutionTraceModel(Base):
     __tablename__ = "execution_traces"
     __table_args__ = (
         Index("ix_execution_traces_tenant_conversation", "tenant_id", "conversation_id"),
+        Index(
+            "uq_execution_traces_execution",
+            "execution_id",
+            unique=True,
+            postgresql_where=text("source = 'workflow'"),
+        ),
         {"schema": SCHEMA},
     )
 

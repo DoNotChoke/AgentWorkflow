@@ -87,6 +87,14 @@ class FakeExecutionTraceRepository:
         ]
         return sorted(found, key=lambda trace: trace.started_at, reverse=True)
 
+    async def get_trace_for_execution(
+        self, *, tenant_id: str, execution_id: str
+    ) -> ExecutionTrace | None:
+        for trace in self.traces.values():
+            if trace.tenant_id == tenant_id and trace.subject.execution_id == execution_id:
+                return trace
+        return None
+
 
 @pytest.fixture
 def repo() -> FakeExecutionTraceRepository:
@@ -844,3 +852,82 @@ async def test_get_payload_khong_lan_sang_tenant_khac(service: TraceService) -> 
         await service.get_payload(
             tenant_id=ORG_B, trace_id=trace_id, step_id=step_id, side=PayloadSide.INPUT
         )
+
+
+# ─── Trace của một lần chạy workflow ─────────────────────────────────────────
+
+
+async def _workflow_trace(service: TraceService, execution_id: str = "exe_1") -> ExecutionTrace:
+    return await service.start_workflow_trace(
+        tenant_id=ORG_A,
+        workspace_id=WORKSPACE,
+        workflow_id="wf_1",
+        workflow_version_id="wfv_1",
+        execution_id=execution_id,
+        initiated_by="usr_1",
+        at=NOW,
+    )
+
+
+async def test_start_workflow_trace_dung_nguon_va_subject(service: TraceService) -> None:
+    trace = await _workflow_trace(service)
+
+    assert trace.source is TraceSource.WORKFLOW
+    assert trace.subject == TraceSubject(
+        workflow_id="wf_1", workflow_version_id="wfv_1", execution_id="exe_1"
+    )
+    assert trace.status is TraceStatus.RUNNING
+
+
+async def test_mo_lai_cho_cung_lan_chay_tra_ve_trace_da_mo(
+    service: TraceService, repo: FakeExecutionTraceRepository
+) -> None:
+    first = await _workflow_trace(service)
+    second = await _workflow_trace(service)
+
+    assert second.id == first.id
+    assert len(repo.traces) == 1
+
+
+async def test_find_for_execution_khong_lan_sang_tenant_khac(service: TraceService) -> None:
+    trace = await _workflow_trace(service)
+
+    found = await service.find_for_execution(tenant_id=ORG_A, execution_id="exe_1")
+    assert found is not None and found.id == trace.id
+    assert await service.find_for_execution(tenant_id=ORG_B, execution_id="exe_1") is None
+
+
+async def test_get_for_execution_tra_ve_trace_kem_buoc(service: TraceService) -> None:
+    trace = await _workflow_trace(service)
+    await service.append_step(
+        trace,
+        kind=StepKind.TOOL_CALL,
+        status=StepStatus.SUCCEEDED,
+        started_at=NOW,
+        completed_at=NOW + timedelta(milliseconds=5),
+        attributes={"node_path": "dang"},
+    )
+
+    detail = await service.get_for_execution(
+        tenant_id=ORG_A, workspace_id=WORKSPACE, execution_id="exe_1"
+    )
+
+    assert detail is not None
+    assert [step.attributes["node_path"] for step in detail.steps] == ["dang"]
+
+
+async def test_get_for_execution_cua_workspace_khac_nhu_khong_co(service: TraceService) -> None:
+    await _workflow_trace(service)
+
+    assert (
+        await service.get_for_execution(
+            tenant_id=ORG_A, workspace_id="ws_khac", execution_id="exe_1"
+        )
+        is None
+    )
+    assert (
+        await service.get_for_execution(
+            tenant_id=ORG_A, workspace_id=WORKSPACE, execution_id="exe_khong_co"
+        )
+        is None
+    )

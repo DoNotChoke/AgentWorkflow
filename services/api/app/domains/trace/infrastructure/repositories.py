@@ -169,6 +169,18 @@ class SqlAlchemyExecutionTraceRepository:
         )
         return None if row is None else _to_trace(row)
 
+    async def get_trace_for_execution(
+        self, *, tenant_id: str, execution_id: str
+    ) -> ExecutionTrace | None:
+        row = await self._session.scalar(
+            select(ExecutionTraceModel).where(
+                ExecutionTraceModel.tenant_id == tenant_id,
+                ExecutionTraceModel.execution_id == execution_id,
+                ExecutionTraceModel.source == str(TraceSource.WORKFLOW),
+            )
+        )
+        return None if row is None else _to_trace(row)
+
     async def list_steps(self, *, tenant_id: str, trace_id: str) -> list[TraceStep]:
         rows = await self._session.scalars(
             select(TraceStepModel)

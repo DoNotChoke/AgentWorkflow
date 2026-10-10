@@ -133,15 +133,48 @@ class TraceService:
         """Mở trace cho một lượt Agent, từ dữ liệu nguyên thuỷ.
 
         Cửa dành cho `entrypoints/agent_wiring.py` — nơi không được import
-        `TraceSource`/`TraceSubject` của tầng `domain` (contract 5). Không có
-        biến thể tương tự cho `source=WORKFLOW`: khi Phase 4 cần, thêm
-        `start_workflow_trace` riêng theo cùng khuôn, không mở rộng chữ ký này.
+        `TraceSource`/`TraceSubject` của tầng `domain` (contract 5).
         """
         return await self.start(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             source=TraceSource.AGENT,
             subject=TraceSubject(agent_id=agent_id, conversation_id=conversation_id),
+            initiated_by=initiated_by,
+            at=at,
+        )
+
+    async def start_workflow_trace(
+        self,
+        *,
+        tenant_id: str,
+        workspace_id: str,
+        workflow_id: str,
+        workflow_version_id: str,
+        execution_id: str,
+        initiated_by: str,
+        at: datetime,
+    ) -> ExecutionTrace:
+        """Mở trace cho một lần chạy workflow, từ dữ liệu nguyên thuỷ — cửa dành cho
+        `entrypoints/worker_wiring.py`.
+
+        Gọi lại với cùng `execution_id` trả về trace đã mở: activity mở nó có thể chạy
+        hai lần.
+        """
+        existing = await self._traces.get_trace_for_execution(
+            tenant_id=tenant_id, execution_id=execution_id
+        )
+        if existing is not None:
+            return existing
+        return await self.start(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            source=TraceSource.WORKFLOW,
+            subject=TraceSubject(
+                workflow_id=workflow_id,
+                workflow_version_id=workflow_version_id,
+                execution_id=execution_id,
+            ),
             initiated_by=initiated_by,
             at=at,
         )
@@ -371,6 +404,26 @@ class TraceService:
         if trace is None:
             raise AuthorizationError(_NOT_FOUND)
         steps = await self._traces.list_steps(tenant_id=tenant_id, trace_id=trace_id)
+        return TraceDetail(trace=trace, steps=steps)
+
+    async def find_for_execution(
+        self, *, tenant_id: str, execution_id: str
+    ) -> ExecutionTrace | None:
+        return await self._traces.get_trace_for_execution(
+            tenant_id=tenant_id, execution_id=execution_id
+        )
+
+    async def get_for_execution(
+        self, *, tenant_id: str, workspace_id: str, execution_id: str
+    ) -> TraceDetail | None:
+        """Trace của một lần chạy workflow kèm các bước. `None` khi lần chạy không để lại
+        trace, và cũng `None` khi nó thuộc workspace khác."""
+        trace = await self._traces.get_trace_for_execution(
+            tenant_id=tenant_id, execution_id=execution_id
+        )
+        if trace is None or trace.workspace_id != workspace_id:
+            return None
+        steps = await self._traces.list_steps(tenant_id=tenant_id, trace_id=trace.id)
         return TraceDetail(trace=trace, steps=steps)
 
     async def get_payload(

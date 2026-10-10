@@ -77,6 +77,8 @@ class RecordNodeInput:
     error_message: str | None = None
     #: Token model đã dùng, với node `llm`.
     usage: dict[str, int] | None = None
+    #: Kết quả của một node tính ngay trong workflow (`condition`), để ghi vào trace.
+    detail: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

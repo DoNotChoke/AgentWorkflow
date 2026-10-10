@@ -39,6 +39,8 @@ class GatewayToolInvoker:
         tool_version: str,
         tool_input: Mapping[str, Any],
         idempotency_key: str | None,
+        trace_id: str | None = None,
+        parent_step_id: str | None = None,
     ) -> Mapping[str, Any]:
         token = issue_run_token(self._settings, execution_id=execution_id)
         body = await request_json(
@@ -53,7 +55,12 @@ class GatewayToolInvoker:
                 "input": dict(tool_input),
                 "tool_version": tool_version,
                 "idempotency_key": idempotency_key,
-                "caller": {"execution_id": execution_id, "node_id": node_id},
+                "caller": {
+                    "execution_id": execution_id,
+                    "node_id": node_id,
+                    "execution_trace_id": trace_id,
+                    "parent_step_id": parent_step_id,
+                },
             },
             transport=self._transport,
         )

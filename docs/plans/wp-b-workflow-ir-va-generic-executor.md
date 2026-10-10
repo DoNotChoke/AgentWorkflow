@@ -968,6 +968,31 @@ nó. Compiler chỉ nâng version của trace khi bản đã ghi không còn tro
 19. `feat(api): watch an execution as it runs` — SSE §25.
 20. `docs: ADR-0009 to ADR-0012` + README.
 
+**Commit 18 đã làm, 2026-10-10.** Lần chạy để lại một Execution Trace.
+
+- *Không thêm activity nào.* Trace mở trong `record_execution("running")`, đóng trong lần
+  ghi trạng thái kết, và mỗi `run_*` tự ghi bước của nó. Thứ tự lệnh của workflow không
+  đổi, nên lịch sử kb3 đã ghi vẫn phát lại được.
+- *Mỗi lần thử của node là một bước*, kể cả lần hỏng, mang `node_path` và `attempt`:
+
+  | Node | Bước |
+  |---|---|
+  | `tool` | `tool_call` có input và output; bước của Gateway nằm dưới nó |
+  | `llm` | `model_call`: `instructions` và dữ liệu vào, kết quả ra, token |
+  | `transform` | `tool_call` với `tool_id = system.transform`, như Agent ghi |
+  | `condition` | `decision`: toán tử và nhánh đã chọn; id suy từ lần chạy và `node_path` |
+  | `trigger`, `loop` | không có bước riêng |
+
+- *Một lần chạy, một trace*: bên mở tra theo `execution_id` trước khi tạo, và index duy
+  nhất một phần giữ điều đó (migration 0019).
+- *Ghi trace là quan sát.* Không mở được trace, hay một bước không ghi được, thì node và
+  lần chạy vẫn đi tiếp; chỉ có một dòng log.
+- `GET /v1/executions/{id}/trace` trả trace kèm các bước, hoặc `null`; lần chạy của
+  workspace khác trông như không có trace.
+
+Chưa làm: đối chiếu trace của kịch bản 3 dưới dạng `loop` với trace Agent gốc, và chạy
+thật qua Gateway để thấy bước con của nó trong trace — test hiện dùng tool giả.
+
 Mỗi GĐ từ 5 trở đi kết thúc bằng việc **chạy lại một kịch bản của GĐ 0 dưới dạng
 workflow**. Sáu kịch bản vì vậy vừa là dữ liệu thiết kế IR, vừa là bộ nghiệm thu
 của Phase 4.

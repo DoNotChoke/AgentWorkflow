@@ -78,7 +78,25 @@ async def test_than_request_khong_mang_connection_chi_noi_node_nao_dang_chay() -
         "input": {"channel": "C1", "text": "xin chào"},
         "tool_version": "1.0",
         "idempotency_key": "idm_exe_1:moi_cau[2].dang:slack.post_message",
-        "caller": {"execution_id": "exe_1", "node_id": "dang"},
+        "caller": {
+            "execution_id": "exe_1",
+            "node_id": "dang",
+            "execution_trace_id": None,
+            "parent_step_id": None,
+        },
+    }
+
+
+async def test_co_trace_thi_gateway_biet_ghi_buoc_cua_no_vao_dau() -> None:
+    gateway = Gateway()
+
+    await _invoke(gateway, trace_id="trc_1", parent_step_id="stp_1")
+
+    assert json.loads(gateway.requests[0].content)["caller"] == {
+        "execution_id": "exe_1",
+        "node_id": "dang",
+        "execution_trace_id": "trc_1",
+        "parent_step_id": "stp_1",
     }
 
 

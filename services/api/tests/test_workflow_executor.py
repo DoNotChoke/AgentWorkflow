@@ -35,6 +35,9 @@ from app.core.db import dispose_engine, init_engine, session_scope
 from app.core.errors import ProviderUnavailableError
 from app.domains.execution.application.service import ExecutionService
 from app.domains.execution.infrastructure.repositories import SqlAlchemyExecutionRepository
+from app.domains.trace.application.service import TraceDetail, TraceService
+from app.domains.trace.infrastructure.payload_store import build_payload_store
+from app.domains.trace.infrastructure.repositories import SqlAlchemyExecutionTraceRepository
 from app.domains.workflow.application.ports import ModelAnswer, Rejected
 from app.domains.workflow.domain.entities import Workflow, WorkflowVersion, fingerprint
 from app.domains.workflow.infrastructure.repositories import SqlAlchemyWorkflowRepository
@@ -179,6 +182,9 @@ async def engine() -> AsyncIterator[None]:
 
     async with session_scope() as session:
         ids = {"ids": [TENANT]}
+        await session.execute(
+            text("DELETE FROM trace.execution_traces WHERE tenant_id = ANY(:ids)"), ids
+        )
         await session.execute(
             text("DELETE FROM execution.executions WHERE tenant_id = ANY(:ids)"), ids
         )
@@ -715,7 +721,26 @@ async def test_provider_hong_tam_thoi_thi_temporal_thu_lai_node_llm(harness: Har
 
 async def test_than_loop_chay_tool_llm_va_transform_cho_tung_phan_tu(harness: Harness) -> None:
     """Hình dạng của kb8: mỗi phần tử đọc, soạn bằng model, gọt bằng code, rồi đăng."""
-    ir = {
+    ir = copy.deepcopy(LOOP_LLM)
+    _replies.extend([{"text": " trang một "}, {"text": "trang hai"}, {"text": "trang ba"}])
+
+    outcome = await harness.run(ir, {})
+
+    assert outcome.status == "succeeded"
+    assert [asked.data["trang"]["id"] for asked in _asked] == ["p1", "p2", "p3"]
+    posted = [call.input["text"] for call in _calls if call.tool_id == "slack.post_message"]
+    assert posted == ["TRANG MỘT", "TRANG HAI", "TRANG BA"]
+    assert {path: status for path, status in outcome.nodes.items() if "[1]" in path} == {
+        "moi_trang[1].doc": "succeeded",
+        "moi_trang[1].soan": "succeeded",
+        "moi_trang[1].gon": "succeeded",
+        "moi_trang[1].dang": "succeeded",
+    }
+    assert sorted(outcome.usage) == ["moi_trang[0].soan", "moi_trang[1].soan", "moi_trang[2].soan"]
+
+
+def _loop_llm() -> dict[str, Any]:
+    return {
         "schema_version": "2.1",
         "nodes": [
             TOM_TAT["nodes"][0],
@@ -775,21 +800,72 @@ async def test_than_loop_chay_tool_llm_va_transform_cho_tung_phan_tu(harness: Ha
         ],
         "edges": [{"from": "t", "to": "khoi"}, {"from": "khoi", "to": "moi_trang"}],
     }
+
+
+LOOP_LLM = _loop_llm()
+
+
+# ─── Execution Trace ─────────────────────────────────────────────────────────
+
+
+async def _trace_of(execution_id: str) -> TraceDetail:
+    async with session_scope() as session:
+        detail = await TraceService(
+            traces=SqlAlchemyExecutionTraceRepository(session),
+            payloads=build_payload_store(get_settings()),
+        ).get_for_execution(tenant_id=TENANT, workspace_id="ws_1", execution_id=execution_id)
+    assert detail is not None
+    return detail
+
+
+async def test_lan_chay_de_lai_trace_va_trace_dong_cung_lan_chay(harness: Harness) -> None:
+    """Kịch bản 5. Tool ở đây là giả nên node `tool` không ghi gì: bước của nó được kiểm ở
+    `test_workflow_run_trace.py`."""
+    _script["slack.get_channel_history"] = _lich_su(6)
+
+    outcome = await harness.run(_example("kb5-re-nhanh"), {})
+
+    detail = await _trace_of(outcome.execution_id)
+    assert (str(detail.trace.source), str(detail.trace.status)) == ("workflow", "succeeded")
+    assert detail.trace.subject.execution_id == outcome.execution_id
+    steps = {step.attributes["node_path"]: step for step in detail.steps}
+    assert {path: str(step.kind) for path, step in steps.items()} == {
+        "dem": "tool_call",
+        "du_nhieu": "decision",
+    }
+    assert steps["dem"].output_payload is not None
+    assert steps["dem"].output_payload.inline == {"value": 6}
+    assert steps["du_nhieu"].output_payload is not None
+    assert steps["du_nhieu"].output_payload.inline == {"op": "gt", "result": True}
+
+
+async def test_lan_chay_hong_thi_trace_dong_failed_va_giu_buoc_hong(harness: Harness) -> None:
+    ir = copy.deepcopy(_example("kb5-re-nhanh"))
+    next(node for node in ir["nodes"] if node["id"] == "dem")["code"] = "return args['khong_co']"
+    _script["slack.get_channel_history"] = _lich_su(6)
+
+    outcome = await harness.run(ir, {})
+
+    assert outcome.status == "failed"
+    detail = await _trace_of(outcome.execution_id)
+    assert str(detail.trace.status) == "failed"
+    assert {str(step.status) for step in detail.steps} == {"failed"}
+    assert {step.attributes["node_path"] for step in detail.steps} == {"dem"}
+
+
+async def test_moi_luot_cua_loop_co_buoc_rieng_trong_trace(harness: Harness) -> None:
+    ir = copy.deepcopy(LOOP_LLM)
     _replies.extend([{"text": " trang một "}, {"text": "trang hai"}, {"text": "trang ba"}])
 
     outcome = await harness.run(ir, {})
 
-    assert outcome.status == "succeeded"
-    assert [asked.data["trang"]["id"] for asked in _asked] == ["p1", "p2", "p3"]
-    posted = [call.input["text"] for call in _calls if call.tool_id == "slack.post_message"]
-    assert posted == ["TRANG MỘT", "TRANG HAI", "TRANG BA"]
-    assert {path: status for path, status in outcome.nodes.items() if "[1]" in path} == {
-        "moi_trang[1].doc": "succeeded",
-        "moi_trang[1].soan": "succeeded",
-        "moi_trang[1].gon": "succeeded",
-        "moi_trang[1].dang": "succeeded",
-    }
-    assert sorted(outcome.usage) == ["moi_trang[0].soan", "moi_trang[1].soan", "moi_trang[2].soan"]
+    detail = await _trace_of(outcome.execution_id)
+    assert sorted(step.attributes["node_path"] for step in detail.steps) == sorted(
+        f"moi_trang[{turn}].{node}" for turn in range(3) for node in ("soan", "gon")
+    )
+    soan = next(s for s in detail.steps if s.attributes["node_path"] == "moi_trang[1].soan")
+    assert str(soan.kind) == "model_call"
+    assert soan.attributes["input_tokens"] == 100
 
 
 async def test_lich_su_vua_chay_replay_lai_duoc(harness: Harness) -> None:

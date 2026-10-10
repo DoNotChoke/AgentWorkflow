@@ -1,6 +1,6 @@
 """Router HTTP của Trace — chỉ đọc.
 
-Trace được ghi bởi domain khác (Agent, Integration) qua `TraceService`, gọi
+Trace được ghi bởi domain khác (Agent, Integration, Workflow) qua `TraceService`, gọi
 trực tiếp trong tiến trình — không có route ghi nào ở đây
 """
 
@@ -256,6 +256,21 @@ async def get_step_payload(
         tenant_id=context.organization_id, trace_id=trace_id, step_id=step_id, side=side
     )
     return _payload(view)
+
+
+@router.get("/v1/executions/{execution_id}/trace")
+async def get_execution_trace(
+    context: CurrentContext,
+    service: Annotated[TraceService, Depends(get_trace_service)],
+    execution_id: Annotated[str, Path(max_length=64)],
+) -> TraceResponse | None:
+    """Trace của một lần chạy workflow, hoặc `null` khi lần chạy không để lại trace."""
+    detail = await service.get_for_execution(
+        tenant_id=context.organization_id,
+        workspace_id=context.workspace_id,
+        execution_id=execution_id,
+    )
+    return None if detail is None else _detail(detail)
 
 
 @router.get("/v1/conversations/{conversation_id}/traces")

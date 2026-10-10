@@ -315,3 +315,77 @@ def test_phia_payload_khong_hop_le_bi_tu_choi(client: TestClient) -> None:
     response = an.get(f"/v1/traces/{trace_id}/steps/{step_id}/payload/o-giua")
 
     assert response.status_code == 422
+
+
+# ─── GET /v1/executions/{execution_id}/trace ──────────────────────────────────
+
+
+async def _seed_workflow_trace(
+    tenant_id: str, workspace_id: str, execution_id: str, initiated_by: str
+) -> str:
+    async with session_scope() as session:
+        service = TraceService(
+            traces=SqlAlchemyExecutionTraceRepository(session),
+            payloads=InMemoryPayloadStore(),
+        )
+        trace = await service.start_workflow_trace(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            workflow_id="wf_test",
+            workflow_version_id="wfv_test",
+            execution_id=execution_id,
+            initiated_by=initiated_by,
+            at=NOW,
+        )
+        await service.record_step(
+            tenant_id=tenant_id,
+            trace_id=trace.id,
+            kind="tool_call",
+            status="succeeded",
+            started_at=NOW,
+            completed_at=NOW + timedelta(milliseconds=200),
+            attributes={"node_path": "dang", "node_type": "tool"},
+            input_payload={"channel": "C123"},
+            output_payload={"ts": "1.0"},
+        )
+        return trace.id
+
+
+def test_trace_cua_mot_lan_chay_workflow(client: TestClient) -> None:
+    an = Nguoi(client, "an")
+    org, workspace = _tenant_of(an)
+    execution_id = f"exe_{uuid.uuid4().hex}"
+    assert client.portal is not None
+    trace_id = client.portal.call(_seed_workflow_trace, org, workspace, execution_id, "usr_an")
+
+    found = an.get(f"/v1/executions/{execution_id}/trace")
+
+    assert found.status_code == 200, found.text
+    body = found.json()
+    assert (body["id"], body["source"]) == (trace_id, "workflow")
+    assert body["subject"]["execution_id"] == execution_id
+    (step,) = body["steps"]
+    assert step["attributes"]["node_path"] == "dang"
+    assert step["input_payload"]["location"] == "inline"
+
+
+def test_lan_chay_khong_de_lai_trace_tra_ve_null(client: TestClient) -> None:
+    an = Nguoi(client, "an")
+
+    found = an.get(f"/v1/executions/exe_{uuid.uuid4().hex}/trace")
+
+    assert found.status_code == 200, found.text
+    assert found.json() is None
+
+
+def test_trace_lan_chay_cua_to_chuc_khac_nhu_khong_co(client: TestClient) -> None:
+    an, binh = Nguoi(client, "an"), Nguoi(client, "binh")
+    org, workspace = _tenant_of(an)
+    execution_id = f"exe_{uuid.uuid4().hex}"
+    assert client.portal is not None
+    client.portal.call(_seed_workflow_trace, org, workspace, execution_id, "usr_an")
+
+    found = binh.get(f"/v1/executions/{execution_id}/trace")
+
+    assert found.status_code == 200, found.text
+    assert found.json() is None

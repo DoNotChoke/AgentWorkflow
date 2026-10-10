@@ -33,6 +33,11 @@ class ExecutionTraceRepository(Protocol):
     ) -> list[ExecutionTrace]:
         """Mọi trace của một cuộc hội thoại, mới nhất trước."""
 
+    async def get_trace_for_execution(
+        self, *, tenant_id: str, execution_id: str
+    ) -> ExecutionTrace | None:
+        """Trace của một lần chạy workflow. Mỗi lần chạy có nhiều nhất một."""
+
 
 class PayloadStore(Protocol):
     """Cất và đọc lại payload của một bước trace (§4.7, §9.1)."""

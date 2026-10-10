@@ -109,6 +109,44 @@ class ExecutionRecorder(Protocol):
     ) -> None: ...
 
 
+class RunTrace(Protocol):
+    """Execution Trace của một lần chạy. Hiện thực ở `entrypoints/worker_wiring.py`.
+
+    Loại bước và trạng thái là chuỗi: domain này không biết domain `trace`.
+    """
+
+    async def open(self, *, tenant_id: str, execution_id: str, at: datetime) -> None: ...
+
+    async def find(self, *, tenant_id: str, execution_id: str) -> str | None:
+        """Id của trace đang mở cho lần chạy, hoặc `None`."""
+
+    async def step(
+        self,
+        *,
+        tenant_id: str,
+        trace_id: str,
+        kind: str,
+        status: str,
+        started_at: datetime,
+        completed_at: datetime,
+        attributes: Mapping[str, Any],
+        input_payload: Mapping[str, Any] | None = None,
+        output_payload: Mapping[str, Any] | None = None,
+        error_category: str | None = None,
+        step_id: str | None = None,
+    ) -> None: ...
+
+    async def close(
+        self,
+        *,
+        tenant_id: str,
+        execution_id: str,
+        status: str,
+        at: datetime,
+        error_category: str | None = None,
+    ) -> None: ...
+
+
 class InvocationContext(Protocol):
     """Tenant của người gọi, đã phân giải từ token và membership."""
 
@@ -256,8 +294,12 @@ class ToolInvoker(Protocol):
         tool_version: str,
         tool_input: Mapping[str, Any],
         idempotency_key: str | None,
+        trace_id: str | None = None,
+        parent_step_id: str | None = None,
     ) -> Mapping[str, Any]:
-        """Output của tool. Ném `AppError` mang đúng hạng lỗi Gateway trả về."""
+        """Output của tool. Ném `AppError` mang đúng hạng lỗi Gateway trả về.
+
+        Có `trace_id` thì Gateway ghi bước của nó vào trace đó, dưới `parent_step_id`."""
 
 
 class TransformRunner(Protocol):
