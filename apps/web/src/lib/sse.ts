@@ -1,5 +1,6 @@
 /**
- * Đọc một luồng SSE từ Agent Runtime (`POST /v1/conversations/{id}/messages`).
+ * Đọc một luồng SSE: lượt chat của Agent Runtime (`POST /v1/conversations/{id}/messages`),
+ * phiên biên dịch, và tiến trình một lần chạy (`GET /v1/executions/{id}/events`).
  *
  * Không dùng `EventSource` gốc: endpoint là `POST` kèm header `Authorization`
  * để forward danh tính người dùng (§2.4) — hai thứ `EventSource` không hỗ trợ

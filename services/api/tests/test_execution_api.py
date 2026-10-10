@@ -217,3 +217,54 @@ def test_to_chuc_khac_khong_thay_lan_chay(client: TestClient) -> None:
     assert nguoi_khac.get(f"/v1/executions/{execution_id}").status_code == 403
     assert nguoi_khac.get("/v1/executions", params={"workflow_id": workflow_id}).json() == []
     assert _run(nguoi_khac, workflow_id).status_code == 403
+
+
+# ─── Theo dõi (SSE) ──────────────────────────────────────────────────────────
+
+
+def _events(body: str) -> list[tuple[str, dict[str, Any]]]:
+    import json
+
+    events: list[tuple[str, dict[str, Any]]] = []
+    name = ""
+    for line in body.splitlines():
+        if line.startswith("event:"):
+            name = line.removeprefix("event:").strip()
+        elif line.startswith("data:"):
+            events.append((name, json.loads(line.removeprefix("data:").strip() or "{}")))
+    return events
+
+
+def test_theo_doi_lan_chay_da_ket_thuc_ra_snapshot_roi_dong(
+    client: TestClient, launcher: FakeLauncher
+) -> None:
+    nguoi = Nguoi(client)
+    workflow_id = _published(nguoi)
+    connection = _connection(client, nguoi)
+    launcher.fail = True
+    refused = _run(nguoi, workflow_id, connections_by_provider={"slack": connection})
+    execution_id = refused.json()["error"]["details"]["execution_id"]
+
+    stream = nguoi.get(f"/v1/executions/{execution_id}/events")
+
+    assert stream.status_code == 200, stream.text
+    assert stream.headers["content-type"].startswith("text/event-stream")
+    events = _events(stream.text)
+    assert [name for name, _ in events] == ["snapshot", "done"]
+    assert events[0][1] == nguoi.get(f"/v1/executions/{execution_id}").json()
+
+
+def test_theo_doi_lan_chay_cua_to_chuc_khac_bi_tu_choi_truoc_khi_luong_mo(
+    client: TestClient,
+) -> None:
+    nguoi = Nguoi(client)
+    workflow_id = _published(nguoi)
+    connection = _connection(client, nguoi)
+    execution_id = _run(nguoi, workflow_id, connections_by_provider={"slack": connection}).json()[
+        "id"
+    ]
+
+    refused = Nguoi(client, "khac").get(f"/v1/executions/{execution_id}/events")
+
+    assert refused.status_code == 403, refused.text
+    assert refused.json()["error"]["category"] == "AuthorizationError"

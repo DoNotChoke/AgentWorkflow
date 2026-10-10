@@ -149,6 +149,12 @@ class Settings(BaseSettings):
     compiler_rate_limit: int = 10
     compiler_rate_window_seconds: int = 300
 
+    # ─── Theo dõi một lần chạy (SSE) ──────────────────────────────────
+    #: Nhịp đọc lại bản ghi lần chạy.
+    execution_watch_interval_ms: int = 500
+    #: Một luồng sống tối đa ngần này rồi đóng; bên xem nối lại bằng token mới.
+    execution_watch_max_seconds: int = 900
+
     # ─── Node `llm` của workflow ──────────────────────────────────────
     #: Trần token cho một câu trả lời. Với model suy luận, trần này gồm cả phần suy luận.
     workflow_llm_max_tokens: int = 8192

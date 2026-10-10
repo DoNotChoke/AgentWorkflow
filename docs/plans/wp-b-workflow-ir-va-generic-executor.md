@@ -993,6 +993,22 @@ nó. Compiler chỉ nâng version của trace khi bản đã ghi không còn tro
 Chưa làm: đối chiếu trace của kịch bản 3 dưới dạng `loop` với trace Agent gốc, và chạy
 thật qua Gateway để thấy bước con của nó trong trace — test hiện dùng tool giả.
 
+**Commit 19 đã làm, 2026-10-10.** `GET /v1/executions/{id}/events` là một luồng SSE.
+
+- *Bốn sự kiện*: `snapshot` (cả lần chạy, một lần), `nodes` (chỉ các hàng node mới hoặc
+  đã đổi), `execution` (trạng thái lần chạy đổi), `done` (đã kết thúc; server đóng luồng).
+  Luồng đóng mà không có `done` — hết `execution_watch_max_seconds`, hoặc đứt — thì bên
+  xem nối lại và nhận `snapshot` mới.
+- *Nguồn thay đổi là PostgreSQL.* Control Plane đọc lại bản ghi lần chạy mỗi
+  `execution_watch_interval_ms` và so với lần đọc trước
+  (`execution/application/watching.py`). §25 vẽ một *Execution Event* đi từ worker; ở đây
+  chưa có event bus (§4.8 để nó là tuỳ chọn), và worker không đổi. Xem lại khi số người
+  cùng xem đủ nhiều để hai truy vấn mỗi nửa giây cho mỗi luồng thành gánh nặng.
+- *Không giữ kết nối database suốt luồng.* Tenant được phân giải trong một transaction
+  đóng ngay, và mỗi nhịp đọc là một transaction riêng.
+- *Web* ghi các sự kiện vào cache của trang lần chạy; luồng chưa nối được thì trang hỏi
+  lại mỗi giây như trước, và nối lại với khoảng chờ tăng dần.
+
 Mỗi GĐ từ 5 trở đi kết thúc bằng việc **chạy lại một kịch bản của GĐ 0 dưới dạng
 workflow**. Sáu kịch bản vì vậy vừa là dữ liệu thiết kế IR, vừa là bộ nghiệm thu
 của Phase 4.

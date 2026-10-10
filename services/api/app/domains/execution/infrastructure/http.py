@@ -1,4 +1,5 @@
-"""Router HTTP của Execution: chạy workflow bằng tay, và xem nó đang ở đâu."""
+"""Router HTTP của Execution: chạy workflow bằng tay, xem nó đang ở đâu, và theo dõi
+nó trong lúc chạy."""
 
 from __future__ import annotations
 
@@ -10,10 +11,13 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from sse_starlette.sse import EventSourceResponse
 
+from app.core.config import Settings, get_settings
 from app.core.context import RequestContext, current_context, set_context
 from app.core.db import get_session, session_scope
 from app.core.http_auth import require_user_id, user_principal
+from app.core.redis import enforce_rate_limit, global_key
 from app.domains.execution.application.ports import (
     ExecutionLauncher,
     TenantGuard,
@@ -22,10 +26,19 @@ from app.domains.execution.application.ports import (
 from app.domains.execution.application.service import (
     DEFAULT_LIST_LIMIT,
     MAX_LIST_LIMIT,
+    ExecutionProgress,
     ExecutionService,
     ExecutionSummary,
 )
 from app.domains.execution.application.starting import ExecutionStarter
+from app.domains.execution.application.watching import (
+    Change,
+    Done,
+    ExecutionChanged,
+    NodesChanged,
+    Snapshot,
+    watch,
+)
 from app.domains.execution.domain.entities import (
     Execution,
     ExecutionStatus,
@@ -43,6 +56,10 @@ WORKSPACE_HEADER = "x-workspace-id"
 EXECUTION_TENANT_GUARD_FACTORY = "execution_tenant_guard_factory"
 EXECUTION_RUN_SOURCE_FACTORY = "execution_run_source_factory"
 EXECUTION_LAUNCHER_FACTORY = "execution_launcher_factory"
+
+#: Số luồng theo dõi một người được mở trong một phút, kể cả những lần nối lại.
+_WATCHES_PER_USER = 60
+_WATCH_WINDOW_SECONDS = 60
 
 
 # ─── Dependency ──────────────────────────────────────────────────────────────
@@ -66,6 +83,30 @@ async def resolve_context(
     header_workspace_id: Annotated[str | None, Header(alias=WORKSPACE_HEADER)] = None,
 ) -> Any:
     """Phân giải tenant từ token và membership, **không** từ thân request (§19)."""
+    return await _resolve(request, user_id, session, header_organization_id, header_workspace_id)
+
+
+async def resolve_context_briefly(
+    request: Request,
+    user_id: Annotated[str, Depends(require_user_id)],
+    header_organization_id: Annotated[str | None, Header(alias=ORGANIZATION_HEADER)] = None,
+    header_workspace_id: Annotated[str | None, Header(alias=WORKSPACE_HEADER)] = None,
+) -> Any:
+    """Như `resolve_context`, trong một transaction đóng ngay. Một luồng SSE sống hàng
+    phút, và session của request chỉ được trả lại khi response kết thúc."""
+    async with session_scope() as session:
+        return await _resolve(
+            request, user_id, session, header_organization_id, header_workspace_id
+        )
+
+
+async def _resolve(
+    request: Request,
+    user_id: str,
+    session: AsyncSession,
+    header_organization_id: str | None,
+    header_workspace_id: str | None,
+) -> Any:
     guard: TenantGuard = _from_state(request, EXECUTION_TENANT_GUARD_FACTORY)(session)
     context = await guard.require_workspace_context(
         user_id=user_id,
@@ -87,6 +128,7 @@ async def resolve_context(
 
 
 CurrentContext = Annotated[Any, Depends(resolve_context)]
+WatchingContext = Annotated[Any, Depends(resolve_context_briefly)]
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> ExecutionService:
@@ -213,6 +255,33 @@ def _node(node: NodeExecution) -> NodeResponse:
     )
 
 
+def _detail(progress: ExecutionProgress) -> ExecutionDetailResponse:
+    execution = progress.execution
+    return ExecutionDetailResponse(
+        **_execution(execution).model_dump(),
+        inputs=dict(execution.inputs),
+        connections=dict(execution.connection_bindings),
+        nodes=[_node(node) for node in progress.nodes],
+    )
+
+
+class NodesChangedResponse(BaseModel):
+    nodes: list[NodeResponse]
+
+
+def _event(change: Change) -> dict[str, str]:
+    match change:
+        case Snapshot(progress):
+            return {"event": "snapshot", "data": _detail(progress).model_dump_json()}
+        case NodesChanged(nodes):
+            body = NodesChangedResponse(nodes=[_node(node) for node in nodes])
+            return {"event": "nodes", "data": body.model_dump_json()}
+        case ExecutionChanged(execution):
+            return {"event": "execution", "data": _execution(execution).model_dump_json()}
+        case Done():
+            return {"event": "done", "data": "{}"}
+
+
 # ─── Route ───────────────────────────────────────────────────────────────────
 
 
@@ -267,10 +336,41 @@ async def get_execution(
         execution_id=execution_id,
         workspace_id=context.workspace_id,
     )
-    execution = progress.execution
-    return ExecutionDetailResponse(
-        **_execution(execution).model_dump(),
-        inputs=dict(execution.inputs),
-        connections=dict(execution.connection_bindings),
-        nodes=[_node(node) for node in progress.nodes],
+    return _detail(progress)
+
+
+@router.get("/{execution_id}/events")
+async def watch_execution(
+    execution_id: Annotated[str, Path(max_length=64)],
+    context: WatchingContext,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> EventSourceResponse:
+    """Lần chạy qua SSE: `snapshot` một lần, rồi `nodes` và `execution` mỗi khi có gì
+    đổi, và `done` khi nó kết thúc. Luồng đóng mà không có `done` thì nối lại."""
+    await enforce_rate_limit(
+        global_key("execution-watch", context.user_id),
+        limit=_WATCHES_PER_USER,
+        window_seconds=_WATCH_WINDOW_SECONDS,
     )
+
+    async def read() -> ExecutionProgress:
+        async with execution_records() as service:
+            return await service.get_progress(
+                tenant_id=context.organization_id,
+                execution_id=execution_id,
+                workspace_id=context.workspace_id,
+            )
+
+    # Lần chạy không tồn tại hoặc của workspace khác bị từ chối ở đây, trước khi luồng mở.
+    await read()
+
+    async def events() -> AsyncIterator[dict[str, str]]:
+        changes = watch(
+            read,
+            interval_seconds=settings.execution_watch_interval_ms / 1000,
+            max_seconds=settings.execution_watch_max_seconds,
+        )
+        async for change in changes:
+            yield _event(change)
+
+    return EventSourceResponse(events())

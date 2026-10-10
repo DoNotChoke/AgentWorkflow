@@ -40,8 +40,8 @@ import {
   type Progress,
   providerOf,
   readProgress,
+  useLiveRun,
   useNow,
-  useRun,
   useRunTrace,
   useTracePayload,
   useWorkflowVersion,
@@ -56,7 +56,8 @@ const NO_WORKER_AFTER_MS = 10_000;
 /**
  * Một lần chạy: đồ thị của version nó ghim, tô theo trạng thái từng bước.
  *
- * Trang hỏi lại server mỗi giây cho tới khi lần chạy kết thúc. Vòng lặp hiện một
+ * Trang theo dõi lần chạy qua SSE cho tới khi nó kết thúc, và hỏi lại mỗi giây khi
+ * luồng chưa nối được. Vòng lặp hiện một
  * lượt mỗi lúc: mặc định là lượt đang chạy, cho tới khi người xem chọn lượt khác.
  */
 export default function RunPage() {
@@ -65,7 +66,7 @@ export default function RunPage() {
   const { organization, workspace } = useTenant();
   const workspaceId = workspace?.id ?? null;
 
-  const run = useRun(organization.id, workspaceId, id);
+  const { run, connected } = useLiveRun(organization.id, workspaceId, id);
   const workflowId = run.data?.workflow_id ?? null;
   const workflow = useWorkflow(organization.id, workspaceId, workflowId);
   const versions = useWorkflowVersions(organization.id, workspaceId, workflowId);
@@ -92,7 +93,7 @@ export default function RunPage() {
 
   const live = run.data ? !isFinished(run.data.status) : false;
   const now = useNow(live);
-  const trace = useRunTrace(organization.id, workspaceId, id, live);
+  const trace = useRunTrace(organization.id, workspaceId, id, live, !connected);
   const attempts = useMemo(() => attemptsByPath(trace.data), [trace.data]);
 
   if (!workspace) return <Spinner label="No workspace in this organisation." />;
@@ -193,7 +194,7 @@ export default function RunPage() {
               <span className="grow" />
               <span className="font-normal text-ink-4">
                 {progress.total ? `${settled} of ${progress.total} steps` : "no step yet"}
-                {live ? " · refreshes every second" : ""}
+                {live ? (connected ? " · live" : " · refreshes every second") : ""}
               </span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-sunken">

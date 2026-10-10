@@ -21,10 +21,13 @@ import {
 } from "@/lib/api";
 import { queryKeys, workspaceHeaders } from "@/lib/queries";
 import { useSession } from "@/lib/session";
+import { streamSse } from "@/lib/sse";
 
-/** Lần chạy của workflow: gọi API, hỏi lại định kỳ, và đọc tiến trình theo lượt. */
+/** Lần chạy của workflow: gọi API, theo dõi qua SSE, và đọc tiến trình theo lượt. */
 
 const POLL_MS = 1000;
+/** Chờ lâu nhất giữa hai lần nối lại luồng theo dõi. */
+const RECONNECT_MAX_MS = 15_000;
 const LIST_POLL_MS = 3000;
 
 const FINISHED: ReadonlySet<RunStatus> = new Set(["succeeded", "failed", "cancelled", "timed_out"]);
@@ -122,18 +125,22 @@ export function useRuns(
   });
 }
 
-/** Một lần chạy kèm từng bước; hỏi lại mỗi giây cho tới khi nó kết thúc. */
+/**
+ * Một lần chạy kèm từng bước. `poll` thì hỏi lại mỗi giây cho tới khi nó kết thúc;
+ * không thì có thứ khác đang ghi vào cache (`useLiveRun`).
+ */
 export function useRun(
   organizationId: string | null,
   workspaceId: string | null,
   runId: string | null,
+  poll = true,
 ) {
   const { accessToken, status } = useSession();
   return useQuery({
     queryKey: queryKeys.run(organizationId, runId),
     enabled: status === "authenticated" && workspaceId !== null && runId !== null,
     refetchInterval: (state) =>
-      state.state.data && isFinished(state.state.data.status) ? false : POLL_MS,
+      !poll || (state.state.data && isFinished(state.state.data.status)) ? false : POLL_MS,
     queryFn: () =>
       apiRequest<RunDetail>(`/v1/executions/${runId}`, {
         accessToken,
@@ -143,22 +150,103 @@ export function useRun(
 }
 
 /**
+ * Một lần chạy, theo dõi qua SSE: server gửi cả lần chạy một lần rồi chỉ gửi thứ đã
+ * đổi, và hook ghi chúng vào cache của `useRun`. Luồng đứt thì nối lại, chờ lâu dần;
+ * trong lúc chưa nối được thì `useRun` hỏi lại mỗi giây như trước.
+ */
+export function useLiveRun(
+  organizationId: string | null,
+  workspaceId: string | null,
+  runId: string | null,
+) {
+  const { accessToken, status } = useSession();
+  const queryClient = useQueryClient();
+  const [connected, setConnected] = useState(false);
+  const run = useRun(organizationId, workspaceId, runId, !connected);
+  const finished = run.data ? isFinished(run.data.status) : false;
+
+  useEffect(() => {
+    if (status !== "authenticated" || workspaceId === null || runId === null || finished) return;
+    const abort = new AbortController();
+    const key = queryKeys.run(organizationId, runId);
+    let retry: number | undefined;
+    let failures = 0;
+
+    const follow = async () => {
+      let ended = false;
+      try {
+        const events = streamSse(`/v1/executions/${runId}/events`, {
+          method: "GET",
+          accessToken,
+          headers: workspaceHeaders(organizationId, workspaceId),
+          signal: abort.signal,
+        });
+        for await (const { event, data } of events) {
+          failures = 0;
+          setConnected(true);
+          if (event === "snapshot") {
+            queryClient.setQueryData<RunDetail>(key, data as RunDetail);
+          } else if (event === "execution") {
+            queryClient.setQueryData<RunDetail>(key, (seen) =>
+              seen ? { ...seen, ...(data as Run) } : seen,
+            );
+          } else if (event === "nodes") {
+            const changed = (data as { nodes: RunStep[] }).nodes;
+            queryClient.setQueryData<RunDetail>(key, (seen) => {
+              if (!seen) return seen;
+              const byPath = new Map(seen.nodes.map((step) => [step.node_path, step]));
+              for (const step of changed) byPath.set(step.node_path, step);
+              return { ...seen, nodes: [...byPath.values()] };
+            });
+            // Một bước vừa xong thì trace có thêm bước của nó.
+            if (changed.some((step) => step.status !== "pending" && step.status !== "running")) {
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.runTrace(organizationId, runId),
+              });
+            }
+          } else if (event === "done") {
+            ended = true;
+          }
+        }
+      } catch {
+        // Luồng đứt hoặc không mở được: nối lại bên dưới.
+      }
+      if (abort.signal.aborted) return;
+      setConnected(false);
+      if (ended) return;
+      retry = window.setTimeout(follow, Math.min(1000 * 2 ** failures, RECONNECT_MAX_MS));
+      failures += 1;
+    };
+    void follow();
+
+    return () => {
+      abort.abort();
+      window.clearTimeout(retry);
+    };
+  }, [accessToken, finished, organizationId, queryClient, runId, status, workspaceId]);
+
+  return { run, connected: connected && !finished };
+}
+
+/**
  * Execution Trace của một lần chạy: mỗi lần thử của một bước là một bước trace.
- * `null` khi lần chạy không để lại trace. Hỏi lại cùng nhịp với lần chạy, và thêm một
- * lần khi nó kết thúc: bước cuối được ghi trước khi lần chạy đổi trạng thái.
+ * `null` khi lần chạy không để lại trace. `useLiveRun` làm nó tải lại mỗi khi một bước
+ * xong; `poll` là đường lùi khi luồng theo dõi chưa nối được. Tải thêm một lần khi lần
+ * chạy kết thúc: bước cuối được ghi trước khi lần chạy đổi trạng thái.
  */
 export function useRunTrace(
   organizationId: string | null,
   workspaceId: string | null,
   runId: string | null,
   live: boolean,
+  poll: boolean,
 ) {
   const { accessToken, status } = useSession();
   return useQuery({
     queryKey: [...queryKeys.runTrace(organizationId, runId), live],
     enabled: status === "authenticated" && workspaceId !== null && runId !== null,
     placeholderData: keepPreviousData,
-    refetchInterval: live ? POLL_MS : false,
+    refetchInterval: live && poll ? POLL_MS : false,
     queryFn: () =>
       apiRequest<RunTrace | null>(`/v1/executions/${runId}/trace`, {
         accessToken,
