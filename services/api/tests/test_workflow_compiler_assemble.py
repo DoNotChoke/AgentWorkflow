@@ -340,6 +340,19 @@ def test_lay_gia_tri_tu_mot_buoc_la_giu_buoc_do() -> None:
     assert _codes("kb7-buoc-thua", raw) == [("N6", "nguon_la_buoc_da_bo")]
 
 
+def test_id_do_buoc_truoc_tra_ra_khong_lam_dau_vao_duoc() -> None:
+    """kb7: người dùng muốn tự chọn kênh, model biến id kênh thành đầu vào và bỏ lượt liệt kê.
+    Người dùng sẽ gõ tên kênh, không phải id."""
+
+    def mutate(raw: dict[str, Any]) -> None:
+        raw["buoc"]["l1.b1"] = {"chon": "bo"}
+        raw["gia_tri"]["N6"] = {"chon": "workflow_input", "ten": "kenh_slack"}
+
+    assert _codes("kb7-buoc-thua", _changed("kb7-buoc-thua", mutate)) == [
+        ("N6", "dau_vao_la_gia_tri_tra_ra")
+    ]
+
+
 def test_lua_chon_ngoai_tap_bi_chan_o_hinh_dang_va_mang_id_cau_hoi() -> None:
     """kb1 không có bước nào trước, nên `from_step` không nằm trong tập của N1."""
     raw = _changed("kb1-slack-ghi", lambda r: r["gia_tri"].update({"N1": {"chon": "from_step"}}))

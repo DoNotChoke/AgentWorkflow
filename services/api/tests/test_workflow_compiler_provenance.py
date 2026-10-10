@@ -174,6 +174,7 @@ def test_so_khop_voi_cau_goc_phai_ep_kieu() -> None:
     [
         ("đăng vào kênh test, nhanh nhé", "test", True),
         ("đăng vào kênh testing", "test", False),
+        ("gửi lên Slack (kênh AWS)", "aws", True),
         ("đọc 10 tin nhắn", 1, False),
         ("đọc 10 tin nhắn", 10, True),
         ("đăng câu: [WP-B] xong.", "[WP-B] xong.", True),

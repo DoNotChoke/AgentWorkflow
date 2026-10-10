@@ -435,6 +435,16 @@ def _check_source(
     # Lựa chọn ngoài tập và câu hỏi không tồn tại đã bị hình dạng chặn: mỗi câu hỏi có
     # `enum` riêng trong `answer_schema`.
     if answer.choice is Choice.INPUT:
+        if question.candidates and not question.said_in:
+            # Giá trị do một bước trước tra ra (một id), người dùng chưa từng nói nó: họ sẽ
+            # gõ thứ họ biết, như tên, và bước tra phải còn đó để đổi tên thành giá trị này.
+            yield AnswerIssue(
+                question.id,
+                "dau_vao_la_gia_tri_tra_ra",
+                f"{question.id} = {question.value!r} là giá trị một bước trước tra ra, người "
+                "dùng không tự gõ được. Chọn from_step, giữ bước tra, và nếu người dùng cần "
+                "chọn mỗi lần chạy thì nêu `khoa` và để `nguon_khoa` là workflow_input.",
+            )
         yield from _check_input(question.id, answer.name, question.value, inputs)
 
     elif answer.choice is Choice.LLM:

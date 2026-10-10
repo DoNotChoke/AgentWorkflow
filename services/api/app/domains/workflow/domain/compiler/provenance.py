@@ -233,12 +233,14 @@ def find_sources(skeleton: Skeleton) -> SourceReport:
 
 
 def _mentions(text: str, value: Any) -> bool:
-    """`value` có mặt trong `text` như một từ trọn vẹn, không phải một mẩu của từ khác."""
+    """`value` có mặt trong `text` như một từ trọn vẹn, không phải một mẩu của từ khác.
+    Không phân biệt hoa thường: người ta gõ "kênh AWS" cho kênh tên `aws`."""
     if isinstance(value, bool) or not isinstance(value, str | int):
         return False
-    needle = str(value)
+    needle = str(value).casefold()
     if not needle.strip():
         return False
+    text = text.casefold()
 
     start = text.find(needle)
     while start != -1:
